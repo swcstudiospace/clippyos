@@ -1,0 +1,65 @@
+import { i as writeAppSetting, r as readAppSetting } from "./app-settings.server-BlmGCrwi.mjs";
+import { i as readPlaybookPolicies } from "./autonomy-policy.server-HcFlL3K7.mjs";
+import { r as listAuditLog } from "./autonomy-audit.server-vcgB9vCa.mjs";
+import { i as routedText } from "./llm-router.server-TNnMY3uU.mjs";
+import { t as createSkillInternalFromDistill } from "./skills.server-D63wa77B.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/skill-distill.server-CxveMxck.js
+var DISTILLED_KEY = "SKILLS_DISTILLED_RUNS";
+async function alreadyDistilled(runId) {
+	const raw = await readAppSetting(DISTILLED_KEY);
+	if (!raw) return false;
+	try {
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) && parsed.includes(runId);
+	} catch {
+		return false;
+	}
+}
+async function markDistilled(runId) {
+	const raw = await readAppSetting(DISTILLED_KEY);
+	let ids = [];
+	try {
+		ids = Array.isArray(JSON.parse(raw ?? "[]")) ? JSON.parse(raw ?? "[]") : [];
+	} catch {
+		ids = [];
+	}
+	ids = [runId, ...ids.filter((id) => id !== runId)].slice(0, 200);
+	await writeAppSetting(DISTILLED_KEY, JSON.stringify(ids));
+}
+async function maybeDistillSkillFromRun(input) {
+	if (!input.runId) return;
+	const policies = await readPlaybookPolicies();
+	const minCalls = policies.skillsMinToolCallsToDistill ?? 5;
+	if (await alreadyDistilled(input.runId)) return;
+	const rows = (await listAuditLog(80)).filter((row) => row.runId === input.runId && row.result === "ok");
+	const tools = [...new Set(rows.map((row) => row.action))];
+	if (tools.length < minCalls) return;
+	await markDistilled(input.runId);
+	const summary = rows.slice(0, 40).map((row) => `- ${row.action}${row.entityType ? ` (${row.entityType})` : ""}`).join("\n");
+	let md;
+	try {
+		md = await routedText({
+			feature: "skillAuthor",
+			temperature: .3,
+			maxTokens: 1200,
+			messages: [{
+				role: "system",
+				content: "You write SKILL.md files for Agency Admin. Output ONLY markdown starting with YAML frontmatter. Never include API keys, tokens, passwords, or sandbox ids. Only reference tools from the provided list. permissions must be a subset of clients:read, social:read, social:write, analytics:read, llm:invoke. runtime.network must be false. provenance: agent."
+			}, {
+				role: "user",
+				content: `Playbook: ${input.playbookId ?? "unknown"}\nTools used:\n${tools.join(", ")}\nTrace:\n${summary}\nWrite a reusable SKILL.md capturing this procedure.`
+			}]
+		});
+	} catch {
+		return;
+	}
+	if (!md.includes("---")) return;
+	const auto = policies.skillsAutoPublishAgent === true;
+	await createSkillInternalFromDistill({
+		skillMd: md,
+		autoPublish: auto,
+		createdBy: input.actorLabel ?? "agent"
+	});
+}
+//#endregion
+export { maybeDistillSkillFromRun };

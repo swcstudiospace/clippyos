@@ -1,0 +1,98 @@
+import { createHash, createHmac } from "node:crypto";
+//#region node_modules/.nitro/vite/services/ssr/assets/s3.server-DyS0K5ZV.js
+/**
+* Minimal S3-compatible PUT/GET/DELETE (Filebase, Storj, R2, AWS).
+* Server-only. No AWS SDK — SigV4 over fetch so Vercel stays lean.
+*/
+function sha256Hex(value) {
+	return createHash("sha256").update(value).digest("hex");
+}
+function hmac(key, value) {
+	return createHmac("sha256", key).update(value).digest();
+}
+function amzDate(now = /* @__PURE__ */ new Date()) {
+	const iso = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+	return {
+		amz: iso.slice(0, 16),
+		date: iso.slice(0, 8)
+	};
+}
+function encodePath(key) {
+	return key.split("/").map((part) => encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)).join("/");
+}
+function objectUrl(config, key) {
+	new URL(config.endpoint).host;
+	const path = `/${config.bucket}/${encodePath(key)}`;
+	return `${config.endpoint.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+function canonicalRequest(input) {
+	const names = Object.keys(input.headers).map((name) => name.toLowerCase()).sort();
+	const canonicalHeaders = names.map((name) => {
+		const original = Object.keys(input.headers).find((key) => key.toLowerCase() === name) ?? name;
+		return `${name}:${input.headers[original].trim().replace(/\s+/g, " ")}`;
+	}).join("\n");
+	return [
+		input.method,
+		input.path,
+		"",
+		`${canonicalHeaders}\n`,
+		names.join(";"),
+		input.payloadHash
+	].join("\n");
+}
+function signingKey(secret, date, region) {
+	return hmac(hmac(hmac(hmac(`AWS4${secret}`, date), region), "s3"), "aws4_request");
+}
+async function signedFetch(config, method, key, body) {
+	const url = new URL(objectUrl(config, key));
+	const payloadHash = sha256Hex(body ?? "");
+	const { amz, date } = amzDate();
+	const headers = {
+		host: url.host,
+		"x-amz-content-sha256": payloadHash,
+		"x-amz-date": amz
+	};
+	const path = url.pathname;
+	const canonical = canonicalRequest({
+		method,
+		path,
+		headers,
+		payloadHash
+	});
+	const scope = `${date}/${config.region}/s3/aws4_request`;
+	const stringToSign = [
+		"AWS4-HMAC-SHA256",
+		amz,
+		scope,
+		sha256Hex(canonical)
+	].join("\n");
+	const signature = createHmac("sha256", signingKey(config.secret, date, config.region)).update(stringToSign).digest("hex");
+	const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKey}/${scope}, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=${signature}`;
+	return fetch(url.toString(), {
+		method,
+		headers: {
+			Authorization: authorization,
+			"x-amz-content-sha256": payloadHash,
+			"x-amz-date": amz,
+			...body ? { "content-type": "application/octet-stream" } : {}
+		},
+		body: body ? new Uint8Array(body) : void 0
+	});
+}
+async function s3Put(config, key, bytes) {
+	const response = await signedFetch(config, "PUT", key, bytes);
+	if (!response.ok) throw new Error(`S3_PUT_${response.status}`);
+}
+async function s3Get(config, key) {
+	const response = await signedFetch(config, "GET", key);
+	if (response.status === 404) return null;
+	if (!response.ok) throw new Error(`S3_GET_${response.status}`);
+	return Buffer.from(await response.arrayBuffer());
+}
+async function s3Delete(config, key) {
+	const response = await signedFetch(config, "DELETE", key);
+	if (response.status === 404 || response.ok) return;
+	throw new Error(`S3_DELETE_${response.status}`);
+}
+//#endregion
+export { s3Delete, s3Get, s3Put };

@@ -1,0 +1,5 @@
+import{i as e,t}from"./react-SIfiwpqq.js";import{t as n}from"./use-prefers-reduced-motion-C2qRPsJf.js";var r=e(t(),1);function i(e,t){let n=[`#0a84ff`,`#64d2ff`,`#bf5af2`,`#30d158`,`#ff9f0a`];for(let r=0;r<14;r+=1){let i=document.createElement(`span`),a=Math.PI*2*r/14,o=36+Math.random()*28;i.style.cssText=`
+      position:fixed;left:${e}px;top:${t}px;width:6px;height:6px;border-radius:999px;
+      background:${n[r%n.length]};pointer-events:none;z-index:80;
+      transform:translate(-50%,-50%);
+    `,document.body.appendChild(i);let s=i.animate([{transform:`translate(-50%,-50%) scale(1)`,opacity:1},{transform:`translate(calc(-50% + ${Math.cos(a)*o}px), calc(-50% + ${Math.sin(a)*o}px)) scale(0)`,opacity:0}],{duration:620,easing:`cubic-bezier(0.22, 1, 0.36, 1)`});s.onfinish=()=>i.remove()}}function a({children:e}){let t=n();return!(0,r.isValidElement)(e)||t?e:(0,r.cloneElement)(e,{onClick:t=>{i(t.clientX,t.clientY),e.props.onClick?.(t)}})}export{a as t};

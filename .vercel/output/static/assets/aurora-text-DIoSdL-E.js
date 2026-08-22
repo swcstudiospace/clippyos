@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-0vZSBttN.js";import{t}from"./utils-DojpP95n.js";var n=e();function r({children:e,className:r}){return(0,n.jsx)(`span`,{className:t(`aurora-text`,r),children:e})}export{r as t};

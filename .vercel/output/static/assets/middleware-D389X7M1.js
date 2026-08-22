@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/client-odqxLXBe.js","assets/react-SIfiwpqq.js"])))=>i.map(i=>d[i]);
+import{t as e}from"./createMiddleware-DQnh37QV.js";import{t}from"./preload-helper-Czpn1I53.js";var n=e({type:`function`}).client(async({next:e})=>{let{getBearerToken:n}=await t(async()=>{let{getBearerToken:e}=await import(`./client-odqxLXBe.js`).then(e=>e.n);return{getBearerToken:e}},__vite__mapDeps([0,1]));return e({sendContext:{bearerToken:n()??void 0}})});export{n as t};
