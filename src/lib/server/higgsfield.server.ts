@@ -22,11 +22,9 @@ const SETTING_SECRET_IDS = [
 const SETTING_COMBINED_IDS = ["HIGGSFIELD_KEY", "HF_KEY", "HF_CREDENTIALS"];
 
 /**
- * Preview fallback so Thumbnails keeps working without a `.env` file.
- * Never import this module from a client component.
+ * Credentials resolve from operator Settings or process env only — never
+ * embedded in source. Never import this module from a client component.
  */
-const PREVIEW_KEY_ID = "2ad0f35d-b528-4999-906d-8840a4c1cec3";
-const PREVIEW_SECRET = "00e36bd22052dca705da146b9468224909978e00a8153efcf095893f4ac76e68";
 
 export type ImageGenResult =
   | { ok: true; url: string; provider: "higgsfield" | "xai" }
@@ -71,12 +69,6 @@ function envPair(): HiggsfieldCreds | null {
     return { key: combined.slice(0, idx), secret: combined.slice(idx + 1) };
   }
   return null;
-}
-
-function previewPair(): HiggsfieldCreds | null {
-  if (!PREVIEW_KEY_ID || !PREVIEW_SECRET) return null;
-  if (looksRedacted(PREVIEW_KEY_ID) || looksRedacted(PREVIEW_SECRET)) return null;
-  return { key: PREVIEW_KEY_ID, secret: PREVIEW_SECRET };
 }
 
 async function readSettingsMap(): Promise<Map<string, string>> {
@@ -218,12 +210,10 @@ export async function loadHiggsfieldCreds(): Promise<HiggsfieldCreds | null> {
       return fromSettings;
     }
   } catch {
-    /* fall through to preview */
+    /* fall through — no credentials configured */
   }
-  const preview = previewPair();
-  credsCache = { at: now, creds: preview };
-  if (preview) void persistPreviewIfNeeded(preview);
-  return preview;
+  credsCache = { at: now, creds: null };
+  return null;
 }
 
 export async function higgsfieldAvailable(): Promise<boolean> {

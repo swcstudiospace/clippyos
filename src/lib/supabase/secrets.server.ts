@@ -5,12 +5,11 @@ function looksRedacted(value: string): boolean {
 }
 
 /**
- * Project secret API key. Prefer process env (published host). The fallback
- * exists so this preview can talk to the agency's Supabase project without a
- * `.env` file — it must never be imported into a client bundle.
+ * Project secret API key. Resolves from process env only (published host):
+ * `SUPABASE_SECRET_KEY`, or the `default` entry of a JSON-valued
+ * `SUPABASE_SECRET_KEYS`. Never imported into a client bundle; never
+ * hardcoded — operators set it in Vercel env vars or rotate there.
  */
-const PREVIEW_SECRET = "sb_secret_Zrc_b_jnhlijVtVestVABA_VDV1AE_M";
-
 export function getSupabaseSecret(): string | undefined {
   if (typeof process === "undefined") return undefined;
   const fromEnv = process.env.SUPABASE_SECRET_KEY?.trim();
@@ -26,6 +25,5 @@ export function getSupabaseSecret(): string | undefined {
       /* ignore malformed JSON */
     }
   }
-  if (PREVIEW_SECRET && !looksRedacted(PREVIEW_SECRET)) return PREVIEW_SECRET;
   return undefined;
 }
