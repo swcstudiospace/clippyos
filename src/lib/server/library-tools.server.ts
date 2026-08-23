@@ -27,16 +27,18 @@ export async function handleLibraryAction(
 ): Promise<unknown> {
   switch (action) {
     case "library.search_assets": {
+      const limitRaw = Number(payload.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(80, Math.floor(limitRaw)) : 40;
       const assets = await listAssets(
         {
           clientId: str(payload, "clientId") || undefined,
           kind: payload.kind as never,
           source: payload.source as never,
           status: payload.status as never,
-          search: str(payload, "search", "q") || undefined,
+          search: str(payload, "search", "q", "query") || undefined,
           tag: str(payload, "tag") || undefined,
         },
-        40,
+        limit,
       );
       return {
         assets: assets.map((row) => ({

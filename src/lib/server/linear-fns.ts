@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { getUserRole, requireAdmin } from "@/lib/server/access";
+import { getUserRole, requireAdmin, requireSecretEditor } from "@/lib/server/access";
 import {
   LINEAR_ENTITY_TYPES,
   LINEAR_KANBAN_COLUMNS,
@@ -38,7 +38,7 @@ export const saveLinearApiKeyFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => z.object({ apiKey: z.string().trim().min(12).max(400) }).parse(input))
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { persistLinearApiKey } = await import("@/lib/server/linear.server");
     await persistLinearApiKey(data.apiKey);
     return { ok: true as const };
@@ -50,7 +50,7 @@ export const saveLinearOauthAppFn = createServerFn({ method: "POST" })
     z.object({ clientId: z.string().trim().min(8).max(200), clientSecret: z.string().trim().min(8).max(400) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { persistLinearOauthApp } = await import("@/lib/server/linear.server");
     await persistLinearOauthApp(data);
     return { ok: true as const };
@@ -59,7 +59,7 @@ export const saveLinearOauthAppFn = createServerFn({ method: "POST" })
 export const testLinearFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }): Promise<LinearPublicStatus> => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { testLinearConnection } = await import("@/lib/server/linear.server");
     try {
       const status = await testLinearConnection();

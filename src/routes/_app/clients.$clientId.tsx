@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ExternalLink, Pencil, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Pencil, Plus, RefreshCw } from "lucide-react";
 import {
   getAiStatus,
   getClientBundle,
@@ -10,7 +10,7 @@ import {
   setClientStage,
   updateClientNotes,
 } from "@/lib/server/clients";
-import { type ProgressStage } from "@/lib/entities";
+import { type ProgressStage, type TeamMember } from "@/lib/entities";
 import {
   PAYMENT_STATUS_LABELS,
   PAYMENT_TYPE_LABELS,
@@ -55,6 +55,10 @@ import { PortalAccessPanel } from "@/components/clients/portal-access";
 import { ScoreBadge } from "@/components/performance/score-badge";
 import { PERFORMANCE_QUERY_KEY } from "@/lib/performance";
 import { getPerformanceSnapshot } from "@/lib/server/performance-fns";
+import { HumanEditor } from "@/components/team/human-editor";
+import { removeHumanSeatFn } from "@/lib/server/team-fns";
+import { TEAM_QUERY_KEY } from "@/lib/team";
+import { MONEY_QUERY_KEY } from "@/lib/money";
 
 export const Route = createFileRoute("/_app/clients/$clientId")({
   component: ClientDetailPage,
@@ -95,6 +99,9 @@ function ClientDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [pendingStage, setPendingStage] = useState<ProgressStage | null>(null);
   const [notes, setNotes] = useState("");
+  const [humanEditor, setHumanEditor] = useState<"create" | TeamMember | null>(null);
+  const [removeHuman, setRemoveHuman] = useState<TeamMember | null>(null);
+  const canEditTeam = inbox.data?.role === "admin";
 
   const bundle = bundleQuery.data ?? null;
   useEffect(() => {
@@ -155,6 +162,18 @@ function ClientDetailPage() {
       captureClientError(error, { source: "mark-paid" });
       toast.error(userFacingErrorMessage(error));
     },
+  });
+
+  const removeHumanMut = useMutation({
+    mutationFn: (id: string) => removeHumanSeatFn({ data: id }),
+    onSuccess: async () => {
+      toast.success("Teammate removed");
+      setRemoveHuman(null);
+      await queryClient.invalidateQueries({ queryKey: ["client", clientId] });
+      await queryClient.invalidateQueries({ queryKey: TEAM_QUERY_KEY });
+      await queryClient.invalidateQueries({ queryKey: MONEY_QUERY_KEY });
+    },
+    onError: (error) => toast.error(userFacingErrorMessage(error)),
   });
 
   if (bundleQuery.isPending) return <DetailSkeleton />;
@@ -469,8 +488,21 @@ function ClientDetailPage() {
 
         <SectionBoundary title="Team">
           <GlassCard>
-            <h2 className="text-card font-semibold tracking-tight">Team</h2>
-            {bundle.team.length === 0 ? (
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-card font-semibold tracking-tight">Assigned team</h2>
+                <p className="mt-1 text-caption text-muted">
+                  Humans carry cost. Linked AI teammates show as chips and never hit margin.
+                </p>
+              </div>
+              {canEditTeam ? (
+                <Button size="sm" onClick={() => setHumanEditor("create")}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  Add human
+                </Button>
+              ) : null}
+            </div>
+            {bundle.team.length === 0 && (bundle.aiTeammates?.length ?? 0) === 0 ? (
               <p className="mt-3 text-body text-muted">No team members assigned yet.</p>
             ) : (
               <ul className="mt-4 flex flex-col gap-2">
@@ -483,7 +515,31 @@ function ClientDetailPage() {
                       <p className="text-body font-medium">{member.name}</p>
                       <p className="text-caption text-muted">{ROLE_LABELS[member.role]}</p>
                     </div>
-                    <p className="text-body">{formatUsd(member.cost)}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-body">{formatUsd(member.cost)}</p>
+                      {canEditTeam ? (
+                        <>
+                          <Button size="sm" variant="ghost" onClick={() => setHumanEditor(member)}>
+                            Edit
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setRemoveHuman(member)}>
+                            Remove
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+                {(bundle.aiTeammates ?? []).map((member) => (
+                  <li
+                    key={member.id}
+                    className="flex items-center justify-between gap-3 rounded-control bg-secondary-surface/50 px-3 py-2"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <Badge tone="teal">Automation</Badge>
+                      <p className="text-body font-medium">{member.botLabel || member.name}</p>
+                    </div>
+                    <p className="text-caption text-muted">No load</p>
                   </li>
                 ))}
               </ul>
@@ -622,6 +678,30 @@ function ClientDetailPage() {
         }}
       />
 
+      <HumanEditor
+        open={humanEditor !== null}
+        member={humanEditor === "create" || humanEditor == null ? null : humanEditor}
+        clients={[client]}
+        lockedClientId={client.id}
+        onClose={() => setHumanEditor(null)}
+      />
+
+      <Dialog open={Boolean(removeHuman)} onOpenChange={(open) => !open && setRemoveHuman(null)}>
+        <DialogContent>
+          <DialogTitle>Remove {removeHuman?.name}?</DialogTitle>
+          <DialogDescription>
+            Soft-deletes this assignment. Capacity and margin drop the seat immediately.
+          </DialogDescription>
+          <Button
+            className="mt-4 min-h-11 w-full"
+            variant="destructive"
+            onClick={() => removeHuman && removeHumanMut.mutate(removeHuman.id)}
+            disabled={removeHumanMut.isPending}
+          >
+            Remove
+          </Button>
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(pendingStage)} onOpenChange={(next) => !next && setPendingStage(null)}>
         <DialogContent>
           <DialogTitle>Update production stage?</DialogTitle>

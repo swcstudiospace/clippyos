@@ -8,9 +8,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 export function CapacityTracker({
   rows,
   loading,
+  aiActiveCount = 0,
 }: {
   rows: CapacityRow[];
   loading: boolean;
+  aiActiveCount?: number;
 }) {
   if (loading) {
     return (
@@ -36,7 +38,7 @@ export function CapacityTracker({
       <h2 className="text-card font-semibold tracking-tight">Capacity tracker</h2>
       <p className="mt-1 text-caption text-muted">
         People are grouped by name across active clients. Overloaded means more
-        than {CAPACITY_OVERLOAD_THRESHOLD} clients.
+        than {CAPACITY_OVERLOAD_THRESHOLD} clients. AI teammates: {aiActiveCount} active — not counted in load.
       </p>
       <ul className="mt-4 flex flex-col gap-2">
         {rows.map((row) => (

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { requireAdmin } from "@/lib/server/access";
+import { requireSecretEditor } from "@/lib/server/access";
 import type { PublisherSnapshot } from "@/lib/publishers";
 import type { PublisherId } from "@/lib/server/social-oauth.server";
 
@@ -26,7 +26,7 @@ export const savePublisherAppFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { persistPublisherApp } = await import("@/lib/server/social-oauth.server");
     await persistPublisherApp(data.provider, {
       clientId: data.clientId,
@@ -49,7 +49,7 @@ export const startPublisherOAuthFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => z.object({ provider: ProviderSchema }).parse(input))
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { startPublisherOAuth } = await import("@/lib/server/social-oauth.server");
     return startPublisherOAuth({ provider: data.provider, userId: context.userId });
   });
@@ -58,7 +58,7 @@ export const testPublisherFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => z.object({ provider: ProviderSchema }).parse(input))
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { testPublisherConnection } = await import("@/lib/server/social-oauth.server");
     try {
       await testPublisherConnection(data.provider as PublisherId);
@@ -89,7 +89,7 @@ export const disconnectPublisherFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { clearPublisher, disconnectPublisherTokens } = await import(
       "@/lib/server/social-oauth.server"
     );
@@ -113,7 +113,7 @@ export const selectInstagramAccountFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => z.object({ igUserId: z.string().min(1) }).parse(input))
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { selectInstagramAccount } = await import("@/lib/server/social-oauth.server");
     await selectInstagramAccount(data.igUserId);
     return { ok: true as const };
@@ -125,7 +125,7 @@ export const setTikTokModeFn = createServerFn({ method: "POST" })
     z.object({ mode: z.enum(["inbox", "direct"]) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { setTikTokPublishMode } = await import("@/lib/server/social-oauth.server");
     await setTikTokPublishMode(data.mode);
     return { ok: true as const };
@@ -137,7 +137,7 @@ export const setTikTokAuditFn = createServerFn({ method: "POST" })
     z.object({ status: z.enum(["UNAUDITED", "AUDITED", "UNKNOWN"]) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { setTikTokAuditStatus } = await import("@/lib/server/social-oauth.server");
     await setTikTokAuditStatus(data.status);
     return { ok: true as const };
@@ -149,7 +149,7 @@ export const setTikTokDomainFn = createServerFn({ method: "POST" })
     z.object({ domain: z.string().max(200) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { setTikTokVerifiedDomain } = await import("@/lib/server/social-oauth.server");
     await setTikTokVerifiedDomain(data.domain);
     return { ok: true as const };
@@ -166,7 +166,7 @@ export const setYoutubePublishDefaultsFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { persistYoutubePublishDefaults } = await import("@/lib/server/social-oauth.server");
     await persistYoutubePublishDefaults(data);
     return { ok: true as const };

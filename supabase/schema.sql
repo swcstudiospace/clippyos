@@ -62,15 +62,26 @@ create index if not exists payments_due_date_idx on payments (due_date);
 
 create table if not exists team_members (
   id          text primary key,
-  client_id   text not null references clients (id) on delete restrict,
+  client_id   text references clients (id) on delete restrict,
   role        text not null check (role in (
                 'CHANNEL_MANAGER',
                 'SHORT_FORM_EDITOR',
                 'LONG_FORM_EDITOR',
-                'THUMBNAIL_DESIGNER'
+                'THUMBNAIL_DESIGNER',
+                'AUTOMATION'
               )),
   name        text not null,
   cost        numeric(12, 2),
+  is_automation boolean not null default false,
+  automation_kind text,
+  bot_label text,
+  bot_role_key text,
+  mcp_token_id text,
+  mcp_token_label text,
+  runtime_hint text,
+  is_active boolean not null default true,
+  notes text,
+  assigned_client_ids text,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   created_by  text,
@@ -79,6 +90,22 @@ create table if not exists team_members (
 
 create index if not exists team_members_client_id_idx on team_members (client_id);
 create index if not exists team_members_active_idx on team_members (id) where deleted_at is null;
+create index if not exists team_members_automation_idx on team_members (is_automation) where deleted_at is null;
+
+alter table if exists team_members drop constraint if exists team_members_automation_kind_check;
+alter table if exists team_members add constraint team_members_automation_kind_check check (
+  automation_kind is null or automation_kind in ('GROK_BOT', 'HERMES_WORKER', 'OTHER')
+);
+alter table if exists team_members drop constraint if exists team_members_runtime_hint_check;
+alter table if exists team_members add constraint team_members_runtime_hint_check check (
+  runtime_hint is null or runtime_hint in ('HERMES', 'GROK_BOT', 'AUTO')
+);
+alter table if exists team_members drop constraint if exists team_members_bot_role_key_check;
+alter table if exists team_members add constraint team_members_bot_role_key_check check (
+  bot_role_key is null or bot_role_key in (
+    'CLIPPY_OPS','PUBLISH_DESK','CLIENT_SUCCESS','ENG_BOT','LEARNING_BOT','REVENUE_OPS','CUSTOM'
+  )
+);
 
 create table if not exists client_progress (
   id          text primary key,
@@ -299,10 +326,12 @@ create table if not exists api_keys (
   scopes       text not null,
   last_used_at timestamptz,
   revoked_at   timestamptz,
+  expires_at   timestamptz,
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now(),
   created_by   text
 );
+
 
 create unique index if not exists api_keys_hash_uidx on api_keys (key_hash);
 
@@ -319,6 +348,7 @@ create table if not exists agent_audit_log (
   error_code   text,
   playbook_id  text,
   run_id       text,
+  args_digest  text,
   created_at   timestamptz not null default now()
 );
 
@@ -430,6 +460,7 @@ create table if not exists social_jobs (
 alter table social_jobs add column if not exists preferred_rail text;
 alter table social_jobs add column if not exists fallback_to_browser text;
 alter table social_jobs add column if not exists options text;
+alter table social_jobs add column if not exists triggered_by_team_member_id text;
 
 create index if not exists social_jobs_client_idx on social_jobs (client_id);
 create index if not exists social_jobs_created_idx on social_jobs (created_at desc);
@@ -518,7 +549,8 @@ create table if not exists agent_runs (
   finished_at      timestamptz,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
-  created_by       text
+  created_by       text,
+  triggered_by_team_member_id text
 );
 create index if not exists agent_runs_started_idx on agent_runs (started_at desc);
 create index if not exists agent_runs_idempotency_idx on agent_runs (idempotency_key);

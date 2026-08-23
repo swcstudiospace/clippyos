@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { TeamLane } from "@/lib/team";
+import type { TeamMember } from "@/lib/entities";
 import { ROLE_LABELS, ROLE_TONES } from "@/lib/labels";
 import { formatUsd } from "@/lib/format";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -12,9 +13,15 @@ import { BlurFade } from "@/components/magicui/blur-fade";
 export function AllocationLanes({
   lanes,
   loading,
+  canEdit = false,
+  onEditHuman,
+  onRemoveHuman,
 }: {
   lanes: TeamLane[];
   loading: boolean;
+  canEdit?: boolean;
+  onEditHuman?: (member: TeamMember) => void;
+  onRemoveHuman?: (member: TeamMember) => void;
 }) {
   if (loading) {
     return (
@@ -59,14 +66,16 @@ export function AllocationLanes({
               </Link>
               <p className="text-caption text-muted">
                 {lane.members.length === 0
-                  ? "No team assigned"
+                  ? lane.aiTeammates.length
+                    ? `${lane.aiTeammates.length} AI teammate${lane.aiTeammates.length === 1 ? "" : "s"}`
+                    : "No team assigned"
                   : `${lane.members.length} teammate${lane.members.length === 1 ? "" : "s"}`}
               </p>
             </div>
-            {lane.members.length === 0 ? (
+            {lane.members.length === 0 && lane.aiTeammates.length === 0 ? (
               <p className="mt-3 text-body text-muted">
-                Assign editors and designers from the client record. Costs roll
-                into the lane total.
+                Assign editors and designers from this page or the client record. Costs roll
+                into the lane total. AI teammates never add load.
               </p>
             ) : (
               <ul className="mt-3 flex flex-col gap-2">
@@ -81,10 +90,34 @@ export function AllocationLanes({
                       </Badge>
                       <span className="font-medium">{member.name}</span>
                     </div>
-                    <span className="tabular-nums text-body">
-                      {formatUsd(member.cost)}
-                      <span className="text-caption text-muted"> / mo</span>
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="tabular-nums text-body">
+                        {formatUsd(member.cost)}
+                        <span className="text-caption text-muted"> / mo</span>
+                      </span>
+                      {canEdit ? (
+                        <>
+                          <Button size="sm" variant="ghost" onClick={() => onEditHuman?.(member)}>
+                            Edit
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => onRemoveHuman?.(member)}>
+                            Remove
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+                {lane.aiTeammates.map((member) => (
+                  <li
+                    key={member.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-control bg-secondary-surface/50 px-3 py-3"
+                  >
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <Badge tone="teal">Automation</Badge>
+                      <span className="font-medium">{member.botLabel || member.name}</span>
+                    </div>
+                    <span className="text-caption text-muted">No load</span>
                   </li>
                 ))}
               </ul>

@@ -210,6 +210,34 @@ export const BUILTIN_ADDONS: readonly AddonManifest[] = [
   },
   {
     schemaVersion: 1,
+    id: "agency.grok-bot",
+    name: "Grok Bot computer",
+    version: "1.0.0",
+    description:
+      "Premium always-on computer. SuperGrok Plus / Cursor Ultra teammates connect over MCP and replace Daytona + Hermes for Computer Use.",
+    type: "runtime",
+    entry: { mcp: true, apiRoutes: ["/api/mcp"], uiSlots: ["settings.grok-bot", "social", "agent"] },
+    permissions: ["social:read", "social:write", "skills:execute"],
+    dependencies: { addons: ["agency.hermes-control-plane"] },
+    configSchema: { type: "object", properties: { preferAsComputer: { type: "boolean" } } },
+    hooks: ["onSocialUploadResult"],
+    mcp: {
+      tools: [
+        "grokbot.heartbeat",
+        "grokbot.list_work",
+        "grokbot.claim_work",
+        "grokbot.complete_work",
+        "grokbot.get_status",
+        "grokbot.get_brief",
+      ],
+      resources: ["agency://grok-bot"],
+    },
+    skills: [],
+    sandbox: {},
+    usedBy: ["Social", "Agent", "Grok Bot"],
+  },
+  {
+    schemaVersion: 1,
     id: "agency.hermes-control-plane",
     name: "Hermes control plane",
     version: "1.0.0",
@@ -304,11 +332,13 @@ export function addonIdForTool(name: string): string | null {
     name === "social.bulk_create_upload_jobs" ||
     name === "social.list_uploadable_assets" ||
     name === "social.resolve_asset" ||
+    name === "social.get_publisher_status" ||
     name.startsWith("approvals.")
   ) {
     return null;
   }
   if (name.startsWith("linear.")) return "agency.linear";
+  if (name.startsWith("grokbot.") || name.startsWith("grokbot_")) return "agency.grok-bot";
   if (name.startsWith("social.")) return "agency.daytona-social";
   if (name.startsWith("skills.") || name === "tasks.get" || name.startsWith("skill.")) {
     return "agency.skills-runtime";

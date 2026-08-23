@@ -35,6 +35,7 @@ import { QuickActions } from "@/components/dashboard/quick-actions";
 import { PipelineSummary } from "@/components/dashboard/pipeline-summary";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { AutomationWidget } from "@/components/dashboard/automation-widget";
+import { HealthWidget } from "@/components/dashboard/health-widget";
 import { SubscriptionTracker } from "@/components/billing/tracker";
 import { ClientFormModal } from "@/components/clients/client-form-modal";
 import { SectionBoundary } from "@/components/clients/section-boundary";
@@ -262,11 +263,14 @@ function DashboardPage() {
         </SectionBoundary>
 
         <SectionBoundary title="Automation">
-          <AutomationWidget
-            atRisk={metrics?.clientsAtRisk ?? 0}
-            overdueCount={metrics?.overdueCount ?? 0}
-            stuckStages={stuckStages}
-          />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <AutomationWidget
+              atRisk={metrics?.clientsAtRisk ?? 0}
+              overdueCount={metrics?.overdueCount ?? 0}
+              stuckStages={stuckStages}
+            />
+            <HealthWidget />
+          </div>
         </SectionBoundary>
 
         <SectionBoundary title="Production pipeline">

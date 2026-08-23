@@ -118,6 +118,7 @@ async function ensureSocialSchema(): Promise<void> {
     await sql.query(`alter table social_jobs add column if not exists fallback_to_browser text`);
     await sql.query(`alter table social_jobs add column if not exists media_asset_id text`);
     await sql.query(`alter table social_jobs add column if not exists options text`);
+    await sql.query(`alter table social_jobs add column if not exists triggered_by_team_member_id text`);
     try {
       await sql.query(`alter table social_posts drop constraint if exists social_posts_platform_check`);
       await sql.query(
@@ -412,8 +413,11 @@ function mapSocialJob(row: Record<string, unknown>): SocialJob {
     createdAt: String(row.created_at ?? ""),
     updatedAt: String(row.updated_at ?? ""),
     createdBy: row.created_by == null ? null : String(row.created_by),
+    triggeredByTeamMemberId: row.triggered_by_team_member_id
+      ? String(row.triggered_by_team_member_id)
+      : null,
     preferredRail:
-      row.preferred_rail === "API" || row.preferred_rail === "BROWSER"
+      row.preferred_rail === "API" || row.preferred_rail === "BROWSER" || row.preferred_rail === "GROK_BOT"
         ? row.preferred_rail
         : "AUTO",
     fallbackToBrowser: row.fallback_to_browser !== "0" && row.fallback_to_browser !== "false",
@@ -855,7 +859,7 @@ const UploadSchema = z.object({
   platforms: z.array(PlatformSchema).min(1).max(4),
   caption: z.string().max(2200).optional(),
   mediaUrl: z.string().max(4000).nullable().optional(),
-  preferredRail: z.enum(["AUTO", "API", "BROWSER"]).optional(),
+  preferredRail: z.enum(["AUTO", "API", "BROWSER", "GROK_BOT"]).optional(),
   fallbackToBrowser: z.boolean().optional(),
   mode: z.enum(["draft", "publish"]).optional(),
   youtube: z

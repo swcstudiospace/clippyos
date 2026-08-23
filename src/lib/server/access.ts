@@ -1,6 +1,14 @@
 import { getSql } from "@/lib/db";
 import { MASKED_SECRET } from "@/lib/constants";
 import type { AppRole } from "@/lib/entities";
+import type { SecretScope } from "@/lib/server/secret-scope.server";
+
+export const OWNER_EMAILS = ["oveshen.govender@gmail.com"] as const;
+
+export function isOwnerEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return OWNER_EMAILS.includes(email.trim().toLowerCase() as (typeof OWNER_EMAILS)[number]);
+}
 
 export class ForbiddenError extends Error {
   readonly status = 403;
@@ -60,6 +68,27 @@ function isMissingStatusColumn(error: { code?: string; message?: string } | null
   );
 }
 
+async function readUserEmail(userId: string): Promise<string | null> {
+  try {
+    const sql = await getSql();
+    try {
+      const rows = await sql.query<{ email: string | null }>(
+        `select email from "user" where id = $1`,
+        [userId],
+      );
+      return rows[0]?.email ?? null;
+    } catch {
+      const rows = await sql.query<{ email: string | null }>(
+        `select email from "user" where id = $1`,
+        [userId],
+      );
+      return rows[0]?.email ?? null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 async function roleFromSupabase(userId: string): Promise<AppRole | "REVOKED" | null | undefined> {
   try {
     const { tryCreateAdminClient } = await import("@/lib/supabase/clients.server");
@@ -92,8 +121,13 @@ async function roleFromSupabase(userId: string): Promise<AppRole | "REVOKED" | n
 }
 
 export async function getUserRole(userId: string): Promise<AppRole | null> {
+  const owner = isOwnerEmail(await readUserEmail(userId));
   const remote = await roleFromSupabase(userId);
-  if (remote === "REVOKED") return null;
+  if (remote === "REVOKED" && !owner) return null;
+  if (owner) {
+    if (remote !== "admin") await bootstrapProfile(userId, "admin");
+    return "admin";
+  }
   if (remote === "admin" || remote === "member") return remote;
 
   try {
@@ -114,15 +148,48 @@ export async function getUserRole(userId: string): Promise<AppRole | null> {
     /* empty */
   }
 
-  // First operator of *this* auth database (in-memory preview resets independently
-  // of leftover remote app_profiles rows from prior generations).
-  // Self-serve signup from the login screen is an operator. Team Access creates
-  // member profiles before those people ever sign in, so they stay members.
-  await bootstrapProfile(userId, "admin");
-  return "admin";
+  // Self-serve sign-up and newly created logins are isolated members.
+  // Owners are the listed emails (and Super Admin, which signs in as that owner).
+  await bootstrapProfile(userId, "member");
+  return "member";
+}
+
+export async function readInheritWorkspaceApis(userId: string): Promise<boolean> {
+  try {
+    const { tryCreateAdminClient } = await import("@/lib/supabase/clients.server");
+    const admin = tryCreateAdminClient();
+    if (admin) {
+      const { data, error } = await admin
+        .from("app_profiles")
+        .select("inherit_workspace_apis")
+        .eq("user_id", userId)
+        .maybeSingle<{ inherit_workspace_apis?: boolean }>();
+      if (!error) return Boolean(data?.inherit_workspace_apis);
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const sql = await getSql();
+    const rows = await sql.query<{ inherit_workspace_apis: boolean | number | string | null }>(
+      "select inherit_workspace_apis from app_profiles where user_id = $1",
+      [userId],
+    );
+    const value = rows[0]?.inherit_workspace_apis;
+    return value === true || value === "t" || value === "true" || value === 1;
+  } catch {
+    return false;
+  }
+}
+
+export async function getOperatorAccess(userId: string): Promise<SecretScope> {
+  const role = await getUserRole(userId);
+  const inheritWorkspaceApis = role === "admin" ? true : await readInheritWorkspaceApis(userId);
+  return { userId, role, inheritWorkspaceApis };
 }
 
 export async function isOperatorRevoked(userId: string): Promise<boolean> {
+  if (isOwnerEmail(await readUserEmail(userId))) return false;
   try {
     const { tryCreateAdminClient } = await import("@/lib/supabase/clients.server");
     const admin = tryCreateAdminClient();
@@ -153,6 +220,21 @@ export async function isOperatorRevoked(userId: string): Promise<boolean> {
 export async function requireAdmin(userId: string): Promise<void> {
   const role = await getUserRole(userId);
   if (role !== "admin") throw new ForbiddenError();
+}
+
+export function operatorCanEditSecrets(
+  access: Pick<SecretScope, "role" | "inheritWorkspaceApis">,
+): boolean {
+  if (access.role === "admin") return true;
+  return access.role === "member" && !access.inheritWorkspaceApis;
+}
+
+/** Members may edit their own keys unless they inherit workspace APIs. */
+export async function requireSecretEditor(userId: string): Promise<SecretScope> {
+  const access = await getOperatorAccess(userId);
+  if (!access.role) throw new ForbiddenError();
+  if (!operatorCanEditSecrets(access)) throw new ForbiddenError();
+  return access;
 }
 
 export function maskSecret(_value: string | null): string {

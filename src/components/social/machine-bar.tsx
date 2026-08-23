@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { MonitorPlay, Square, Play, Globe } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { MonitorPlay, Square, Play, Globe, Sparkles } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/ui/glass-card";
@@ -24,6 +25,8 @@ import { formatRelativeTime } from "@/lib/format";
 import { DEFAULT_PROXY_COUNTRY, PROXY_COUNTRIES } from "@/lib/social-machine";
 import { provisionLocationProxyFn } from "@/lib/server/social";
 import { userFacingErrorMessage } from "@/lib/errors";
+import { GROK_BOT_CONNECTION_LABELS, GROK_BOT_QUERY_KEY, grokBotConnectionTone } from "@/lib/grok-bot";
+import { getGrokBotStatusFn } from "@/lib/server/grok-bot-fns";
 
 export function MachineBar({
   machine,
@@ -41,6 +44,11 @@ export function MachineBar({
   const queryClient = useQueryClient();
   const [geoOpen, setGeoOpen] = useState(false);
   const [country, setCountry] = useState(DEFAULT_PROXY_COUNTRY);
+  const grokQuery = useQuery({
+    queryKey: GROK_BOT_QUERY_KEY,
+    queryFn: () => getGrokBotStatusFn(),
+    refetchInterval: 20000,
+  });
   const canStart =
     machine.configured &&
     (machine.state === "stopped" || machine.state === "error" || machine.state === "paused") &&
@@ -117,6 +125,25 @@ export function MachineBar({
             {stopping ? "Hibernating…" : "Hibernate"}
           </Button>
         </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-control bg-secondary-surface/50 px-3 py-2">
+        <Sparkles className="size-4 text-muted" aria-hidden="true" />
+        <p className="text-caption font-medium">Grok Bot</p>
+        {grokQuery.data ? (
+          <Badge tone={grokBotConnectionTone(grokQuery.data.connection)}>
+            {GROK_BOT_CONNECTION_LABELS[grokQuery.data.connection]}
+          </Badge>
+        ) : (
+          <Badge tone="neutral">—</Badge>
+        )}
+        {grokQuery.data && grokQuery.data.queued > 0 ? (
+          <Badge tone="orange">{grokQuery.data.queued} queued</Badge>
+        ) : null}
+        <Button size="sm" variant="ghost" asChild className="ml-auto min-h-10">
+          <Link to="/settings" hash="grok-bot">
+            Connect
+          </Link>
+        </Button>
       </div>
       <p className="mt-3 text-caption text-muted">{machine.pathNote}</p>
 

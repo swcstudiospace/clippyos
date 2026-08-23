@@ -61,7 +61,7 @@ export function AgentTimeline({
         ) : null}
         {detail.run.status === "waiting_resource" ? (
           <p className="mt-3 text-caption text-warning">
-            Waiting on a resource (usually the Social Machine is stopped). Auto-start is off. Start it, then re-run.
+            Waiting on a resource — Social Machine stopped, or Grok Bot hasn’t claimed this run yet.
           </p>
         ) : null}
         {plan.length > 0 ? (

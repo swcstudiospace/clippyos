@@ -1,11 +1,22 @@
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
 import { isMissingTable } from "@/lib/server/mappers";
+import { ForbiddenError } from "@/lib/server/access";
+import {
+  deleteOperatorSecret,
+  getSecretScope,
+  isWorkspaceControlKey,
+  readOperatorSecret,
+  readOperatorSecretsMap,
+  readsWorkspaceSecrets,
+  secretWriteTarget,
+  writeOperatorSecret,
+} from "@/lib/server/secret-scope.server";
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-export async function readAppSettingsMap(): Promise<Map<string, string>> {
+async function readWorkspaceSettingsMap(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const admin = await getAgencyAdmin();
   if (admin) {
@@ -33,12 +44,12 @@ export async function readAppSettingsMap(): Promise<Map<string, string>> {
   return map;
 }
 
-export async function readAppSetting(key: string): Promise<string | null> {
-  const map = await readAppSettingsMap();
+async function readWorkspaceSetting(key: string): Promise<string | null> {
+  const map = await readWorkspaceSettingsMap();
   return map.get(key) ?? null;
 }
 
-export async function writeAppSetting(key: string, value: string): Promise<void> {
+async function writeWorkspaceSetting(key: string, value: string): Promise<void> {
   const now = nowIso();
   const id = crypto.randomUUID();
   const admin = await getAgencyAdmin();
@@ -86,7 +97,7 @@ export async function writeAppSetting(key: string, value: string): Promise<void>
   }
 }
 
-export async function deleteAppSetting(key: string): Promise<void> {
+async function deleteWorkspaceSetting(key: string): Promise<void> {
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("app_settings").delete().eq("key", key);
@@ -100,4 +111,52 @@ export async function deleteAppSetting(key: string): Promise<void> {
   } catch {
     /* empty */
   }
+}
+
+export async function readAppSettingsMap(): Promise<Map<string, string>> {
+  const workspace = await readWorkspaceSettingsMap();
+  const scope = getSecretScope();
+  if (readsWorkspaceSecrets(scope)) return workspace;
+  const personal = await readOperatorSecretsMap(scope!.userId);
+  const map = new Map<string, string>();
+  for (const [key, value] of workspace) {
+    if (isWorkspaceControlKey(key)) map.set(key, value);
+  }
+  for (const [key, value] of personal) map.set(key, value);
+  return map;
+}
+
+export async function readAppSetting(key: string): Promise<string | null> {
+  if (isWorkspaceControlKey(key)) return readWorkspaceSetting(key);
+  const scope = getSecretScope();
+  if (readsWorkspaceSecrets(scope)) return readWorkspaceSetting(key);
+  return readOperatorSecret(scope!.userId, key);
+}
+
+export async function writeAppSetting(key: string, value: string): Promise<void> {
+  if (isWorkspaceControlKey(key)) {
+    await writeWorkspaceSetting(key, value);
+    return;
+  }
+  const target = secretWriteTarget(getSecretScope());
+  if (target === "forbidden") throw new ForbiddenError();
+  if (target === "operator") {
+    await writeOperatorSecret(getSecretScope()!.userId, key, value);
+    return;
+  }
+  await writeWorkspaceSetting(key, value);
+}
+
+export async function deleteAppSetting(key: string): Promise<void> {
+  if (isWorkspaceControlKey(key)) {
+    await deleteWorkspaceSetting(key);
+    return;
+  }
+  const target = secretWriteTarget(getSecretScope());
+  if (target === "forbidden") throw new ForbiddenError();
+  if (target === "operator") {
+    await deleteOperatorSecret(getSecretScope()!.userId, key);
+    return;
+  }
+  await deleteWorkspaceSetting(key);
 }

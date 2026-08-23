@@ -11,6 +11,7 @@ const LOGOS: { title: string; mark: ReactNode }[] = [
   { title: "Discord", mark: <DiscordMark /> },
   { title: "Airwallex", mark: <AirwallexMark /> },
   { title: "Hermes Agent", mark: <NousMark /> },
+  { title: "Grok Bot", mark: <GrokBotMark /> },
   { title: "Linear", mark: <LinearMark /> },
 ];
 
@@ -112,6 +113,14 @@ function NousMark() {
       <path d="M8 12.5c1.4 2 2.6 3 4 3s2.6-1 4-3" />
       <circle cx="9.2" cy="10" r="1" fill="currentColor" stroke="none" />
       <circle cx="14.8" cy="10" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function GrokBotMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden="true">
+      <path d="M12 2.4 13.8 9 21 12l-7.2 3L12 21.6 10.2 15 3 12l7.2-3z" />
     </svg>
   );
 }

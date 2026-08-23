@@ -48,8 +48,8 @@ export const saveLlmApiKey = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
-    const { requireAdmin } = await import("@/lib/server/access");
-    await requireAdmin(context.userId);
+    const { requireSecretEditor } = await import("@/lib/server/access");
+    await requireSecretEditor(context.userId);
     const { writeAppSetting } = await import("@/lib/server/app-settings.server");
     await writeAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY", data.key);
     return { ok: true as const };
@@ -61,8 +61,8 @@ export const disconnectLlmProvider = createServerFn({ method: "POST" })
     z.object({ provider: z.enum(["xai-api", "openai-compat"]) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    const { requireAdmin } = await import("@/lib/server/access");
-    await requireAdmin(context.userId);
+    const { requireSecretEditor } = await import("@/lib/server/access");
+    await requireSecretEditor(context.userId);
     const { deleteAppSetting } = await import("@/lib/server/app-settings.server");
     await deleteAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY");
     return { ok: true as const };
@@ -74,8 +74,8 @@ export const testLlmProvider = createServerFn({ method: "POST" })
     z.object({ provider: z.enum(LLM_PROVIDER_IDS) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    const { requireAdmin } = await import("@/lib/server/access");
-    await requireAdmin(context.userId);
+    const { requireSecretEditor } = await import("@/lib/server/access");
+    await requireSecretEditor(context.userId);
     const { readLlmRouter } = await import("@/lib/server/llm-router.server");
     const { xaiChat, xaiTextContent, XAI_MODEL } = await import("@/lib/server/xai.server");
     const router = await readLlmRouter();

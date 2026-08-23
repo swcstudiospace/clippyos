@@ -78,7 +78,10 @@ export type DashboardLink =
   | { to: "/team" }
   | { to: "/leads" }
   | { to: "/social" }
-  | { to: "/approvals" };
+  | { to: "/approvals" }
+  | { to: "/health" }
+  | { to: "/library" }
+  | { to: "/agent" };
 
 export type DashboardAlert = {
   id: string;

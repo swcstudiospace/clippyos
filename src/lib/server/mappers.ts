@@ -1,5 +1,8 @@
 import { parseClientChecklist } from "@/lib/billing";
 import {
+  AUTOMATION_KINDS,
+  AUTOMATION_RUNTIME_HINTS,
+  BOT_ROLE_KEYS,
   CLIENT_STATUSES,
   KNOWLEDGE_SCOPES,
   KNOWLEDGE_STATUSES,
@@ -15,6 +18,10 @@ import {
   SOCIAL_POST_STATUSES,
   TEAM_ROLES,
   THREAD_STATUSES,
+  type AnalyticsSnapshot,
+  type AutomationKind,
+  type AutomationRuntimeHint,
+  type BotRoleKey,
   type Client,
   type ClientProgress,
   type ClientStatus,
@@ -37,7 +44,6 @@ import {
   type TeamMember,
   type TeamRole,
   type ThreadStatus,
-  type AnalyticsSnapshot,
   type IdeationMessage,
   type IdeationThread,
   type ThumbnailMessage,
@@ -135,13 +141,48 @@ export function mapPayment(row: Record<string, unknown>): Payment {
   };
 }
 
+function asBool(value: unknown, fallback: boolean): boolean {
+  if (value === true || value === "t" || value === "true" || value === "1") return true;
+  if (value === false || value === "f" || value === "false" || value === "0") return false;
+  return fallback;
+}
+
+function oneOfOrNull<T extends string>(value: unknown, allowed: readonly T[]): T | null {
+  return allowed.includes(value as T) ? (value as T) : null;
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      return parseStringArray(JSON.parse(value));
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 export function mapTeamMember(row: Record<string, unknown>): TeamMember {
+  const isAutomation = asBool(row.is_automation, false);
   return {
     id: asString(row.id),
-    clientId: asString(row.client_id),
-    role: oneOf<TeamRole>(row.role, TEAM_ROLES, "CHANNEL_MANAGER"),
+    clientId: asNullable(row.client_id),
+    role: oneOf<TeamRole>(row.role, TEAM_ROLES, isAutomation ? "AUTOMATION" : "CHANNEL_MANAGER"),
     name: asString(row.name),
     cost: asNullable(row.cost),
+    isAutomation,
+    automationKind: oneOfOrNull<AutomationKind>(row.automation_kind, AUTOMATION_KINDS),
+    botLabel: asNullable(row.bot_label),
+    botRoleKey: oneOfOrNull<BotRoleKey>(row.bot_role_key, BOT_ROLE_KEYS),
+    mcpTokenId: asNullable(row.mcp_token_id),
+    mcpTokenLabel: asNullable(row.mcp_token_label),
+    runtimeHint: oneOfOrNull<AutomationRuntimeHint>(row.runtime_hint, AUTOMATION_RUNTIME_HINTS),
+    isActive: asBool(row.is_active, true),
+    notes: asNullable(row.notes),
+    assignedClientIds: parseStringArray(row.assigned_client_ids),
     createdAt: asString(row.created_at),
     updatedAt: asString(row.updated_at),
     createdBy: asNullable(row.created_by),

@@ -120,6 +120,7 @@ export type AgentRun = {
   startedAt: string;
   finishedAt: string | null;
   createdBy: string | null;
+  triggeredByTeamMemberId: string | null;
 };
 
 export type AgentIteration = {

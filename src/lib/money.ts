@@ -6,8 +6,8 @@ import type {
   PaymentStatus,
   PlanType,
   TeamMember,
-} from "@/lib/entities";
-import { addDaysIso, addMonthsIso } from "@/lib/format";
+} from "./entities.ts";
+import { addDaysIso, addMonthsIso } from "./format.ts";
 
 export const MONEY_PERIODS = ["all", "ytd", "12m", "90d"] as const;
 export type MoneyPeriod = (typeof MONEY_PERIODS)[number];
@@ -33,6 +33,7 @@ export type MoneySnapshot = {
   clients: Client[];
   payments: Payment[];
   teamMembers: TeamMember[];
+  includeAutomationCostInMargin?: boolean;
 };
 
 export type MrrBreakdownRow = {
@@ -225,11 +226,31 @@ function visibleMonthKeys(
 export function perClientTeamCost(
   clientId: string,
   teamMembers: TeamMember[],
+  includeAutomationCost = false,
 ): number {
   let total = 0;
   for (const member of teamMembers) {
-    if (member.clientId !== clientId) continue;
-    if (member.deletedAt) continue;
+    if (member.deletedAt || !member.isActive) continue;
+    if (member.isAutomation) {
+      if (!includeAutomationCost) continue;
+      if (member.assignedClientIds.length === 0 && member.clientId !== clientId) continue;
+      if (member.assignedClientIds.length > 0 && !member.assignedClientIds.includes(clientId) && member.clientId !== clientId) {
+        continue;
+      }
+    } else if (member.clientId !== clientId) {
+      continue;
+    }
+    total += asMoney(member.cost);
+  }
+  return total;
+}
+
+/** Covers-all automation seats — counted once, never per client. */
+export function workspaceAutomationCost(teamMembers: TeamMember[]): number {
+  let total = 0;
+  for (const member of teamMembers) {
+    if (!member.isAutomation || member.deletedAt || !member.isActive) continue;
+    if (member.assignedClientIds.length > 0 || member.clientId) continue;
     total += asMoney(member.cost);
   }
   return total;
@@ -294,10 +315,12 @@ export function deriveMoney(
     return a.dueDate.localeCompare(b.dueDate);
   });
 
+  const includeAutomation = snapshot.includeAutomationCostInMargin === true;
+
   let overallTeamCost = 0;
   const profitRows: ProfitRow[] = active.map((client) => {
     const revenue = asMoney(client.monthlyFee);
-    const teamCost = perClientTeamCost(client.id, teamMembers);
+    const teamCost = perClientTeamCost(client.id, teamMembers, includeAutomation);
     overallTeamCost += teamCost;
     const profit = revenue - teamCost;
     return {
@@ -310,6 +333,8 @@ export function deriveMoney(
     };
   });
   profitRows.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (includeAutomation) overallTeamCost += workspaceAutomationCost(teamMembers);
 
   const overallProfit = currentMrr - overallTeamCost;
   const overallMarginPct = currentMrr > 0 ? (overallProfit / currentMrr) * 100 : null;

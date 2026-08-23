@@ -74,6 +74,7 @@ export const ROLE_LABELS: Record<TeamRole, string> = {
   SHORT_FORM_EDITOR: "Short-form editor",
   LONG_FORM_EDITOR: "Long-form editor",
   THUMBNAIL_DESIGNER: "Thumbnail designer",
+  AUTOMATION: "Automation",
 };
 
 export const ROLE_TONES: Record<TeamRole, NonNullable<BadgeProps["tone"]>> = {
@@ -81,6 +82,7 @@ export const ROLE_TONES: Record<TeamRole, NonNullable<BadgeProps["tone"]>> = {
   SHORT_FORM_EDITOR: "teal",
   LONG_FORM_EDITOR: "purple",
   THUMBNAIL_DESIGNER: "orange",
+  AUTOMATION: "teal",
 };
 
 export const PAYMENT_TYPE_LABELS: Record<PaymentType, string> = {

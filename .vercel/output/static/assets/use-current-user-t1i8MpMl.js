@@ -1,1 +1,0 @@
-import{t as e}from"./client-odqxLXBe.js";function t(){let{data:t,isPending:n}=e.useSession(),r=t?.user;return{user:r?{id:r.id,displayName:r.name??null,primaryEmail:r.email??null,profileImageUrl:r.image??null,isDevFallback:!1}:null,isPending:n}}function n(){return t().user}export{t as n,n as t};

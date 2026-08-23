@@ -18,7 +18,7 @@ const FEATURES = [
     value: 1,
     suffix: "",
     title: "Social Machine to hibernate",
-    description: "Start when you need the networks. Hibernate when you don’t. The session stays hot.",
+    description: "Start Daytona when you need the networks. Hibernate when you don’t. Grok Bot stays the always-on alternative.",
   },
   {
     value: 0,
@@ -30,7 +30,7 @@ const FEATURES = [
     value: 1,
     suffix: "",
     title: "Native Hermes Agent",
-    description: "MCP tools, playbooks, and the agent loop live in ClippyOS. Skills run isolated.",
+    description: "MCP tools, playbooks, and the agent loop live in ClippyOS. Grok Bot is the premium always-on computer on the same MCP.",
   },
   {
     value: 1,

@@ -38,6 +38,7 @@ export async function writeAuditLog(input: {
   entityId?: string | null;
   playbookId?: string | null;
   runId?: string | null;
+  argsDigest?: string | null;
   result: "ok" | "error" | "denied";
   errorCode?: string | null;
 }): Promise<void> {
@@ -57,6 +58,7 @@ export async function writeAuditLog(input: {
     entity_id: input.entityId ?? null,
     playbook_id: input.playbookId ? input.playbookId.slice(0, 80) : null,
     run_id: input.runId ? input.runId.slice(0, 80) : null,
+    args_digest: input.argsDigest ? input.argsDigest.slice(0, 64) : null,
     result: input.result,
     error_code: input.errorCode ?? null,
     created_at: nowIso(),
@@ -69,6 +71,7 @@ export async function writeAuditLog(input: {
         const slim = { ...row };
         delete (slim as { playbook_id?: string | null }).playbook_id;
         delete (slim as { run_id?: string | null }).run_id;
+        delete (slim as { args_digest?: string | null }).args_digest;
         await admin.from("agent_audit_log").insert(slim);
       }
       if (!error || !isMissingTable(error)) return;
@@ -77,8 +80,8 @@ export async function writeAuditLog(input: {
     try {
       await sql.query(
         `insert into agent_audit_log
-          (id, request_id, source, actor_key_id, actor_label, action, entity_type, entity_id, playbook_id, run_id, result, error_code, created_at)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          (id, request_id, source, actor_key_id, actor_label, action, entity_type, entity_id, playbook_id, run_id, args_digest, result, error_code, created_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
         [
           row.id,
           row.request_id,
@@ -90,6 +93,7 @@ export async function writeAuditLog(input: {
           row.entity_id,
           row.playbook_id,
           row.run_id,
+          row.args_digest,
           row.result,
           row.error_code,
           row.created_at,

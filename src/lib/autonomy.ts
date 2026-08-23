@@ -437,7 +437,7 @@ export const MCP_TOOLS: readonly McpToolDef[] = [
     name: "social.create_upload_job",
     domain: "Social",
     description:
-      "Create an upload job. preferredRail AUTO uses native APIs when eligible, otherwise Computer Use. mode=publish waits for ApprovalRequest when approvals.requireForSocialPublish is on (default). mode=draft never requires publish approval. mediaAssetId resolves the library current version (prefers a 9:16 render for TikTok/IG; 16:9 for YouTube-only). TikTok uses Content Posting API (inbox drafts; Direct Post only if the app is audited). Instagram Reels Graph is professional accounts only — draft stays in Agency Admin and does not call media_publish. Platform x uses the X API when connected. Platform youtube uses Data API v3 resumable upload when connected — draft lands private, publish default is unlisted. Does not auto-start the VM unless social.auto_start_for_upload is true (browser rail only).",
+      "Create an upload job. preferredRail AUTO uses native APIs when eligible, otherwise Computer Use (Daytona, or Grok Bot if prefer-as-computer is on / Daytona is missing). GROK_BOT sends the job to the Grok Bot computer and does not start Daytona. mode=publish waits for ApprovalRequest when approvals.requireForSocialPublish is on (default). mode=draft never requires publish approval. mediaAssetId resolves the library current version (prefers a 9:16 render for TikTok/IG; 16:9 for YouTube-only). TikTok uses Content Posting API (inbox drafts; Direct Post only if the app is audited). Instagram Reels Graph is professional accounts only — draft stays in Agency Admin and does not call media_publish. Platform x uses the X API when connected. Platform youtube uses Data API v3 resumable upload when connected — draft lands private, publish default is unlisted. Does not auto-start the VM unless social.auto_start_for_upload is true (Daytona browser rail only).",
     scopes: ["write:social"],
   },
   {
@@ -861,6 +861,74 @@ export const MCP_TOOLS: readonly McpToolDef[] = [
     description: "Text search within the bound Linear team/project. Rate-limited. No tokens.",
     scopes: ["read"],
   },
+  {
+    name: "grokbot.heartbeat",
+    domain: "Grok Bot",
+    description:
+      "Grok Bot pings ClippyOS. Marks the premium computer online. Call on a short cadence while working.",
+    scopes: ["read"],
+  },
+  {
+    name: "grokbot.get_status",
+    domain: "Grok Bot",
+    description: "Connection, queue counts, last heartbeat. No secrets.",
+    scopes: ["read"],
+  },
+  {
+    name: "grokbot.get_brief",
+    domain: "Grok Bot",
+    description: "Operator brief for the ClippyOS Bot. How to use MCP tools and the cloud computer.",
+    scopes: ["read"],
+  },
+  {
+    name: "grokbot.list_work",
+    domain: "Grok Bot",
+    description: "Queued and claimed jobs for the Grok Bot computer (uploads, agent runs, logins).",
+    scopes: ["read"],
+  },
+  {
+    name: "grokbot.claim_work",
+    domain: "Grok Bot",
+    description: "Claim the next queued job, or a specific id. Do the work on YOUR computer, then complete_work.",
+    scopes: ["write:social"],
+  },
+  {
+    name: "grokbot.complete_work",
+    domain: "Grok Bot",
+    description:
+      "Mark claimed work succeeded or failed. For social_upload include posts: [{ platform, status, externalUrl }]. needs_login is a valid failure.",
+    scopes: ["write:social"],
+  },
+  {
+    name: "agent.get_run",
+    domain: "Agent",
+    description: "Agent run status, provider, summary, waiting reason. No secret injection.",
+    scopes: ["read"],
+  },
+  {
+    name: "agent.start_run",
+    domain: "Agent",
+    description: "Start an agent run. Subject to concurrency. provider HERMES | GROK_BOT | AUTO.",
+    scopes: ["actions:ai"],
+  },
+  {
+    name: "health.get_summary",
+    domain: "Health",
+    description: "SLOs, cost guards, integration tones, Hermes last login. No secrets.",
+    scopes: ["read"],
+  },
+  {
+    name: "health.list_jobs",
+    domain: "Health",
+    description: "Unified job feed (render, upload, agent, metrics, Linear). Sanitized errors only.",
+    scopes: ["read"],
+  },
+  {
+    name: "health.retry_job",
+    domain: "Health",
+    description: "Retry a failed job. Idempotent. Never auto-starts the Social Machine. Admin-scoped.",
+    scopes: ["write:social"],
+  },
 ] as const;
 
 export const MCP_RESOURCES = [
@@ -885,6 +953,8 @@ export const MCP_RESOURCES = [
   { uri: "agency://analytics/performance", name: "Published performance", description: "PostPerformance snapshots and asset rollups. Missing metrics are omitted, never zero." },
   { uri: "agency://knowledge/proposals", name: "Knowledge proposals", description: "Pending learning proposals from winning posts." },
   { uri: "agency://linear/status", name: "Linear", description: "Linear team, project, and Kanban map. No tokens." },
+  { uri: "agency://grok-bot", name: "Grok Bot", description: "Premium computer rail status and work queue. No secrets." },
+  { uri: "agency://health", name: "Health", description: "Job orchestration snapshot: queues, SLOs, integrations. No secrets." },
 ] as const;
 
 export type ApiKeyRow = {
@@ -964,6 +1034,11 @@ export type AutonomyHealth = {
     actorLabel: string | null;
   } | null;
   hermesConnection: HermesConnectionState;
+  grokBot: {
+    connection: import("@/lib/grok-bot").GrokBotConnectionState;
+    queued: number;
+    claimed: number;
+  } | null;
   social: {
     state: string;
     configured: boolean;

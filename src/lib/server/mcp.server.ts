@@ -2,6 +2,13 @@ import { MCP_RESOURCES, MCP_TOOLS } from "@/lib/autonomy";
 import { addonIdForTool } from "@/lib/addons";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import type { AutonomyActor } from "@/lib/server/autonomy-auth.server";
+import {
+  REMOTE_MCP_INSTRUCTIONS,
+  REMOTE_MCP_TOOLS,
+  mapRemoteToolCall,
+  remoteToolAllowed,
+  shapeRemoteMcpResult,
+} from "@/lib/remote-mcp";
 
 type JsonRpc = {
   jsonrpc?: string;
@@ -167,7 +174,7 @@ const TOOL_INPUTS: Record<string, Record<string, unknown>> = {
       platforms: { type: "array", items: { type: "string" } },
       caption: { type: "string" },
       mode: { type: "string", enum: ["draft", "publish"] },
-      preferredRail: { type: "string", enum: ["AUTO", "API", "BROWSER"] },
+      preferredRail: { type: "string", enum: ["AUTO", "API", "BROWSER", "GROK_BOT"] },
       fallbackToBrowser: { type: "boolean" },
       idempotencyKey: { type: "string" },
       title: { type: "string", description: "YouTube title (also used as caption first line)" },
@@ -309,6 +316,30 @@ const TOOL_INPUTS: Record<string, Record<string, unknown>> = {
   "linear.find_issues": {
     type: "object",
     properties: { term: { type: "string" }, text: { type: "string" } },
+  },
+  "grokbot.heartbeat": {
+    type: "object",
+    properties: { note: { type: "string" } },
+  },
+  "grokbot.get_status": { type: "object", properties: {} },
+  "grokbot.get_brief": { type: "object", properties: {} },
+  "grokbot.list_work": {
+    type: "object",
+    properties: { status: { type: "string", enum: ["queued", "claimed", "succeeded", "failed", "cancelled"] } },
+  },
+  "grokbot.claim_work": {
+    type: "object",
+    properties: { id: { type: "string" } },
+  },
+  "grokbot.complete_work": {
+    type: "object",
+    required: ["id"],
+    properties: {
+      id: { type: "string" },
+      ok: { type: "boolean" },
+      error: { type: "string" },
+      result: { type: "object" },
+    },
   },
   "skills.list": { type: "object", properties: {} },
   "skills.get": {
@@ -573,6 +604,42 @@ const TOOL_INPUTS: Record<string, Record<string, unknown>> = {
     required: ["id"],
     properties: { id: { type: "string" } },
   },
+  "agent.get_run": {
+    type: "object",
+    required: ["runId"],
+    properties: { runId: { type: "string" } },
+  },
+  "agent.start_run": {
+    type: "object",
+    required: ["goal"],
+    properties: {
+      goal: { type: "string" },
+      clientId: { type: "string" },
+      presetSkillId: { type: "string" },
+      provider: { type: "string", enum: ["HERMES", "GROK_BOT", "AUTO"] },
+      idempotencyKey: { type: "string" },
+    },
+  },
+  "health.get_summary": { type: "object", properties: {} },
+  "health.list_jobs": {
+    type: "object",
+    properties: {
+      type: { type: "string" },
+      status: { type: "string" },
+      limit: { type: "number" },
+    },
+  },
+  "health.retry_job": {
+    type: "object",
+    required: ["id", "type"],
+    properties: {
+      id: { type: "string" },
+      type: {
+        type: "string",
+        enum: ["RENDER", "SOCIAL_UPLOAD", "AGENT", "PERFORMANCE_FETCH", "LINEAR_SYNC"],
+      },
+    },
+  },
   list_addons: { type: "object", properties: {} },
   get_llm_providers: { type: "object", properties: {} },
 };
@@ -595,17 +662,19 @@ export async function handleMcpRpc(
   const params = body.params ?? {};
 
   if (method === "initialize") {
+    const remote = actor.catalog === "remote";
     return rpcResult(id, {
       protocolVersion: "2025-03-26",
       capabilities: {
         tools: { listChanged: true },
-        resources: { listChanged: true },
-        skills: { listChanged: true },
-        tasks: {},
+        resources: remote ? {} : { listChanged: true },
+        skills: remote ? {} : { listChanged: true },
+        tasks: remote ? {} : {},
       },
       serverInfo: { name: "clippy-os", version: "1.0.0" },
-      instructions:
-        "ClippyOS MCP. Hermes is the client. Use skills/list, skills/get, skills/invoke, skill_manage.* (if scoped), vision.*, computer.*, browser.*, clipping.*, and tasks/get. Python skills run in an isolated Daytona sandbox (never the Social Machine). The Social Machine is a Windows VM — Hibernate pauses a hot snapshot. Never request integration secrets or Super Admin credentials. Never auto-start the Social Machine on login.",
+      instructions: remote
+        ? REMOTE_MCP_INSTRUCTIONS
+        : "ClippyOS MCP. Hermes Agent and Grok Bot are both valid clients. Hermes drives the in-OS Daytona Social Machine. Grok Bot uses its own cloud computer — call grokbot.heartbeat, grokbot.list_work, grokbot.claim_work, grokbot.complete_work. Use skills/list, skills/get, skills/invoke, skill_manage.* (if scoped), vision.*, computer.*, browser.*, clipping.*, and tasks/get. Python skills run in an isolated Daytona sandbox (never the Social Machine). Never request integration secrets or Super Admin credentials. Never auto-start the Social Machine on login. Grok Bot jobs must not start Daytona.",
     });
   }
   if (method === "notifications/initialized" || method === "initialized") {
@@ -613,8 +682,11 @@ export async function handleMcpRpc(
   }
   if (method === "ping") return rpcResult(id, {});
   if (method === "tools/list") {
-    const tools = await listVisibleTools();
+    const tools = await listVisibleTools(actor);
     return rpcResult(id, tools);
+  }
+  if (actor.catalog === "remote" && (method.startsWith("skills/") || method.startsWith("resources/") || method === "tasks/get")) {
+    return rpcError(id, -32601, "Method not found.");
   }
   if (method === "skills/list") {
     const result = await runAutonomyAction({
@@ -770,8 +842,77 @@ export async function handleMcpRpc(
       params.arguments && typeof params.arguments === "object"
         ? (params.arguments as Record<string, unknown>)
         : {};
+    const remote = actor.catalog === "remote";
     let name = rawName;
     let args = rawArgs;
+    let auditName = rawName;
+    if (remote) {
+      const mapped = mapRemoteToolCall(rawName, rawArgs);
+      if (!mapped) {
+        return rpcResult(id, {
+          isError: true,
+          content: [{ type: "text", text: "This connector cannot call that tool." }],
+        });
+      }
+      const tool = REMOTE_MCP_TOOLS.find((row) => row.name === rawName);
+      if (!tool || !remoteToolAllowed(tool, actor.mcpScopes ?? [])) {
+        return rpcResult(id, {
+          isError: true,
+          content: [{ type: "text", text: "This connector cannot call that tool." }],
+        });
+      }
+      try {
+        const { assertRemoteArgBudget, digestMcpArgs, enforceRemoteToolRate } = await import(
+          "@/lib/server/remote-mcp.server"
+        );
+        assertRemoteArgBudget(rawArgs);
+        if (actor.keyId) enforceRemoteToolRate(actor.keyId, rawName);
+        name = mapped.action;
+        args = mapped.payload;
+        auditName = rawName;
+        const result = await runAutonomyAction({
+          actor,
+          action: name,
+          payload: args,
+          requestId,
+          auditAction: auditName,
+          argsDigest: digestMcpArgs(rawArgs),
+          playbookId:
+            typeof (params._meta as { playbook?: string } | undefined)?.playbook === "string"
+              ? (params._meta as { playbook: string }).playbook
+              : typeof args.playbook === "string"
+                ? args.playbook
+                : null,
+          runId:
+            typeof (params._meta as { runId?: string } | undefined)?.runId === "string"
+              ? (params._meta as { runId: string }).runId
+              : typeof args.runId === "string"
+                ? args.runId
+                : null,
+        });
+        if (!result.ok) {
+          return rpcResult(id, {
+            isError: true,
+            content: [{ type: "text", text: result.message }],
+          });
+        }
+        return rpcResult(id, {
+          content: [{ type: "text", text: JSON.stringify(shapeRemoteMcpResult(rawName, result.data)) }],
+        });
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "VALIDATION";
+        if (code === "RATE_LIMITED") {
+          return rpcResult(id, {
+            isError: true,
+            content: [{ type: "text", text: "Too many requests. Retry shortly." }],
+          });
+        }
+        return rpcResult(id, {
+          isError: true,
+          content: [{ type: "text", text: "The request could not be completed." }],
+        });
+      }
+    }
     if (rawName.startsWith("skill.")) {
       name = "skills.invoke";
       args = { id: rawName.slice("skill.".length), args: rawArgs };
@@ -821,15 +962,30 @@ function mapResource(uri: string): { action: string; payload: Record<string, unk
   if (uri === "agency://analytics/performance") return { action: "analytics.list_winners", payload: {} };
   if (uri === "agency://knowledge/proposals") return { action: "knowledge.list_proposals", payload: {} };
   if (uri === "agency://linear/status") return { action: "linear.get_status", payload: {} };
+  if (uri === "agency://grok-bot") return { action: "grokbot.get_status", payload: {} };
+  if (uri === "agency://health") return { action: "health.get_summary", payload: {} };
   return null;
 }
 
-async function listVisibleTools(): Promise<{
+async function listVisibleTools(actor?: AutonomyActor): Promise<{
   tools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>;
   _meta: { toolsGeneration: number; listChanged: true };
 }> {
   const { enabledAddonIds, readToolsGeneration } = await import("@/lib/server/addons.server");
   const [enabled, generation] = await Promise.all([enabledAddonIds(), readToolsGeneration()]);
+  if (actor?.catalog === "remote") {
+    const scopes = actor.mcpScopes ?? [];
+    const tools = REMOTE_MCP_TOOLS.filter((tool) => {
+      if (!remoteToolAllowed(tool, scopes)) return false;
+      const addon = addonIdForTool(tool.action);
+      return !addon || enabled.has(addon);
+    }).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }));
+    return { tools, _meta: { toolsGeneration: generation, listChanged: true } };
+  }
   const staticTools = MCP_TOOLS.filter((tool) => {
     const addon = addonIdForTool(tool.name);
     return !addon || enabled.has(addon);

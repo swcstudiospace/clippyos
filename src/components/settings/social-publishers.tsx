@@ -195,7 +195,7 @@ export function SocialPublishersPanel() {
   }
 
   const snapshot = query.data;
-  const isAdmin = snapshot.role === "admin";
+  const isAdmin = Boolean(snapshot.canEditIntegrations);
 
   return (
     <div className="flex flex-col gap-4">

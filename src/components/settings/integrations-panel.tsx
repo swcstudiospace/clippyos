@@ -87,6 +87,8 @@ export function IntegrationsPanel() {
     queryFn: () => getIntegrationsStatus(),
   });
   const isAdmin = query.data?.role === "admin";
+  const canEditIntegrations = Boolean(query.data?.canEditIntegrations);
+  const inheritWorkspaceApis = Boolean(query.data?.inheritWorkspaceApis);
 
   if (query.isPending) {
     return (
@@ -127,6 +129,18 @@ export function IntegrationsPanel() {
           ClippyOS is an OS. These integrations are add-ons. Core AI is required. Daytona is
           the browser runtime for Social Computer Use. Keys stay on the server.
         </p>
+        {query.data.role === "member" && inheritWorkspaceApis ? (
+          <p className="mt-2 rounded-control bg-secondary-surface px-3 py-2 text-caption text-muted">
+            You’re using the owner’s workspace APIs. Ask an owner to turn that off if you
+            need to connect your own keys.
+          </p>
+        ) : null}
+        {query.data.role === "member" && !inheritWorkspaceApis ? (
+          <p className="mt-2 rounded-control bg-secondary-surface px-3 py-2 text-caption text-muted">
+            These keys are yours. They don’t use the owner’s APIs unless an owner shares
+            workspace APIs with this login.
+          </p>
+        ) : null}
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         {INTEGRATION_IDS.map((id) => (
@@ -134,6 +148,11 @@ export function IntegrationsPanel() {
             key={id}
             id={id}
             isAdmin={Boolean(isAdmin)}
+            canEdit={
+              id === "airwallex"
+                ? Boolean(isAdmin)
+                : canEditIntegrations
+            }
             last4={query.data.items[id].last4}
             health={query.data.items[id].health}
             lastTestedAt={query.data.items[id].lastTestedAt}
@@ -143,6 +162,24 @@ export function IntegrationsPanel() {
           />
         ))}
       </div>
+      <GlassCard>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 place-items-center rounded-control bg-secondary-surface">
+              <PlugZap className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <h3 className="text-card font-semibold tracking-tight">ClippyOS MCP</h3>
+              <p className="mt-1 text-caption text-muted">
+                Remote MCP URL plus scoped connector tokens for Grok Bot and Cursor. Publish still honors Approvals.
+              </p>
+            </div>
+          </div>
+          <Button variant="secondary" asChild className="min-h-11">
+            <a href="/settings#clippy-mcp">Open ClippyOS MCP</a>
+          </Button>
+        </div>
+      </GlassCard>
     </div>
   );
 }
@@ -150,6 +187,7 @@ export function IntegrationsPanel() {
 function IntegrationCard({
   id,
   isAdmin,
+  canEdit,
   last4,
   health,
   lastTestedAt,
@@ -159,6 +197,7 @@ function IntegrationCard({
 }: {
   id: IntegrationId;
   isAdmin: boolean;
+  canEdit: boolean;
   last4: string | null;
   health: IntegrationHealth;
   lastTestedAt: string | null;
@@ -330,9 +369,9 @@ function IntegrationCard({
         </p>
       ) : null}
 
-      {id === "ai" ? <div className="mt-4"><GrokOAuthSection embedded /></div> : null}
+      {id === "ai" && canEdit ? <div className="mt-4"><GrokOAuthSection embedded /></div> : null}
 
-      {isAdmin ? (
+      {canEdit ? (
         <form className="mt-4 flex flex-col gap-3" onSubmit={onSave}>
           {id === "ai" ? (
             <Field
@@ -690,7 +729,11 @@ function IntegrationCard({
           </Button>
         </form>
       ) : (
-        <p className="mt-3 text-caption text-muted">Only owners can change keys.</p>
+        <p className="mt-3 text-caption text-muted">
+          {id === "airwallex"
+            ? "Only owners can change billing keys."
+            : "Workspace APIs are shared with this login, so keys are read-only. Ask an owner to let you use your own APIs."}
+        </p>
       )}
 
       {id === "discord" ? (
@@ -708,7 +751,7 @@ function IntegrationCard({
         <Button size="sm" variant="secondary" onClick={() => openGuide(id)}>
           Setup Guide
         </Button>
-        {isAdmin && id === "x" ? (
+        {canEdit && id === "x" ? (
           <Button
             size="sm"
             variant="secondary"
@@ -719,7 +762,7 @@ function IntegrationCard({
             {connectX.isPending ? "Connecting…" : "Connect X"}
           </Button>
         ) : null}
-        {isAdmin ? (
+        {canEdit ? (
           <Button
             size="sm"
             variant="secondary"
@@ -730,7 +773,7 @@ function IntegrationCard({
             {test.isPending ? "Testing…" : id === "x" ? "Test Connection" : "Test"}
           </Button>
         ) : null}
-        {isAdmin && id === "daytona" ? (
+        {canEdit && id === "daytona" ? (
           <Button
             size="sm"
             variant="ghost"
@@ -740,7 +783,7 @@ function IntegrationCard({
             {testProxy.isPending ? "Probing…" : "Test proxy"}
           </Button>
         ) : null}
-        {isAdmin && configured ? (
+        {canEdit && configured ? (
           <Button size="sm" variant="ghost" onClick={() => setPendingDisconnect(true)}>
             <Unplug className="size-3.5" />
             Disconnect

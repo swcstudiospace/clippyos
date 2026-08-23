@@ -142,6 +142,8 @@ export async function startAgentRun(input: {
   createdBy: string;
   idempotencyKey?: string | null;
   modelOverride?: string | null;
+  runner?: "local" | "grok_bot";
+  triggeredByTeamMemberId?: string | null;
 }): Promise<{ id: string }> {
   if (!(await readAutomationEnabled())) throw new Error("AUTOMATION_DISABLED");
   if (input.idempotencyKey) {
@@ -153,6 +155,10 @@ export async function startAgentRun(input: {
   if ((await countActiveAgentRuns()) >= AGENT_MAX_CONCURRENT) {
     throw new Error("AGENT_BUSY");
   }
+  if (input.runner === "grok_bot") {
+    const grok = await import("@/lib/server/grok-bot.server");
+    if (!(await grok.grokBotIsConnected())) throw new Error("GROK_BOT_NOT_CONNECTED");
+  }
   const router = await readLlmRouter();
   const preset = normalizePreset(String(input.preset));
   const slug = input.skillId?.trim() || presetSkillSlug(preset);
@@ -162,6 +168,14 @@ export async function startAgentRun(input: {
       ? AGENT_PRESET_COPY[preset].goal.replace(/this client/g, "the selected client")
       : AGENT_PRESET_COPY[preset].goal);
   if (!goal.trim()) throw new Error("VALIDATION");
+  let triggeredByTeamMemberId = input.triggeredByTeamMemberId?.trim() || null;
+  if (triggeredByTeamMemberId) {
+    const team = await import("@/lib/server/team.server");
+    const seats = await team.readTeamMembersInternal();
+    const seat = seats.find((row) => row.id === triggeredByTeamMemberId && row.isAutomation && row.isActive);
+    if (!seat) throw new Error("TEAM_MEMBER_MISSING");
+    triggeredByTeamMemberId = seat.id;
+  }
   const run = await insertAgentRun({
     goal,
     preset,
@@ -171,7 +185,28 @@ export async function startAgentRun(input: {
     createdBy: input.createdBy,
     idempotencyKey: input.idempotencyKey ?? null,
     deadlineAt: new Date(Date.now() + AGENT_MAX_DURATION_MS).toISOString(),
+    triggeredByTeamMemberId,
   });
+  if (input.runner === "grok_bot") {
+    const grok = await import("@/lib/server/grok-bot.server");
+    await patchAgentRun(run.id, {
+      status: "waiting_resource",
+      summary: "Queued for the Grok Bot computer. Open the Bot so it can claim this run.",
+    });
+    await grok.enqueueGrokBotWork({
+      kind: "agent_run",
+      title: `Agent: ${goal.slice(0, 80)}`,
+      brief: `Run this ClippyOS agent goal using MCP tools on YOUR computer. Do not start Daytona. Goal:\n${goal}\nPreset: ${preset}\nClient: ${input.clientId ?? "none"}\nWhen done, grokbot.complete_work with this runId.`,
+      payload: {
+        runId: run.id,
+        goal,
+        preset,
+        clientId: input.clientId ?? null,
+        skillId: slug,
+      },
+    });
+    return { id: run.id };
+  }
   void executeAgentRun(run.id, input.createdBy);
   return { id: run.id };
 }
@@ -186,6 +221,12 @@ export async function cancelAgentRun(id: string): Promise<void> {
     finishedAt: new Date().toISOString(),
     summary: run.summary ?? "Cancelled.",
   });
+  try {
+    const grok = await import("@/lib/server/grok-bot.server");
+    await grok.cancelGrokBotWorkByPayload("runId", id);
+  } catch {
+    /* optional */
+  }
 }
 
 async function buildPlan(input: {

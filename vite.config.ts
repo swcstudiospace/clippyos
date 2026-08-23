@@ -11,6 +11,7 @@ import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
 // @ts-expect-error JS plugin alongside the TS vite config
 import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
+import { patchSsrExports } from "./scripts/patch-ssr-exports.mjs";
 
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
@@ -142,6 +143,58 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+/**
+ * Rolldown splits the SSR entry into circular chunks that re-export a missing
+ * `ssr_exports` binding. Node then 500s every document request in production
+ * (`Export 'ssr_exports' is not defined in module`). Keep the SSR service as
+ * one file.
+ */
+function ssrSingleChunkPlugin(): Plugin {
+  return {
+    name: "app-builder:ssr-single-chunk",
+    apply: "build",
+    configEnvironment(name) {
+      if (name !== "ssr") return;
+      return {
+        build: {
+          rollupOptions: {
+            output: {
+              inlineDynamicImports: true,
+              codeSplitting: false,
+            },
+          },
+        },
+      };
+    },
+  };
+}
+
+/** Runs after Nitro writes `.vercel/output`. */
+function patchSsrAfterBuildPlugin(): Plugin {
+  return {
+    name: "app-builder:patch-ssr-exports",
+    apply: "build",
+    closeBundle: {
+      sequential: true,
+      order: "post",
+      handler() {
+        try {
+          const result = patchSsrExports();
+          if (result.patched.length) {
+            console.log(
+              "[app-builder] patched SSR exports:",
+              result.patched.join(", "),
+            );
+          }
+        } catch (err) {
+          console.error("[app-builder] patch-ssr-exports failed:", err);
+          throw err;
+        }
+      },
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -175,9 +228,14 @@ export default defineConfig(({ command, isPreview }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
+            // Collapse Nitro's own chunks the same way — circular live
+            // bindings 500 the published app otherwise.
+            inlineDynamicImports: true,
           }),
+          patchSsrAfterBuildPlugin(),
         ]
       : []),
+    ssrSingleChunkPlugin(),
     viteReact(),
   ],
 }));

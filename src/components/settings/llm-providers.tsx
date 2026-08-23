@@ -50,6 +50,7 @@ export function LlmProvidersPanel() {
     queryFn: () => getLlmSnapshot(),
   });
   const isAdmin = roleQuery.data?.role === "admin";
+  const canEditKeys = Boolean(roleQuery.data?.canEditIntegrations);
 
   const saveRouter = useMutation({
     mutationFn: (router: LlmRouterConfig) => saveLlmRouter({ data: router }),
@@ -120,18 +121,24 @@ export function LlmProvidersPanel() {
         <GlassCard>
           <p className="text-caption text-muted">{LLM_PROVIDER_COPY["xai-oauth"].billing}</p>
           <div className="mt-4">
-            <GrokOAuthSection embedded />
+            {canEditKeys ? (
+              <GrokOAuthSection embedded />
+            ) : (
+              <p className="text-caption text-muted">
+                SuperGrok OAuth follows the workspace API policy for this login.
+              </p>
+            )}
           </div>
         </GlassCard>
         <KeyProviderCard
           id="xai-api"
-          isAdmin={isAdmin}
+          canEdit={canEditKeys}
           last4={snap.providers["xai-api"].last4}
           health={snap.providers["xai-api"].health}
         />
         <KeyProviderCard
           id="openai-compat"
-          isAdmin={isAdmin}
+          canEdit={canEditKeys}
           last4={snap.providers["openai-compat"].last4}
           health={snap.providers["openai-compat"].health}
         />
@@ -249,12 +256,12 @@ export function LlmProvidersPanel() {
 
 function KeyProviderCard({
   id,
-  isAdmin,
+  canEdit,
   last4,
   health,
 }: {
   id: "xai-api" | "openai-compat";
-  isAdmin: boolean;
+  canEdit: boolean;
   last4: string | null;
   health: string;
 }) {
@@ -302,7 +309,7 @@ function KeyProviderCard({
         </Badge>
       </div>
       <p className="mt-3 text-caption text-muted">{copy.billing}</p>
-      {isAdmin ? (
+      {canEdit ? (
         <form
           className="mt-4 flex flex-col gap-3"
           onSubmit={(event) => {

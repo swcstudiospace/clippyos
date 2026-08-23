@@ -29,6 +29,8 @@ import { AiTrainingSection } from "@/components/settings/ai-training";
 import { IntegrationsPanel } from "@/components/settings/integrations-panel";
 import { SocialPublishersPanel } from "@/components/settings/social-publishers";
 import { LinearPanel } from "@/components/settings/linear-panel";
+import { GrokBotPanel } from "@/components/settings/grok-bot-panel";
+import { ClippyOsMcpPanel } from "@/components/settings/clippy-os-mcp-panel";
 import { TeamAccessPanel } from "@/components/settings/team-access";
 import { SafetyPanel } from "@/components/settings/safety-panel";
 import { AutomationPanel } from "@/components/settings/automation-panel";
@@ -102,11 +104,17 @@ function SettingsPage() {
         <section id="integrations" className="scroll-mt-24">
           <IntegrationsPanel />
         </section>
+        <section id="clippy-mcp-section" className="scroll-mt-24">
+          <ClippyOsMcpPanel />
+        </section>
         <section id="publishers" className="scroll-mt-24">
           <SocialPublishersPanel />
         </section>
         <section id="linear" className="scroll-mt-24">
           <LinearPanel />
+        </section>
+        <section id="grok-bot-section" className="scroll-mt-24">
+          <GrokBotPanel />
         </section>
         <section id="media" className="scroll-mt-24">
           <MediaPipelinePanel />
@@ -258,7 +266,7 @@ function Header() {
   return (
     <PageHeader
       title="Settings"
-      description="Add-ons, Skills, LLM Providers, Hermes Connect, and workspace data. Keys stay on the server with admin-only field security."
+      description="Add-ons, Skills, LLM Providers, ClippyOS MCP, Hermes Connect, and workspace data. Keys stay on the server with admin-only field security."
     />
   );
 }

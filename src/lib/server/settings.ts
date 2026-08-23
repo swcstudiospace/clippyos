@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { MASKED_SECRET } from "@/lib/constants";
-import { requireAdmin } from "@/lib/server/access";
+import { requireAdmin, requireSecretEditor } from "@/lib/server/access";
 
 /**
  * AppSetting FLS: value is never returned to the client in plaintext.
@@ -72,7 +72,7 @@ export const saveYoutubeApiKey = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => YoutubeKeySchema.parse(input))
   .handler(async ({ data, context }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { persistYoutubeApiKey } = await import("@/lib/server/youtube-data.server");
     await persistYoutubeApiKey(data.apiKey);
     return { ok: true as const };
@@ -81,7 +81,7 @@ export const saveYoutubeApiKey = createServerFn({ method: "POST" })
 export const startGrokOAuth = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { startGrokDeviceLogin } = await import("@/lib/server/xai.server");
     return startGrokDeviceLogin();
   });
@@ -89,7 +89,7 @@ export const startGrokOAuth = createServerFn({ method: "POST" })
 export const pollGrokOAuth = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { pollGrokDeviceLogin } = await import("@/lib/server/xai.server");
     return pollGrokDeviceLogin();
   });
@@ -97,7 +97,7 @@ export const pollGrokOAuth = createServerFn({ method: "POST" })
 export const disconnectGrokOAuthFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { disconnectGrokOAuth } = await import("@/lib/server/xai.server");
     await disconnectGrokOAuth();
     return { ok: true as const };

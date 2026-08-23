@@ -184,6 +184,8 @@ export async function runAutonomyAction(input: {
   requestId: string;
   playbookId?: string | null;
   runId?: string | null;
+  auditAction?: string | null;
+  argsDigest?: string | null;
 }): Promise<ActionResult> {
   const { actor, action, payload, requestId } = input;
   const playbookId =
@@ -200,6 +202,7 @@ export async function runAutonomyAction(input: {
       : typeof payload.run_id === "string"
         ? payload.run_id
         : null);
+  const auditAction = input.auditAction || action;
   let entityType: string | null = null;
   let entityId: string | null = null;
   try {
@@ -207,9 +210,10 @@ export async function runAutonomyAction(input: {
       await writeAuditLog({
         requestId,
         actor,
-        action,
+        action: auditAction,
         playbookId,
         runId,
+        argsDigest: input.argsDigest,
         result: "denied",
         errorCode: "AUTOMATION_PAUSED",
       });
@@ -228,11 +232,12 @@ export async function runAutonomyAction(input: {
       await writeAuditLog({
         requestId,
         actor,
-        action,
+        action: auditAction,
         entityType,
         entityId,
         playbookId,
         runId,
+        argsDigest: input.argsDigest,
         result: "ok",
       });
       if (AGENT_MUTATIONS.has(action)) {
@@ -264,9 +269,10 @@ export async function runAutonomyAction(input: {
       await writeAuditLog({
         requestId,
         actor,
-        action,
+        action: auditAction,
         playbookId,
         runId,
+        argsDigest: input.argsDigest,
         result: "denied",
         errorCode: result.code,
       });
@@ -274,9 +280,10 @@ export async function runAutonomyAction(input: {
       await writeAuditLog({
         requestId,
         actor,
-        action,
+        action: auditAction,
         playbookId,
         runId,
+        argsDigest: input.argsDigest,
         result: "error",
         errorCode: result.code,
       });
@@ -287,11 +294,12 @@ export async function runAutonomyAction(input: {
     await writeAuditLog({
       requestId,
       actor,
-      action,
+      action: auditAction,
       entityType,
       entityId,
       playbookId,
       runId,
+      argsDigest: input.argsDigest,
       result: code === "FORBIDDEN" || code === "UNAUTHORIZED" ? "denied" : "error",
       errorCode: code.slice(0, 80),
     });
@@ -300,7 +308,10 @@ export async function runAutonomyAction(input: {
 }
 
 function guessEntity(action: string): string | null {
+  if (action.startsWith("health.")) return "health";
   if (action.startsWith("library.")) return "media_asset";
+  if (action.startsWith("grokbot.")) return "grok_bot";
+  if (action.startsWith("agent.")) return "agent_run";
   if (action.startsWith("linear.")) return "linear_issue";
   if (action.startsWith("skills.") || action === "tasks.get") return "skill";
   if (action === "list_addons") return "addon";
@@ -316,6 +327,7 @@ function guessEntity(action: string): string | null {
 function mapError(code: string): ActionResult {
   const friendly: Record<string, { status: number; message: string }> = {
     UNAUTHORIZED: { status: 401, message: "Invalid or revoked credentials." },
+    TOKEN_REVOKED: { status: 401, message: "This MCP token was revoked. Mint a new one in Settings." },
     FORBIDDEN: { status: 403, message: "This key cannot perform that action." },
     RATE_LIMITED: { status: 429, message: "Too many requests. Retry shortly." },
     CLIENT_MISSING: { status: 404, message: "That client is no longer available." },
@@ -334,6 +346,8 @@ function mapError(code: string): ActionResult {
     CUSTOM_PLAN_LABEL: { status: 400, message: "Custom plans need a short label." },
     CUSTOM_FEE: { status: 400, message: "Custom monthly fee must be a multiple of 1,000." },
     JOB_MISSING: { status: 404, message: "That job is no longer available." },
+    AGENT_BUSY: { status: 409, message: "The agent is at its concurrency limit. Retry shortly." },
+    AUTOMATION_DISABLED: { status: 503, message: "Automation is paused. Human UI is still live." },
     DATA_UNAVAILABLE: { status: 503, message: "Workspace data isn’t reachable." },
     AUTOMATION_PAUSED: { status: 503, message: "Automation is paused. Human UI is still live." },
     HUMAN_REQUIRED: { status: 403, message: "That change needs a human operator." },
@@ -382,6 +396,12 @@ function mapError(code: string): ActionResult {
     LINEAR_PROJECT_REQUIRED: { status: 400, message: "Select a Linear project in Settings first." },
     LINEAR_ISSUE_MISSING: { status: 404, message: "That Linear issue isn’t linked." },
     LINEAR_OAUTH_APP_MISSING: { status: 400, message: "Save a Linear OAuth client ID and secret first." },
+    GROK_BOT_NOT_CONNECTED: {
+      status: 503,
+      message: "Connect Grok Bot in Settings first — mint a key and add the ClippyOS connector.",
+    },
+    GROK_BOT_UNAVAILABLE: { status: 503, message: "Grok Bot isn’t online. Open the Bot so it can pick up work." },
+    GROK_BOT_FAILED: { status: 502, message: "Grok Bot couldn’t finish that job." },
   };
   const hit = friendly[code] ?? { status: 400, message: "The request could not be completed." };
   return { ok: false, status: hit.status, code, message: hit.message };
@@ -414,7 +434,10 @@ async function execute(
           currentStage: latest.get(client.id)?.stage ?? null,
           currentSource: latest.get(client.id)?.source ?? null,
         }));
-      return { ok: true, data: { clients: rows } };
+      const limitRaw = Number(payload.limit);
+      const limited =
+        Number.isFinite(limitRaw) && limitRaw > 0 ? rows.slice(0, Math.min(80, Math.floor(limitRaw))) : rows;
+      return { ok: true, data: { clients: limited } };
     }
     case "get_client": {
       if (!need(actor, "read")) return deny();
@@ -758,10 +781,13 @@ async function execute(
         clientId: payload.clientId ? String(payload.clientId) : undefined,
         platform: platform as "X" | "TIKTOK" | "INSTAGRAM" | "YOUTUBE" | "OTHER" | undefined,
       });
+      const limitRaw = Number(payload.limit);
+      const sliced =
+        Number.isFinite(limitRaw) && limitRaw > 0 ? winners.slice(0, Math.min(40, Math.floor(limitRaw))) : winners;
       return {
         ok: true,
         data: {
-          winners: winners.map((row) => ({
+          winners: sliced.map((row) => ({
             id: row.id,
             platform: row.platform,
             externalPostId: row.externalPostId,
@@ -908,7 +934,13 @@ async function execute(
     case "approvals.list_pending": {
       if (!need(actor, "read")) return deny();
       const { listApprovalRequests } = await import("@/lib/server/approvals.server");
-      const items = await listApprovalRequests({ status: "PENDING", limit: 40 });
+      const limitRaw = Number(payload.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(40, Math.floor(limitRaw)) : 40;
+      const items = await listApprovalRequests({
+        status: "PENDING",
+        limit,
+        clientId: typeof payload.clientId === "string" ? payload.clientId : undefined,
+      });
       return {
         ok: true,
         data: {
@@ -1128,6 +1160,153 @@ async function execute(
       const { findLinearIssues } = await import("@/lib/server/linear.server");
       return { ok: true, data: { items: await findLinearIssues(term) } };
     }
+    case "agent.get_run": {
+      if (!need(actor, "read")) return deny();
+      const id = String(payload.runId ?? payload.id ?? "").trim();
+      if (!id) return mapError("VALIDATION");
+      const { getAgentRun } = await import("@/lib/server/agent.server");
+      const run = await getAgentRun(id);
+      if (!run) return mapError("JOB_MISSING");
+      const waiting =
+        run.status === "waiting_resource" || run.status === "waiting_human" ? run.summary : null;
+      return {
+        ok: true,
+        data: {
+          runId: run.id,
+          status: run.status,
+          provider: run.provider,
+          summary: run.summary,
+          waitingReason: waiting,
+          preset: run.preset,
+          clientId: run.clientId,
+        },
+      };
+    }
+    case "agent.start_run": {
+      if (!need(actor, "actions:ai") && !need(actor, "skills:execute")) return deny();
+      const goal = String(payload.goal ?? "").trim();
+      if (!goal) return mapError("VALIDATION");
+      const provider = String(payload.provider ?? "AUTO").toUpperCase();
+      const runner = provider === "GROK_BOT" ? "grok_bot" : "local";
+      const { normalizePreset } = await import("@/lib/agent");
+      const { startAgentRun } = await import("@/lib/server/agent-loop.server");
+      const skillId =
+        typeof payload.presetSkillId === "string"
+          ? payload.presetSkillId
+          : typeof payload.skillId === "string"
+            ? payload.skillId
+            : null;
+      const started = await startAgentRun({
+        goal,
+        preset: normalizePreset(skillId ?? "custom"),
+        clientId: typeof payload.clientId === "string" ? payload.clientId : null,
+        skillId,
+        createdBy: `mcp:${actor.keyId ?? actor.source}`,
+        idempotencyKey: typeof payload.idempotencyKey === "string" ? payload.idempotencyKey : null,
+        runner,
+      });
+      return {
+        ok: true,
+        data: {
+          runId: started.id,
+          status: runner === "grok_bot" ? "waiting_resource" : "queued",
+        },
+      };
+    }
+    case "health.get_summary": {
+      if (!need(actor, "read")) return deny();
+      const { buildHealthSnapshot } = await import("@/lib/server/health.server");
+      const snap = await buildHealthSnapshot({
+        userId: actor.keyId ? `mcp:${actor.keyId}` : "mcp",
+        role: "admin",
+      });
+      return {
+        ok: true,
+        data: {
+          banner: snap.banner,
+          slos: snap.slos,
+          costGuards: {
+            daytonaRunning: snap.costGuards.daytona.running,
+            recommendStop: snap.costGuards.daytona.recommendStop,
+            agentActive: snap.costGuards.agentActive,
+            agentMax: snap.costGuards.agentMax,
+            automationPaused: snap.costGuards.automationPaused,
+            xai: snap.costGuards.xai,
+          },
+          hermes: {
+            connection: snap.hermes.connection,
+            lastLoginAt: snap.hermes.lastLoginAt,
+            playbookPackageVersion: snap.hermes.playbookPackageVersion,
+            mcpConfigured: snap.hermes.mcpConfigured,
+            mcpLastUsedAt: snap.hermes.mcpLastUsedAt,
+            activeTokenCount: snap.hermes.activeTokenCount,
+            revokedTokenCount: snap.hermes.revokedTokenCount,
+          },
+          integrations: snap.integrations.map((row) => ({
+            id: row.id,
+            name: row.name,
+            tone: row.tone,
+            lastError: row.lastError,
+          })),
+          generatedAt: snap.generatedAt,
+        },
+      };
+    }
+    case "health.list_jobs": {
+      if (!need(actor, "read")) return deny();
+      const { buildHealthSnapshot } = await import("@/lib/server/health.server");
+      const { filterHealthJobs, HEALTH_JOB_TYPES, HEALTH_JOB_STATUSES } = await import("@/lib/health");
+      const snap = await buildHealthSnapshot({
+        userId: actor.keyId ? `mcp:${actor.keyId}` : "mcp",
+        role: "admin",
+      });
+      const typeRaw = String(payload.type ?? "ALL");
+      const statusRaw = String(payload.status ?? "ALL");
+      const type = (HEALTH_JOB_TYPES as readonly string[]).includes(typeRaw) ? typeRaw : "ALL";
+      const status = (HEALTH_JOB_STATUSES as readonly string[]).includes(statusRaw) ? statusRaw : "ALL";
+      const filtered = filterHealthJobs(
+        snap.jobs,
+        { type: type as typeof HEALTH_JOB_TYPES[number] | "ALL", status: status as typeof HEALTH_JOB_STATUSES[number] | "ALL", window: "7d" },
+        Date.now(),
+      );
+      const limitRaw = Number(payload.limit);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(80, Math.floor(limitRaw)) : 40;
+      return {
+        ok: true,
+        data: {
+          jobs: filtered.slice(0, limit).map((job) => ({
+            id: job.id,
+            type: job.type,
+            status: job.status,
+            clientId: job.clientId,
+            clientName: job.clientName,
+            provider: job.provider,
+            progressPercent: job.progressPercent,
+            updatedAt: job.updatedAt,
+            error: job.error,
+            dlq: job.dlq,
+          })),
+        },
+      };
+    }
+    case "health.retry_job": {
+      const { HEALTH_JOB_TYPES, retryScopeForType } = await import("@/lib/health");
+      const typeRaw = String(payload.type ?? "");
+      const id = String(payload.id ?? payload.jobId ?? "").trim();
+      if (!id || !(HEALTH_JOB_TYPES as readonly string[]).includes(typeRaw)) return mapError("VALIDATION");
+      const type = typeRaw as (typeof HEALTH_JOB_TYPES)[number];
+      const needed = retryScopeForType(type);
+      if (!need(actor, needed) && !(type === "AGENT" && need(actor, "actions:ai"))) return deny();
+      if (type === "LINEAR_SYNC" && !need(actor, "linear:write") && !need(actor, "write:social")) return deny();
+      const { retryHealthJob } = await import("@/lib/server/health.server");
+      const result = await retryHealthJob({
+        actorId: actor.keyId ? `mcp:${actor.keyId}` : actor.label,
+        type,
+        id,
+        isAdmin: true,
+      });
+      return { ok: true, data: result };
+    }
     default: {
       if (action.startsWith("skill_manage.")) {
         if (!need(actor, "skills:manage")) return deny();
@@ -1276,6 +1455,58 @@ async function execute(
           return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };
         }
         return { ok: true, data };
+      }
+      if (action.startsWith("grokbot.")) {
+        const write = action === "grokbot.claim_work" || action === "grokbot.complete_work";
+        if (write && !need(actor, "write:social")) return deny();
+        if (!write && !need(actor, "read")) return deny();
+        try {
+          const grok = await import("@/lib/server/grok-bot.server");
+          if (action === "grokbot.heartbeat") {
+            const note = typeof payload.note === "string" ? payload.note : undefined;
+            return { ok: true, data: await grok.heartbeatGrokBot(note) };
+          }
+          if (action === "grokbot.get_status") {
+            return { ok: true, data: await grok.buildGrokBotSnapshot() };
+          }
+          if (action === "grokbot.get_brief") {
+            const origin = (await import("@/lib/server/public-origin")).publicOrigin();
+            const config = await grok.readGrokBotConfig();
+            return { ok: true, data: { brief: grok.operatorBriefFor(origin, config.botName) } };
+          }
+          if (action === "grokbot.list_work") {
+            const raw = String(payload.status ?? "");
+            const status =
+              raw === "queued" || raw === "claimed" || raw === "succeeded" || raw === "failed" || raw === "cancelled"
+                ? raw
+                : undefined;
+            return { ok: true, data: { work: await grok.listGrokBotWork(status) } };
+          }
+          if (action === "grokbot.claim_work") {
+            const id = typeof payload.id === "string" && payload.id.trim() ? payload.id.trim() : undefined;
+            const item = await grok.claimGrokBotWork(id);
+            return { ok: true, data: { item } };
+          }
+          if (action === "grokbot.complete_work") {
+            const id = String(payload.id ?? "").trim();
+            if (!id) return mapError("VALIDATION");
+            const result =
+              payload.result && typeof payload.result === "object" && !Array.isArray(payload.result)
+                ? (payload.result as Record<string, string | number | boolean | null>)
+                : null;
+            const item = await grok.completeGrokBotWork({
+              id,
+              ok: payload.ok !== false,
+              result,
+              error: typeof payload.error === "string" ? payload.error : null,
+            });
+            return { ok: true, data: item };
+          }
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "GROK_BOT_FAILED";
+          return mapError(code);
+        }
+        return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };
       }
       if (!action.startsWith("social.")) {
         return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };

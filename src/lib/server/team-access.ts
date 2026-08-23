@@ -3,12 +3,11 @@ import { z } from "zod";
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { requireAdmin } from "@/lib/server/access";
-
+import { OWNER_EMAILS, isOwnerEmail, requireAdmin } from "@/lib/server/access";
 import { isMissingTable } from "@/lib/server/mappers";
-
 import { getSql } from "@/lib/db";
-import { auth } from "@/lib/auth/server";
+import { auth, SESSION_TOKEN_COOKIE } from "@/lib/auth/server";
+import { setCookie } from "@tanstack/react-start/server";
 
 async function load_agency_db() {
   return import("@/lib/server/agency-db.server");
@@ -24,7 +23,7 @@ async function load_airwallex() {
 }
 
 const scryptAsync = promisify(scrypt);
-const OWNER_EMAIL = "owner@clippy.internal";
+const OWNER_EMAIL = OWNER_EMAILS[0];
 const failMap = new Map<string, { n: number; until: number }>();
 
 export type TeamLogin = {
@@ -33,6 +32,7 @@ export type TeamLogin = {
   email: string;
   role: "admin" | "member";
   status: "ACTIVE" | "REVOKED";
+  inheritWorkspaceApis: boolean;
   createdAt: string;
 };
 
@@ -73,12 +73,20 @@ async function ensureProfile(
   userId: string,
   role: "admin" | "member",
   status: "ACTIVE" | "REVOKED" = "ACTIVE",
+  inheritWorkspaceApis = role === "admin",
 ): Promise<void> {
   const now = new Date().toISOString();
+  const inherit = role === "admin" ? true : inheritWorkspaceApis;
   const admin = await (await load_agency_db()).getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("app_profiles").upsert(
-      { user_id: userId, role, status, updated_at: now },
+      {
+        user_id: userId,
+        role,
+        status,
+        inherit_workspace_apis: inherit,
+        updated_at: now,
+      },
       { onConflict: "user_id" },
     );
     if (!error || !isMissingTable(error)) {
@@ -93,22 +101,33 @@ async function ensureProfile(
   try {
     const sql = await (await load_agency_db()).localSql();
     await sql.query(
-      `insert into app_profiles (user_id, role, status, created_at, updated_at)
-       values ($1,$2,$3,$4,$4)
-       on conflict (user_id) do update set role = excluded.role, status = excluded.status, updated_at = excluded.updated_at`,
-      [userId, role, status, now],
+      `insert into app_profiles (user_id, role, status, inherit_workspace_apis, created_at, updated_at)
+       values ($1,$2,$3,$4,$5,$5)
+       on conflict (user_id) do update set role = excluded.role, status = excluded.status,
+         inherit_workspace_apis = excluded.inherit_workspace_apis, updated_at = excluded.updated_at`,
+      [userId, role, status, inherit, now],
     );
   } catch {
     try {
       const sql = await (await load_agency_db()).localSql();
       await sql.query(
-        `insert into app_profiles (user_id, role, created_at, updated_at)
-         values ($1,$2,$3,$3)
-         on conflict (user_id) do update set role = excluded.role, updated_at = excluded.updated_at`,
-        [userId, role, now],
+        `insert into app_profiles (user_id, role, status, created_at, updated_at)
+         values ($1,$2,$3,$4,$4)
+         on conflict (user_id) do update set role = excluded.role, status = excluded.status, updated_at = excluded.updated_at`,
+        [userId, role, status, now],
       );
     } catch {
-      /* empty */
+      try {
+        const sql = await (await load_agency_db()).localSql();
+        await sql.query(
+          `insert into app_profiles (user_id, role, created_at, updated_at)
+           values ($1,$2,$3,$3)
+           on conflict (user_id) do update set role = excluded.role, updated_at = excluded.updated_at`,
+          [userId, role, now],
+        );
+      } catch {
+        /* empty */
+      }
     }
   }
 }
@@ -148,18 +167,31 @@ async function readAuthUsers(): Promise<Array<{ id: string; name: string; email:
   }
 }
 
-async function readProfiles(): Promise<Map<string, { role: "admin" | "member"; status: "ACTIVE" | "REVOKED" }>> {
-  const map = new Map<string, { role: "admin" | "member"; status: "ACTIVE" | "REVOKED" }>();
+async function readProfiles(): Promise<
+  Map<string, { role: "admin" | "member"; status: "ACTIVE" | "REVOKED"; inheritWorkspaceApis: boolean }>
+> {
+  const map = new Map<
+    string,
+    { role: "admin" | "member"; status: "ACTIVE" | "REVOKED"; inheritWorkspaceApis: boolean }
+  >();
   const admin = await (await load_agency_db()).getAgencyAdmin();
   if (admin) {
-    const { data, error } = await admin.from("app_profiles").select("user_id,role,status");
+    const { data, error } = await admin
+      .from("app_profiles")
+      .select("user_id,role,status,inherit_workspace_apis");
     if (!error) {
       for (const row of data ?? []) {
-        const rec = row as { user_id?: string; role?: string; status?: string };
+        const rec = row as {
+          user_id?: string;
+          role?: string;
+          status?: string;
+          inherit_workspace_apis?: boolean;
+        };
         if (!rec.user_id) continue;
         map.set(rec.user_id, {
           role: rec.role === "admin" ? "admin" : "member",
           status: rec.status === "REVOKED" ? "REVOKED" : "ACTIVE",
+          inheritWorkspaceApis: Boolean(rec.inherit_workspace_apis) || rec.role === "admin",
         });
       }
       return map;
@@ -168,13 +200,22 @@ async function readProfiles(): Promise<Map<string, { role: "admin" | "member"; s
   }
   try {
     const sql = await (await load_agency_db()).localSql();
-    const rows = await sql.query<{ user_id: string; role: string; status?: string }>(
-      "select user_id, role, status from app_profiles",
-    );
+    const rows = await sql.query<{
+      user_id: string;
+      role: string;
+      status?: string;
+      inherit_workspace_apis?: boolean | number | string | null;
+    }>("select user_id, role, status, inherit_workspace_apis from app_profiles");
     for (const row of rows) {
+      const inherit =
+        row.inherit_workspace_apis === true ||
+        row.inherit_workspace_apis === "t" ||
+        row.inherit_workspace_apis === "true" ||
+        row.inherit_workspace_apis === 1;
       map.set(row.user_id, {
         role: row.role === "admin" ? "admin" : "member",
         status: row.status === "REVOKED" ? "REVOKED" : "ACTIVE",
+        inheritWorkspaceApis: inherit || row.role === "admin",
       });
     }
   } catch {
@@ -187,6 +228,7 @@ async function readProfiles(): Promise<Map<string, { role: "admin" | "member"; s
         map.set(row.user_id, {
           role: row.role === "admin" ? "admin" : "member",
           status: "ACTIVE",
+          inheritWorkspaceApis: row.role === "admin",
         });
       }
     } catch {
@@ -203,12 +245,14 @@ export const listTeamLogins = createServerFn({ method: "GET" })
     const [users, profiles] = await Promise.all([readAuthUsers(), readProfiles()]);
     return users.map((user) => {
       const profile = profiles.get(user.id);
+      const owner = isOwnerEmail(user.email);
       return {
         userId: user.id,
         name: user.name || user.email || "Operator",
         email: user.email,
-        role: profile?.role ?? "member",
+        role: owner ? "admin" : (profile?.role ?? "member"),
         status: profile?.status ?? "ACTIVE",
+        inheritWorkspaceApis: owner || profile?.role === "admin" || Boolean(profile?.inheritWorkspaceApis),
         createdAt: user.createdAt,
       };
     });
@@ -219,6 +263,7 @@ const CreateSchema = z.object({
   email: z.string().trim().email().max(200),
   password: z.string().min(8).max(200),
   role: z.enum(["admin", "member"]).default("member"),
+  inheritWorkspaceApis: z.boolean().default(false),
 });
 
 async function findUserByEmail(email: string): Promise<string | null> {
@@ -255,14 +300,19 @@ export const createTeamLogin = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await requireAdmin(context.userId);
     const userId = await createCredentialUser(data.name, data.email, data.password);
-    await ensureProfile(userId, data.role, "ACTIVE");
+    await ensureProfile(
+      userId,
+      data.role,
+      "ACTIVE",
+      data.role === "admin" ? true : data.inheritWorkspaceApis,
+    );
     try {
       const { onAuthEvent } = await import("@/lib/server/safety-hooks.server");
       await onAuthEvent({
         actorId: context.userId,
         action: "auth.team_invite",
         summary: `Invited ${data.email} as ${data.role}`,
-        metadata: { email: data.email, role: data.role },
+        metadata: { email: data.email, role: data.role, inheritWorkspaceApis: data.inheritWorkspaceApis },
       });
     } catch {
       /* */
@@ -459,11 +509,32 @@ async function ensureOwnerUser(): Promise<string> {
   return userId;
 }
 
-async function createSessionToken(userId: string): Promise<string> {
+async function createSessionToken(userId: string): Promise<{ token: string; maxAge: number }> {
   const ctx = await auth.$context;
   const session = await ctx.internalAdapter.createSession(userId);
   if (!session?.token) throw new Error("Could not sign in");
-  return session.token;
+  const expires =
+    session.expiresAt instanceof Date
+      ? session.expiresAt.getTime()
+      : Date.parse(String(session.expiresAt));
+  const maxAge = Number.isFinite(expires)
+    ? Math.max(60, Math.floor((expires - Date.now()) / 1000))
+    : 60 * 60 * 24 * 7;
+  return { token: session.token, maxAge };
+}
+
+function writeSessionCookie(token: string, maxAge: number): void {
+  try {
+    setCookie(SESSION_TOKEN_COOKIE, token, {
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge,
+    });
+  } catch {
+    /* no request context */
+  }
 }
 
 export const unlockSuperAdmin = createServerFn({ method: "POST" })
@@ -480,8 +551,9 @@ export const unlockSuperAdmin = createServerFn({ method: "POST" })
       throw new Error("SUPER_ADMIN_INVALID");
     }
     const userId = await ensureOwnerUser();
-    const token = await createSessionToken(userId);
-    return { ok: true as const, token };
+    const session = await createSessionToken(userId);
+    writeSessionCookie(session.token, session.maxAge);
+    return { ok: true as const, token: session.token };
   });
 
 export const elevateToAdmin = createServerFn({ method: "POST" })
@@ -507,5 +579,49 @@ export const elevateToAdmin = createServerFn({ method: "POST" })
     } catch {
       /* */
     }
+    return { ok: true as const };
+  });
+
+export const setLoginInherit = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    z.object({ userId: z.string().min(1), inheritWorkspaceApis: z.boolean() }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    await requireAdmin(context.userId);
+    if (data.userId === context.userId) throw new Error("Forbidden");
+    const users = await readAuthUsers();
+    const target = users.find((row) => row.id === data.userId);
+    if (target && isOwnerEmail(target.email)) {
+      await ensureProfile(data.userId, "admin", "ACTIVE", true);
+      return { ok: true as const };
+    }
+    const profiles = await readProfiles();
+    const current = profiles.get(data.userId);
+    const role = current?.role ?? "member";
+    if (role === "admin") {
+      await ensureProfile(data.userId, "admin", current?.status ?? "ACTIVE", true);
+      return { ok: true as const };
+    }
+    await ensureProfile(data.userId, "member", current?.status ?? "ACTIVE", data.inheritWorkspaceApis);
+    return { ok: true as const };
+  });
+
+export const setTeamRole = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    z.object({ userId: z.string().min(1), role: z.enum(["admin", "member"]) }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    await requireAdmin(context.userId);
+    if (data.userId === context.userId) throw new Error("Forbidden");
+    const profiles = await readProfiles();
+    const current = profiles.get(data.userId);
+    await ensureProfile(
+      data.userId,
+      data.role,
+      current?.status ?? "ACTIVE",
+      data.role === "admin" ? true : Boolean(current?.inheritWorkspaceApis),
+    );
     return { ok: true as const };
   });

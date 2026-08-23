@@ -43,6 +43,7 @@ export type ClientBundle = {
   currentStage: ProgressStage | null;
   currentSource: ProgressSource | null;
   team: TeamMember[];
+  aiTeammates: TeamMember[];
   payments: Payment[];
   analytics: AnalyticsSnapshot | null;
 };
@@ -101,6 +102,26 @@ function latestProgress(progress: ClientProgress[]): ClientProgress | null {
 
 function latestStage(progress: ClientProgress[]): ProgressStage | null {
   return latestProgress(progress)?.stage ?? null;
+}
+
+async function teamForClient(clientId: string, fallback: TeamMember[]): Promise<{
+  team: TeamMember[];
+  aiTeammates: TeamMember[];
+}> {
+  try {
+    const { readTeamMembersInternal } = await import("@/lib/server/team.server");
+    const { automationCoversClient, isHumanSeat } = await import("@/lib/team");
+    const all = await readTeamMembersInternal();
+    return {
+      team: all.filter((row) => isHumanSeat(row) && row.clientId === clientId),
+      aiTeammates: all.filter((row) => automationCoversClient(row, clientId)),
+    };
+  } catch {
+    return {
+      team: fallback.filter((row) => !row.isAutomation),
+      aiTeammates: fallback.filter((row) => row.isAutomation),
+    };
+  }
 }
 
 export async function readClients(): Promise<Client[]> {
@@ -188,12 +209,15 @@ export const getClientBundle = createServerFn({ method: "GET" })
       ]);
       if (!progressRes.error && !teamRes.error && !payRes.error) {
         const progress = (progressRes.data ?? []).map((row) => mapProgress(row as Record<string, unknown>));
+        const fallbackTeam = (teamRes.data ?? []).map((row) => mapTeamMember(row as Record<string, unknown>));
+        const split = await teamForClient(id, fallbackTeam);
         return {
           client,
           progress,
           currentStage: latestStage(progress),
           currentSource: latestProgress(progress)?.source ?? null,
-          team: (teamRes.data ?? []).map((row) => mapTeamMember(row as Record<string, unknown>)),
+          team: split.team,
+          aiTeammates: split.aiTeammates,
           payments: (payRes.data ?? []).map((row) => mapPayment(row as Record<string, unknown>)),
           analytics: snapRes.data?.[0]
             ? mapSnapshot(snapRes.data[0] as Record<string, unknown>)
@@ -231,12 +255,14 @@ export const getClientBundle = createServerFn({ method: "GET" })
       "select * from analytics_snapshots where client_id = $1 order by date desc limit 1",
       [id],
     );
+    const split = await teamForClient(id, team);
     return {
       client,
       progress,
       currentStage: latestStage(progress),
       currentSource: latestProgress(progress)?.source ?? null,
-      team,
+      team: split.team,
+      aiTeammates: split.aiTeammates,
       payments,
       analytics: snapshots[0] ? mapSnapshot(snapshots[0]) : null,
     };

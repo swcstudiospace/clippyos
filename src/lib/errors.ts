@@ -31,8 +31,35 @@ export function userFacingErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message === "Unauthorized") {
     return "Please sign in to continue.";
   }
+  if (error instanceof Error && error.message === "UNAUTHORIZED") {
+    return "Please sign in to continue.";
+  }
+  if (error instanceof Error && error.message === "TOKEN_REVOKED") {
+    return "That MCP token was revoked. Mint a new one in Settings → ClippyOS MCP, then relink the AI teammate.";
+  }
   if (error instanceof Error && error.message === "Forbidden") {
     return "You do not have access to that.";
+  }
+  if (error instanceof Error && error.message === "KEY_MISSING") {
+    return "That connector token is no longer available.";
+  }
+  if (error instanceof Error && error.message === "TEAM_MEMBER_MISSING") {
+    return "That teammate is no longer on the roster.";
+  }
+  if (error instanceof Error && error.message === "GROK_BOT_NOT_CONNECTED") {
+    return "Connect Grok Bot in Settings first — mint a key and add the ClippyOS connector in Grok Bot.";
+  }
+  if (error instanceof Error && error.message === "GROK_BOT_UNAVAILABLE") {
+    return "Grok Bot isn’t online. Open the Bot app so it can pick up ClippyOS work.";
+  }
+  if (error instanceof Error && /invalid origin/i.test(error.message)) {
+    return "This site isn’t recognized for sign-in. Open ClippyOS from os.swcstudio.space or clippyos.grok.me and try again.";
+  }
+  if (
+    error instanceof Error &&
+    /sign-out failed|sign-out timed out|unable to log out/i.test(error.message)
+  ) {
+    return "Couldn’t sign out. Check the connection and try again — you are still signed in.";
   }
   if (error instanceof Error && error.message === "INVALID_YOUTUBE_URL") {
     return "Use a valid YouTube channel or video URL.";

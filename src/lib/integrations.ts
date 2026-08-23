@@ -51,6 +51,8 @@ export type IntegrationsSnapshot = {
   firstLaunchCompleted: boolean;
   superAdminConfigured: boolean;
   role: "admin" | "member" | null;
+  inheritWorkspaceApis: boolean;
+  canEditIntegrations: boolean;
   discordAgent: DiscordAgentHealth;
 };
 
@@ -142,7 +144,7 @@ export const BANNER_BY_PATH: Array<{
   },
   { match: (path) => path.startsWith("/thumbnails") || path.startsWith("/agent"), id: "higgsfield" },
   { match: (path) => path.startsWith("/analytics"), id: "youtube" },
-  { match: (path) => path.startsWith("/social") || path.startsWith("/agent"), id: "daytona" },
+  { match: (path) => path.startsWith("/social") || path.startsWith("/agent") || path.startsWith("/health"), id: "daytona" },
   { match: (path) => path.startsWith("/inbox"), id: "telegram" },
   { match: (path) => path.startsWith("/inbox"), id: "whatsapp" },
   { match: (path) => path.startsWith("/billing"), id: "airwallex" },

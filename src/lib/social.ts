@@ -223,6 +223,7 @@ export type SocialJob = {
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
+  triggeredByTeamMemberId?: string | null;
   preferredRail: SocialPreferredRail;
   fallbackToBrowser: boolean;
   youtube?: YoutubeJobOptions | null;

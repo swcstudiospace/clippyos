@@ -24,24 +24,51 @@ function sseWrap(payload: unknown): Response {
   });
 }
 
+function transportMeta(authenticated: boolean) {
+  const base = {
+    name: "clippy-os",
+    transport: "streamable-http",
+    protocol: "2025-03-26",
+  };
+  if (!authenticated) return base;
+  return {
+    ...base,
+    capabilities: {
+      tools: { listChanged: true },
+      resources: { listChanged: true },
+    },
+  };
+}
+
 async function handle(request: Request): Promise<Response> {
   const rid = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  const authorization = request.headers.get("authorization");
+
   if (request.method === "GET") {
-    return json(200, {
-      name: "clippy-admin",
-      transport: "streamable-http",
-      protocol: "2025-03-26",
-      capabilities: {
-        tools: { listChanged: true },
-        resources: { listChanged: true },
-        skills: { listChanged: true },
-        tasks: {},
-      },
-    });
+    if (!authorization) return json(200, transportMeta(false));
+    try {
+      await authenticateMcpToken(authorization);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "UNAUTHORIZED";
+      if (code === "RATE_LIMITED") {
+        return json(429, { error: { code, message: "Too many requests." } });
+      }
+      if (code === "TOKEN_REVOKED") {
+        return json(401, {
+          error: {
+            code: "TOKEN_REVOKED",
+            message: "This MCP token was revoked. Mint a new one in Settings.",
+          },
+        });
+      }
+      return json(401, { error: { code: "UNAUTHORIZED", message: "Invalid MCP token." } });
+    }
+    return json(200, transportMeta(true));
   }
+
   let actor;
   try {
-    actor = await authenticateMcpToken(request.headers.get("authorization"));
+    actor = await authenticateMcpToken(authorization);
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNAUTHORIZED";
     if (code === "RATE_LIMITED") {
@@ -52,8 +79,16 @@ async function handle(request: Request): Promise<Response> {
       actor: { source: "mcp", keyId: null, label: "unknown" },
       action: "auth",
       result: "denied",
-      errorCode: "UNAUTHORIZED",
+      errorCode: code === "TOKEN_REVOKED" ? "TOKEN_REVOKED" : "UNAUTHORIZED",
     });
+    if (code === "TOKEN_REVOKED") {
+      return json(401, {
+        error: {
+          code: "TOKEN_REVOKED",
+          message: "This MCP token was revoked. Mint a new one in Settings.",
+        },
+      });
+    }
     return json(401, { error: { code: "UNAUTHORIZED", message: "Invalid MCP token." } });
   }
 

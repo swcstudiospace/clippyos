@@ -3,7 +3,7 @@ import type { SocialPlatform } from "@/lib/entities";
 export const SOCIAL_RAILS = ["API", "BROWSER"] as const;
 export type SocialRail = (typeof SOCIAL_RAILS)[number];
 
-export const SOCIAL_PREFERRED_RAILS = ["AUTO", "API", "BROWSER"] as const;
+export const SOCIAL_PREFERRED_RAILS = ["AUTO", "API", "BROWSER", "GROK_BOT"] as const;
 export type SocialPreferredRail = (typeof SOCIAL_PREFERRED_RAILS)[number];
 
 export const SOCIAL_PROVIDERS = ["X", "TIKTOK", "INSTAGRAM", "YOUTUBE", "DAYTONA"] as const;
@@ -81,13 +81,20 @@ export type PublisherSnapshot = {
   youtube: YoutubePublisherDetails;
   callbackUrl: string;
   role: "admin" | "member" | null;
+  canEditIntegrations: boolean;
 };
+
+export function parsePreferredRail(raw: unknown): SocialPreferredRail {
+  return raw === "API" || raw === "BROWSER" || raw === "GROK_BOT" ? raw : "AUTO";
+}
 
 export const RAIL_LABELS: Record<SocialPreferredRail | SocialRail, string> = {
   AUTO: "Auto",
   API: "API",
   BROWSER: "Computer Use",
+  GROK_BOT: "Grok Bot",
 };
+
 
 export const PROVIDER_LABELS: Record<SocialProvider, string> = {
   X: "X",

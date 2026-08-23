@@ -9,6 +9,7 @@ import { NumberTicker } from "@/components/magicui/number-ticker";
 import { getAutonomyHealth } from "@/lib/server/autonomy-admin";
 import { AUTONOMY_HEALTH_QUERY_KEY, type HermesConnectionState } from "@/lib/autonomy";
 import { HERMES_CONNECTION_LABELS } from "@/lib/connect";
+import { GROK_BOT_CONNECTION_LABELS, grokBotConnectionTone } from "@/lib/grok-bot";
 import { formatRelativeTime } from "@/lib/format";
 
 export function AutomationWidget({
@@ -112,6 +113,22 @@ export function AutomationWidget({
           {data.social.failedJobs > 0 ? (
             <Badge tone="red">{data.social.failedJobs} failed</Badge>
           ) : null}
+        </div>
+      ) : null}
+
+      {data?.grokBot ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-control bg-secondary-surface/50 px-3 py-3">
+          <p className="text-caption font-medium">Grok Bot</p>
+          <Badge tone={grokBotConnectionTone(data.grokBot.connection)}>
+            {GROK_BOT_CONNECTION_LABELS[data.grokBot.connection]}
+          </Badge>
+          {data.grokBot.queued > 0 ? <Badge tone="orange">{data.grokBot.queued} queued</Badge> : null}
+          {data.grokBot.claimed > 0 ? <Badge tone="purple">{data.grokBot.claimed} working</Badge> : null}
+          <Button size="sm" variant="ghost" asChild className="ml-auto">
+            <Link to="/settings" hash="grok-bot">
+              Connect Grok Bot
+            </Link>
+          </Button>
         </div>
       ) : null}
 

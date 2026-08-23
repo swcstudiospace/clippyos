@@ -6,7 +6,6 @@ import {
   isMissingTable,
   mapClient,
   mapPayment,
-  mapTeamMember,
 } from "@/lib/server/mappers";
 
 async function load_agency_db() {
@@ -45,31 +44,23 @@ export async function readPayments(): Promise<Payment[]> {
 }
 
 export async function readTeamMembers(): Promise<TeamMember[]> {
-  const admin = await (await load_agency_db()).getAgencyAdmin();
-  if (admin) {
-    const { data, error } = await admin
-      .from("team_members")
-      .select("*")
-      .is("deleted_at", null);
-    if (!error) {
-      return (data ?? []).map((row) => mapTeamMember(row as Record<string, unknown>));
-    }
-    if (!isMissingTable(error)) throw new Error("DATA_UNAVAILABLE");
-  }
-  const sql = await (await load_agency_db()).localSql();
-  const rows = await sql.query<Record<string, unknown>>(
-    "select * from team_members where deleted_at is null",
-  );
-  return rows.map(mapTeamMember);
+  const team = await import("@/lib/server/team.server");
+  return team.readTeamMembersInternal();
 }
 
 export const getMoneySnapshot = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async (): Promise<MoneySnapshot> => {
-    const [clients, payments, teamMembers] = await Promise.all([
+    const [clients, payments, teamMembers, settings] = await Promise.all([
       readClients(),
       readPayments(),
       readTeamMembers(),
+      import("@/lib/server/team.server").then((mod) => mod.readTeamSettings()),
     ]);
-    return { clients, payments, teamMembers };
+    return {
+      clients,
+      payments,
+      teamMembers,
+      includeAutomationCostInMargin: settings.includeAutomationCostInMargin,
+    };
   });

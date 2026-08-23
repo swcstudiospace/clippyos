@@ -93,4 +93,7 @@ export const AGENT_MUTATIONS = new Set([
   "knowledge.decide_proposal",
   "linear.create_issue",
   "linear.update_issue",
+  "grokbot.claim_work",
+  "grokbot.complete_work",
+  "agent.start_run",
 ]);

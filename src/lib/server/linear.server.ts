@@ -1189,6 +1189,76 @@ async function bumpQueueRow(id: string, attempts: number, error: string): Promis
   }
 }
 
+export type LinearSyncQueueRow = {
+  id: string;
+  kind: string;
+  attempts: number;
+  nextAttemptAt: string;
+  lastError: string | null;
+  createdAt: string;
+};
+
+function mapSyncQueue(rec: Record<string, unknown>): LinearSyncQueueRow {
+  return {
+    id: String(rec.id ?? ""),
+    kind: String(rec.kind ?? "sync"),
+    attempts: Number(rec.attempts ?? 0) || 0,
+    nextAttemptAt: String(rec.next_attempt_at ?? rec.created_at ?? nowIso()),
+    lastError: rec.last_error ? String(rec.last_error) : null,
+    createdAt: String(rec.created_at ?? nowIso()),
+  };
+}
+
+export async function listLinearSyncQueue(limit = 40): Promise<LinearSyncQueueRow[]> {
+  await ensureLinearSchema();
+  const cap = Math.min(Math.max(limit, 1), 80);
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    const { data, error } = await admin
+      .from("linear_sync_queue")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(cap);
+    if (!error && data) return (data as Record<string, unknown>[]).map(mapSyncQueue);
+    if (error && !isMissingTable(error)) return [];
+  }
+  try {
+    const sql = await localSql();
+    const rows = await sql.query<Record<string, unknown>>(
+      "select * from linear_sync_queue order by created_at desc limit $1",
+      [cap],
+    );
+    return rows.map(mapSyncQueue);
+  } catch {
+    return [];
+  }
+}
+
+export async function retryLinearSync(id: string): Promise<LinearSyncQueueRow> {
+  const rows = await listLinearSyncQueue(80);
+  const hit = rows.find((row) => row.id === id);
+  if (!hit) throw new Error("JOB_MISSING");
+  const stamp = nowIso();
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    await admin
+      .from("linear_sync_queue")
+      .update({ attempts: 0, next_attempt_at: stamp, last_error: null })
+      .eq("id", id);
+  }
+  try {
+    const sql = await localSql();
+    await sql.query(
+      "update linear_sync_queue set attempts = 0, next_attempt_at = $2, last_error = null where id = $1",
+      [id, stamp],
+    );
+  } catch {
+    /* remote path may have already applied */
+  }
+  void sweepLinearQueue(8).catch(() => {});
+  return { ...hit, attempts: 0, nextAttemptAt: stamp, lastError: null };
+}
+
 export async function sweepLinearQueue(limit = 8): Promise<number> {
   const rows = await dueQueueRows(limit);
   let done = 0;

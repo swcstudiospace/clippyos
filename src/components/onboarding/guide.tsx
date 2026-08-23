@@ -31,7 +31,7 @@ const SECTIONS = [
   },
   {
     title: "8. Staff the lane",
-    body: "Assign a channel manager, short-form editor, long-form editor, and thumbnail designer as needed. Team costs are monthly and roll into Money margins and the Team tab capacity tracker. Anyone on more than three active clients is flagged overloaded.",
+    body: "Assign a channel manager, short-form editor, long-form editor, and thumbnail designer as needed. Team costs are monthly and roll into Money margins and the Team tab capacity tracker. Anyone on more than three active clients is flagged overloaded. AI teammates (Grok Bot / Hermes) appear on Team and never count as load.",
   },
   {
     title: "9. Kick off production",

@@ -27,7 +27,7 @@ const FAQS = [
   {
     question: "Is Hermes Agent and Linear built in?",
     answer:
-      "Yes. ClippyOS speaks Hermes natively — MCP tools, playbooks, and isolated skills. Failed jobs, renders, and agent runs map to Linear. The board stays in Linear; the OS deep-links and syncs.",
+      "Yes. ClippyOS speaks Hermes natively — MCP tools, playbooks, and isolated skills. Grok Bot is a premium optional computer on the same Remote MCP: SuperGrok teammates add ClippyOS as a Custom connector (URL + Bearer token) and pick up a work inbox. Failed jobs, renders, and agent runs map to Linear. The board stays in Linear; the OS deep-links and syncs.",
   },
   {
     question: "How do I get access?",

@@ -70,6 +70,7 @@ export async function ensureAgentSchema(): Promise<void> {
     await sql.query(`alter table agent_iterations add column if not exists step_id text`);
     await sql.query(`alter table agent_iterations add column if not exists duration_ms integer`);
     await sql.query(`create index if not exists agent_runs_idempotency_idx on agent_runs (idempotency_key)`);
+    await sql.query(`alter table agent_runs add column if not exists triggered_by_team_member_id text`);
   })();
   return schemaReady;
 }
@@ -105,6 +106,9 @@ function mapRun(row: Record<string, unknown>): AgentRun {
     startedAt: String(row.started_at ?? ""),
     finishedAt: row.finished_at ? String(row.finished_at) : null,
     createdBy: row.created_by ? String(row.created_by) : null,
+    triggeredByTeamMemberId: row.triggered_by_team_member_id
+      ? String(row.triggered_by_team_member_id)
+      : null,
   };
 }
 
@@ -208,6 +212,7 @@ export async function insertAgentRun(input: {
   createdBy: string | null;
   idempotencyKey?: string | null;
   deadlineAt?: string | null;
+  triggeredByTeamMemberId?: string | null;
 }): Promise<AgentRun> {
   await ensureAgentSchema();
   const stamp = nowIso();
@@ -233,6 +238,7 @@ export async function insertAgentRun(input: {
     created_at: stamp,
     updated_at: stamp,
     created_by: input.createdBy,
+    triggered_by_team_member_id: input.triggeredByTeamMemberId ?? null,
   };
   const admin = await getAgencyAdmin();
   if (admin) {
@@ -244,13 +250,13 @@ export async function insertAgentRun(input: {
     `insert into agent_runs
       (id, goal, preset, client_id, skill_id, status, model, provider, summary, error_code,
        iteration_count, plan_json, outputs_json, idempotency_key, cancel_requested, deadline_at,
-       started_at, finished_at, created_at, updated_at, created_by)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+       started_at, finished_at, created_at, updated_at, created_by, triggered_by_team_member_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
     [
       row.id, row.goal, row.preset, row.client_id, row.skill_id, row.status, row.model, row.provider,
       row.summary, row.error_code, row.iteration_count, row.plan_json, row.outputs_json,
       row.idempotency_key, row.cancel_requested, row.deadline_at, row.started_at, row.finished_at,
-      row.created_at, row.updated_at, row.created_by,
+      row.created_at, row.updated_at, row.created_by, row.triggered_by_team_member_id,
     ],
   );
   return mapRun(row);
@@ -286,7 +292,7 @@ export async function findRunByIdempotency(key: string, createdBy: string): Prom
 export async function countActiveAgentRuns(): Promise<number> {
   const runs = await listAgentRuns(30);
   return runs.filter((row) =>
-    ["queued", "planning", "stepping", "backoff"].includes(row.status),
+    ["queued", "planning", "stepping", "backoff", "waiting_resource"].includes(row.status),
   ).length;
 }
 

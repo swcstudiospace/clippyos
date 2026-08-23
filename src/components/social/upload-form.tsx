@@ -30,6 +30,7 @@ export function UploadForm({
   publishers,
   machineState,
   configured,
+  grokBotConnected = false,
   pending,
   onUpload,
   initialMediaAssetId,
@@ -41,6 +42,7 @@ export function UploadForm({
   publishers?: Record<SocialPlatform, PublisherStatus>;
   machineState: MachineState;
   configured: boolean;
+  grokBotConnected?: boolean;
   pending: boolean;
   onUpload: (input: {
     clientId: string;
@@ -83,7 +85,8 @@ export function UploadForm({
   function platformEnabled(platform: SocialPlatform): boolean {
     if (preferredRail === "API") return apiReady(platform);
     if (preferredRail === "BROWSER") return running;
-    return apiReady(platform) || running;
+    if (preferredRail === "GROK_BOT") return grokBotConnected;
+    return apiReady(platform) || running || grokBotConnected;
   }
 
   const tiktokUnauditedPublish =
@@ -106,7 +109,9 @@ export function UploadForm({
       ? platforms.every(apiReady)
       : preferredRail === "BROWSER"
         ? configured && running
-        : platforms.some(apiReady) || (configured && running));
+        : preferredRail === "GROK_BOT"
+          ? grokBotConnected
+          : platforms.some(apiReady) || (configured && running) || grokBotConnected);
 
   function toggle(platform: SocialPlatform) {
     if (!platformEnabled(platform)) return;
@@ -148,17 +153,21 @@ export function UploadForm({
     <GlassCard className="social-upload">
       <h2 className="text-card font-semibold tracking-tight">1-click upload</h2>
       <p className="mt-1 text-caption text-muted">
-        Auto uses native APIs when a publisher is connected. Computer Use stays the fallback for
-        login, CAPTCHA, personal Instagram, and unaudited TikTok public posts.
+        Auto uses native APIs when a publisher is connected. Computer Use stays the Daytona fallback.
+        Grok Bot is the premium computer — it does not start the Social Machine.
       </p>
 
-      {!configured && !anyApiReady(publisherMap) ? (
+      {!configured && !grokBotConnected && !anyApiReady(publisherMap) ? (
         <p className="mt-3 text-caption text-muted">
-          Connect a publisher API in Settings, or connect Daytona for Computer Use.
+          Connect a publisher API in Settings, connect Daytona for Computer Use, or connect Grok Bot.
         </p>
-      ) : preferredRail !== "API" && configured && !running && !platforms.some(apiReady) ? (
+      ) : preferredRail === "GROK_BOT" && !grokBotConnected ? (
         <p className="mt-3 text-caption text-warning">
-          Start the Social Machine for Computer Use, or connect APIs to post without the VM.
+          Connect Grok Bot in Settings first — mint a key and add the ClippyOS connector.
+        </p>
+      ) : preferredRail !== "API" && preferredRail !== "GROK_BOT" && configured && !running && !platforms.some(apiReady) && !grokBotConnected ? (
+        <p className="mt-3 text-caption text-warning">
+          Start the Social Machine for Computer Use, connect APIs, or use Grok Bot.
         </p>
       ) : null}
 
@@ -215,9 +224,10 @@ export function UploadForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="AUTO">Auto — API then Computer Use</SelectItem>
+              <SelectItem value="AUTO">Auto — API then computer</SelectItem>
               <SelectItem value="API">API only</SelectItem>
-              <SelectItem value="BROWSER">Computer Use only</SelectItem>
+              <SelectItem value="BROWSER">Social Machine only</SelectItem>
+              <SelectItem value="GROK_BOT">Grok Bot computer</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
@@ -51,6 +52,10 @@ import {
 import { toast } from "sonner";
 import { userFacingErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
+import { GROK_BOT_QUERY_KEY } from "@/lib/grok-bot";
+import { getGrokBotStatusFn } from "@/lib/server/grok-bot-fns";
+import { getTeamSnapshotFn, TEAM_QUERY_KEY } from "@/lib/server/team-fns";
+import { automationDisplayName, isActiveAutomation } from "@/lib/team";
 
 type AgentSearch = { run?: string };
 
@@ -71,7 +76,11 @@ function AgentPage() {
   const [skillId, setSkillId] = useState<string>("");
   const [runsOpen, setRunsOpen] = useState(false);
   const [ctxOpen, setCtxOpen] = useState(false);
+  const [runner, setRunner] = useState<"local" | "grok_bot">("local");
+  const [seatId, setSeatId] = useState("");
 
+  const grokQuery = useQuery({ queryKey: GROK_BOT_QUERY_KEY, queryFn: () => getGrokBotStatusFn() });
+  const teamQuery = useQuery({ queryKey: TEAM_QUERY_KEY, queryFn: () => getTeamSnapshotFn() });
   const llmQuery = useQuery({ queryKey: LLM_QUERY_KEY, queryFn: () => getLlmSnapshot() });
   const clientsQuery = useQuery({ queryKey: ["clients"], queryFn: () => listClients() });
   const skillsQuery = useQuery({ queryKey: ["skills"], queryFn: () => listSkillsFn() });
@@ -86,7 +95,7 @@ function AgentPage() {
     enabled: Boolean(runId),
     refetchInterval: (query) => {
       const status = query.state.data?.run.status;
-      return isAgentBusy(status ?? "queued") ? 1200 : false;
+      return isAgentBusy(status ?? "queued") || status === "waiting_resource" ? 1200 : false;
     },
   });
 
@@ -98,6 +107,8 @@ function AgentPage() {
           preset,
           clientId: clientId || null,
           skillId: skillId || null,
+          runner,
+          triggeredByTeamMemberId: seatId || null,
         },
       }),
     onSuccess: async (result) => {
@@ -130,6 +141,10 @@ function AgentPage() {
   const selectedClient = clients.find((row) => row.id === clientId) ?? null;
   const selectedSkill = skills.find((row) => row.id === skillId) ?? null;
   const rateLimit = llmQuery.data?.rateLimit;
+  const aiSeats = useMemo(
+    () => (teamQuery.data?.teamMembers ?? []).filter(isActiveAutomation),
+    [teamQuery.data],
+  );
 
   const contextPanel = (
     <div className="flex flex-col gap-3 p-4">
@@ -301,6 +316,43 @@ function AgentPage() {
               className="min-h-20"
             />
           </div>
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-control bg-secondary-surface/50 px-3 py-3">
+            <div>
+              <Label htmlFor="agent-runner">Run on Grok Bot</Label>
+              <p className="text-caption text-muted">
+                {grokQuery.data?.hasKey
+                  ? "Premium computer. Hermes stays the default in-OS runner."
+                  : "Connect Grok Bot in Settings to hand long jobs to the Bot."}
+              </p>
+            </div>
+            <Switch
+              id="agent-runner"
+              checked={runner === "grok_bot"}
+              disabled={!grokQuery.data?.hasKey || !grokQuery.data.enabled}
+              onCheckedChange={(on) => setRunner(on ? "grok_bot" : "local")}
+            />
+          </div>
+          {aiSeats.length > 0 ? (
+            <div className="mt-3 flex flex-col gap-1.5">
+              <Label htmlFor="agent-seat">AI teammate</Label>
+              <Select value={seatId || "none"} onValueChange={(value) => setSeatId(value === "none" ? "" : value)}>
+                <SelectTrigger id="agent-seat">
+                  <SelectValue placeholder="Optional seat" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Operator (no seat)</SelectItem>
+                  {aiSeats.map((seat) => (
+                    <SelectItem key={seat.id} value={seat.id}>
+                      {automationDisplayName(seat)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-caption text-muted">
+                Audit only. Does not log the bot in or count as human load.
+              </p>
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               onClick={() => start.mutate()}

@@ -129,7 +129,7 @@ export function ActivityList({
                     </p>
                     <p className="text-caption text-muted">
                       {formatRelativeTime(post.createdAt)}
-                      {` · ${RAIL_LABELS[post.rail ?? "BROWSER"]}`}
+                      {` · ${post.source === "GROK_BOT" ? "Grok Bot" : RAIL_LABELS[post.rail ?? "BROWSER"]}`}
                       {post.tiktokPostMode
                         ? ` · ${TIKTOK_MODE_LABELS[post.tiktokPostMode]}`
                         : ""}
@@ -158,8 +158,8 @@ export function ActivityList({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={post.rail === "API" ? "teal" : "neutral"}>
-                      {RAIL_LABELS[post.rail ?? "BROWSER"]}
+                    <Badge tone={post.source === "GROK_BOT" ? "purple" : post.rail === "API" ? "teal" : "neutral"}>
+                      {post.source === "GROK_BOT" ? "Grok Bot" : RAIL_LABELS[post.rail ?? "BROWSER"]}
                     </Badge>
                     {post.tiktokPostMode ? (
                       <Badge tone="neutral">{TIKTOK_MODE_LABELS[post.tiktokPostMode]}</Badge>

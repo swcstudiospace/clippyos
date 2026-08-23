@@ -281,7 +281,7 @@ export const HERMES_PLAYBOOKS: readonly HermesPlaybook[] = [
   {
     id: "team_capacity_guard",
     name: "Team capacity guard",
-    summary: "Flag anyone assigned to more than 3 clients. Suggest reassignment in notes — never auto-reassign.",
+    summary: "Flag humans assigned to more than 3 clients. AI teammates are excluded from load. Suggest reassignment in notes — never auto-reassign.",
     trigger: "schedule",
     triggerDetail: "Daily",
     requiredScopes: ["read"],
@@ -289,13 +289,13 @@ export const HERMES_PLAYBOOKS: readonly HermesPlaybook[] = [
     risk: "low",
     steps: [
       "get_dashboard_snapshot / list_clients with team data",
-      "Flag people assigned to more than 3 clients",
+      "Flag people assigned to more than 3 clients — skip isAutomation seats",
       "Suggest reassignment in operator notes — do not auto-reassign humans",
     ],
     tools: ["get_dashboard_snapshot", "list_clients"],
     success: "Overloaded assignees are listed. No team-membership mutations.",
     escalation: "Anyone on 4+ clients.",
-    guardrail: "Hermes does not write TeamMember rows.",
+    guardrail: "Hermes does not write TeamMember rows. Capacity ignores automation seats.",
     humanStop: "Never reassign people automatically.",
     auditEvents: ["get_dashboard_snapshot"],
   },
@@ -1016,6 +1016,80 @@ export const HERMES_PLAYBOOKS: readonly HermesPlaybook[] = [
     humanStop: "Approving knowledge stays in the proposals inbox.",
     auditEvents: ["knowledge.proposal.created", "linear.issue.created"],
   },
+  {
+    id: "prefer_grok_bot_computer_for_social_when_api_unavailable",
+    name: "Prefer Grok Bot computer when APIs are unavailable",
+    summary: "When prefer-as-computer is on, AUTO computer-use goes to Grok Bot instead of Daytona.",
+    trigger: "event",
+    triggerDetail: "social.create_upload_job preferredRail=AUTO",
+    requiredScopes: ["read", "write:social"],
+    requiredIntegrations: ["Grok Bot"],
+    risk: "medium",
+    steps: [
+      "Call social.get_publisher_status — prefer API when eligible",
+      "If API ineligible and Grok Bot prefer-as-computer is on, create_upload_job preferredRail=AUTO (ClippyOS enqueues grokbot work)",
+      "Grok Bot calls grokbot.heartbeat, grokbot.list_work, grokbot.claim_work",
+      "Grok Bot uploads on its computer, then grokbot.complete_work",
+      "On needs_login, escalate — never collect passwords",
+    ],
+    tools: [
+      "social.get_publisher_status",
+      "social.create_upload_job",
+      "grokbot.list_work",
+      "grokbot.claim_work",
+      "grokbot.complete_work",
+    ],
+    success: "Job completes via Grok Bot computer without starting Daytona.",
+    escalation: "GROK_BOT_NOT_CONNECTED or needs_login.",
+    guardrail: "API publishers still win when eligible. Approvals still gate publish.",
+    humanStop: "Login walls, CAPTCHA, and 2FA are human-only on the Grok Bot screen.",
+    auditEvents: ["social.create_upload_job", "social.job_created", "social.job_needs_attention"],
+  },
+  {
+    id: "handoff_long_jobs_to_grok_bot_with_approval_gate",
+    name: "Handoff long jobs to Grok Bot",
+    summary: "Queue an AgentRun on the Grok Bot computer. Publish still waits on Approvals.",
+    trigger: "manual",
+    triggerDetail: "Agent tab → Run on Grok Bot",
+    requiredScopes: ["read", "write:social", "actions:ai"],
+    requiredIntegrations: ["Grok Bot"],
+    risk: "medium",
+    steps: [
+      "Confirm Grok Bot is connected (key + heartbeat)",
+      "Start the agent with runner=grok_bot — run stays waiting_resource until claimed",
+      "Bot claims work, uses ClippyOS MCP tools, never starts Daytona",
+      "mode=publish jobs still create ApprovalRequest; Bot must not post until allowed",
+      "Bot complete_work maps onto AgentRun status",
+    ],
+    tools: ["grokbot.get_status", "grokbot.claim_work", "grokbot.complete_work", "approvals.list_pending"],
+    success: "AgentRun succeeded or failed from grokbot.complete_work. Approvals untouched.",
+    escalation: "GROK_BOT_UNAVAILABLE — operator can re-run locally on Hermes.",
+    guardrail: "Grok Bot cannot bypass approvals.requireForSocialPublish.",
+    humanStop: "Do not decide approvals unless the key has approvals:admin.",
+    auditEvents: ["agent.run.succeeded", "agent.run.failed", "social.job_created"],
+  },
+  {
+    id: "never_block_core_pipeline_if_grok_bot_down",
+    name: "Never block core pipeline if Grok Bot is down",
+    summary: "Hermes + Daytona remain the default. Grok Bot errors fall back when fallback is on.",
+    trigger: "event",
+    triggerDetail: "Grok Bot heartbeat stale or GROK_BOT_NOT_CONNECTED",
+    requiredScopes: ["read", "write:social"],
+    requiredIntegrations: ["Daytona"],
+    risk: "low",
+    steps: [
+      "If grokbot.get_status is not online, do not fail the studio",
+      "social.create_upload_job preferredRail=AUTO uses API then Daytona",
+      "Agent runs stay on the in-OS Hermes loop",
+      "Log GROK_BOT_UNAVAILABLE and continue",
+    ],
+    tools: ["grokbot.get_status", "social.create_upload_job", "social.get_machine_status"],
+    success: "Uploads and agent runs complete on Hermes/Daytona without Grok Bot.",
+    escalation: "None — Grok Bot is optional premium.",
+    guardrail: "Never require SuperGrok for basic clipping.",
+    humanStop: "Do not auto-start Daytona unless social.auto_start_for_upload is on.",
+    auditEvents: ["social.create_upload_job", "social.machine_started"],
+  },
 ];
 
 export type PlaybookBoolKey =
@@ -1275,7 +1349,7 @@ Starting a preset in the Agent tab creates an AgentRun with presetSkillId. Herme
 
 MCP skills
 - social.get_publisher_status — per-platform API configured/connected/eligible. tiktok includes auditStatus, postModeDefault, eligibleDirectPost, eligibleInbox, openId. instagram includes igUserId, accountType, eligibleReelsPublish. youtube includes channelId, channelTitle, eligible. Never returns tokens. X includes username when connected.
-- social.create_upload_job preferredRail=AUTO|API|BROWSER (default AUTO). AUTO uses native APIs when eligible; Computer Use is the fallback when Daytona is running and fallbackToBrowser is true. mode=publish is gated by approvals.requireForSocialPublish (default on) — the job stays AWAITING_APPROVAL until approvals.decide. mode=draft never requires publish approval. Platform x uses the official X API (chunked media + POST /2/tweets) when connected. Platform youtube uses Data API v3 resumable upload (draft → private; publish default unlisted). Prefer mediaAssetId from the library (current version file, 9:16 render for TikTok/IG when present, 16:9 for YouTube-only).
+- social.create_upload_job preferredRail=AUTO|API|BROWSER|GROK_BOT (default AUTO). AUTO uses native APIs when eligible; Computer Use is Daytona unless Grok Bot prefer-as-computer is on (or Daytona is missing). GROK_BOT enqueues work for the Grok Bot computer and does not start Daytona. mode=publish is gated by approvals.requireForSocialPublish (default on) — the job stays AWAITING_APPROVAL until approvals.decide. mode=draft never requires publish approval. Platform x uses the official X API (chunked media + POST /2/tweets) when connected. Platform youtube uses Data API v3 resumable upload (draft → private; publish default unlisted). Prefer mediaAssetId from the library (current version file, 9:16 render for TikTok/IG when present, 16:9 for YouTube-only).
 - approvals.list_pending / approvals.decide — Hermes cannot skip the policy. approvals:admin is required to decide.
 - library.search_assets / library.get_asset / library.queue_render / library.attach_to_social_job — unified media graph. Captions: generate when STT is connected, else manual SRT.
 - social.get_upload_job returns percent, phase, and resumableSessionId for in-flight chunked uploads. social.retry_upload_job resumes from the last persisted offset. social.cancel_upload_job aborts further chunks.

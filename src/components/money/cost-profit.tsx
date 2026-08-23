@@ -25,8 +25,9 @@ export function CostProfit({
       <div className="px-5 pt-5">
         <h2 className="text-card font-semibold tracking-tight">Cost & Profit</h2>
         <p className="mt-1 text-caption text-muted">
-          Profit is monthly fee minus assigned team cost. Missing team rows count as
-          $0. Soft-deleted members are excluded.
+          Profit is monthly fee minus assigned human team cost. AI teammate cost is
+          excluded unless Team → include automation cost is on. Soft-deleted members
+          are excluded.
         </p>
       </div>
       {loading ? (

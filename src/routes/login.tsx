@@ -1,6 +1,6 @@
-import { createFileRoute, Link, Navigate, useRouter, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { captureClientError, userFacingErrorMessage } from "@/lib/errors";
@@ -52,7 +52,6 @@ function ProviderGlyph({ id }: { id: string }) {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const wantsAccess = searchStr.includes("intent=access");
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(wantsAccess ? "signup" : "signin");
@@ -124,8 +123,7 @@ function LoginForm() {
         });
         if (error) throw new Error("Could not sign in");
       }
-      await router.navigate({ to: mode === "signup" || wantsAccess ? "/billing" : "/home" });
-      await router.invalidate();
+      window.location.assign(mode === "signup" || wantsAccess ? "/billing" : "/home");
     } catch (error) {
       captureClientError(error, { source: "email-auth" });
       setFormError(userFacingErrorMessage(error));
@@ -144,14 +142,8 @@ function LoginForm() {
     setSaBusy(true);
     try {
       const result = await unlockSuperAdmin({ data: { password: saPassword } });
-      setPreviewSessionToken(result.token);
-      try {
-        await authClient.getSession();
-      } catch {
-        /* session store recovers on next fetch */
-      }
-      await router.invalidate();
-      await router.navigate({ to: "/home" });
+      if (isLivePreviewHost()) setPreviewSessionToken(result.token);
+      window.location.assign("/home");
     } catch (error) {
       captureClientError(error, { source: "super-admin" });
       setSaError(userFacingErrorMessage(error));

@@ -8,7 +8,7 @@ import type { SocialPostSource } from "@/lib/entities";
 import type { SocialPreferredRail, SocialProvider, SocialRail, TikTokPostMode } from "@/lib/publishers";
 import { emptyInstagramDetails, emptyPublisherMap, emptyTikTokDetails, emptyYoutubeDetails } from "@/lib/publishers";
 import type { PublisherSnapshot, PublisherStatus } from "@/lib/publishers";
-import { getUserRole } from "@/lib/server/access";
+import { getOperatorAccess } from "@/lib/server/access";
 import {
   publisherStatusFor,
   readInstagramAccounts,
@@ -139,14 +139,14 @@ async function fetchMedia(url: string): Promise<{
 }
 
 export async function getPublisherSnapshot(userId: string): Promise<PublisherSnapshot> {
-  const [instagram, x, tiktok, youtube, accounts, mode, role] = await Promise.all([
+  const [instagram, x, tiktok, youtube, accounts, mode, access] = await Promise.all([
     publisherStatusFor("instagram"),
     publisherStatusFor("x"),
     publisherStatusFor("tiktok"),
     publisherStatusFor("youtube"),
     readInstagramAccounts(),
     readTikTokPublishMode(),
-    getUserRole(userId),
+    getOperatorAccess(userId),
   ]);
   return {
     publishers: { instagram, x, tiktok, youtube },
@@ -156,7 +156,9 @@ export async function getPublisherSnapshot(userId: string): Promise<PublisherSna
     instagram: instagram.instagram ?? emptyInstagramDetails(),
     youtube: youtube.youtube ?? emptyYoutubeDetails(),
     callbackUrl: socialOauthCallbackUrl(),
-    role,
+    role: access.role,
+    canEditIntegrations:
+      access.role === "admin" || (access.role === "member" && !access.inheritWorkspaceApis),
   };
 }
 
@@ -191,6 +193,8 @@ export function publisherIdFor(platform: SocialPlatform): PublisherId {
         : "instagram";
 }
 
+export type RailComputer = "daytona" | "grok_bot" | null;
+
 export async function resolveRail(input: {
   platform: SocialPlatform;
   preferred: SocialPreferredRail;
@@ -198,7 +202,10 @@ export async function resolveRail(input: {
   daytonaConfigured: boolean;
   machineRunning: boolean;
   mode?: import("@/lib/social").SocialUploadMode;
-}): Promise<{ rail: SocialRail; reason: string | null }> {
+  grokBotConnected?: boolean;
+  grokBotPrefer?: boolean;
+  fallbackToDaytona?: boolean;
+}): Promise<{ rail: SocialRail; reason: string | null; computer: RailComputer }> {
   const status = await publisherStatusFor(input.platform);
   let apiReady =
     input.platform === "x"
@@ -226,23 +233,45 @@ export async function resolveRail(input: {
     const eligible = await isEligible();
     apiReady = configured && eligible.ok;
   }
+  const grokOn = input.grokBotConnected === true;
+  const grokPrefer = input.grokBotPrefer === true;
+  const grokFallback = input.fallbackToDaytona !== false;
   if (input.preferred === "API") {
-    if (apiReady) return { rail: "API", reason: null };
+    if (apiReady) return { rail: "API", reason: null, computer: null };
     throw new Error("PUBLISHER_NOT_ELIGIBLE");
+  }
+  if (input.preferred === "GROK_BOT") {
+    if (grokOn) return { rail: "BROWSER", reason: "Grok Bot computer", computer: "grok_bot" };
+    if (grokFallback && input.daytonaConfigured) {
+      return { rail: "BROWSER", reason: "Grok Bot offline — using Social Machine.", computer: "daytona" };
+    }
+    throw new Error("GROK_BOT_NOT_CONNECTED");
   }
   if (input.preferred === "BROWSER") {
     if (!input.daytonaConfigured) throw new Error("DAYTONA_UNAVAILABLE");
-    return { rail: "BROWSER", reason: null };
+    return { rail: "BROWSER", reason: null, computer: "daytona" };
   }
-  if (apiReady) return { rail: "API", reason: null };
+  if (apiReady) return { rail: "API", reason: null, computer: null };
+  if (grokPrefer && grokOn) {
+    return {
+      rail: "BROWSER",
+      reason: status.reason ?? "API not eligible — using Grok Bot.",
+      computer: "grok_bot",
+    };
+  }
   if (input.daytonaConfigured) {
     return {
       rail: "BROWSER",
       reason: status.reason ?? "API not eligible — using Computer Use.",
+      computer: "daytona",
     };
+  }
+  if (grokOn) {
+    return { rail: "BROWSER", reason: "API not eligible — using Grok Bot.", computer: "grok_bot" };
   }
   throw new Error("NO_PUBLISH_RAIL");
 }
+
 
 export async function publishViaApi(
   platform: SocialPlatform,

@@ -33,6 +33,8 @@ export const startAgentRunFn = createServerFn({ method: "POST" })
         skillId: z.string().nullable().optional(),
         idempotencyKey: z.string().max(80).nullable().optional(),
         modelOverride: z.string().max(80).nullable().optional(),
+        runner: z.enum(["local", "grok_bot"]).optional(),
+        triggeredByTeamMemberId: z.string().min(1).max(80).nullable().optional(),
       })
       .parse(input),
   )
@@ -47,6 +49,8 @@ export const startAgentRunFn = createServerFn({ method: "POST" })
       createdBy: context.userId,
       idempotencyKey: data.idempotencyKey,
       modelOverride: data.modelOverride,
+      runner: data.runner ?? "local",
+      triggeredByTeamMemberId: data.triggeredByTeamMemberId ?? null,
     });
   });
 

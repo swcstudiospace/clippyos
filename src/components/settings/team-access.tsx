@@ -7,6 +7,7 @@ import {
   createTeamLogin,
   listTeamLogins,
   revokeTeamLogin,
+  setLoginInherit,
   setSuperAdminPassword,
 } from "@/lib/server/team-access";
 import { getIntegrationsStatus } from "@/lib/server/integrations";
@@ -21,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -47,13 +49,20 @@ export function TeamAccessPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
+  const [shareApis, setShareApis] = useState(false);
   const [saPassword, setSaPassword] = useState("");
   const [revokeId, setRevokeId] = useState<string | null>(null);
 
   const create = useMutation({
     mutationFn: () =>
       createTeamLogin({
-        data: { name: name.trim(), email: email.trim(), password, role },
+        data: {
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          role,
+          inheritWorkspaceApis: role === "admin" ? true : shareApis,
+        },
       }),
     onSuccess: async () => {
       toast.success("Login created");
@@ -61,6 +70,7 @@ export function TeamAccessPanel() {
       setEmail("");
       setPassword("");
       setRole("member");
+      setShareApis(false);
       await queryClient.invalidateQueries({ queryKey: LOGINS_KEY });
     },
     onError: (error) => toast.error(userFacingErrorMessage(error)),
@@ -82,6 +92,16 @@ export function TeamAccessPanel() {
       setSaPassword("");
       toast.success("Super Admin password saved");
       await queryClient.invalidateQueries({ queryKey: INTEGRATIONS_QUERY_KEY });
+    },
+    onError: (error) => toast.error(userFacingErrorMessage(error)),
+  });
+
+  const inherit = useMutation({
+    mutationFn: (input: { userId: string; inheritWorkspaceApis: boolean }) =>
+      setLoginInherit({ data: input }),
+    onSuccess: async () => {
+      toast.success("API access updated");
+      await queryClient.invalidateQueries({ queryKey: LOGINS_KEY });
     },
     onError: (error) => toast.error(userFacingErrorMessage(error)),
   });
@@ -113,8 +133,9 @@ export function TeamAccessPanel() {
         <h2 className="text-section font-semibold tracking-tight">Team access</h2>
         <p className="mt-1 text-body text-muted">
           Operators sign in from any network with email, Google, or X. Super Admin
-          Access on the login screen uses a password you set here — never a
-          hard-coded secret.
+          Access on the login screen uses a password you set here and signs in as
+          the workspace owner. New members configure their own APIs unless you
+          share workspace APIs with that login.
         </p>
       </div>
 
@@ -127,7 +148,8 @@ export function TeamAccessPanel() {
             <div>
               <h3 className="text-card font-semibold tracking-tight">Logins</h3>
               <p className="text-caption text-muted">
-                Create and revoke workspace accounts. Owners only.
+                Create logins and choose whether they inherit your workspace APIs.
+                Owners only.
               </p>
             </div>
           </div>
@@ -160,11 +182,31 @@ export function TeamAccessPanel() {
                       {row.email || "No email"} · added {formatDate(row.createdAt)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge tone={row.role === "admin" ? "purple" : "neutral"}>
                       {row.role === "admin" ? "Owner" : "Member"}
                     </Badge>
                     <Badge tone={statusTone(row.status)}>{row.status === "ACTIVE" ? "Active" : "Revoked"}</Badge>
+                    {row.role === "member" && row.status === "ACTIVE" ? (
+                      <label className="flex min-h-11 items-center gap-2 text-caption">
+                        <Switch
+                          checked={row.inheritWorkspaceApis}
+                          disabled={self || inherit.isPending}
+                          onCheckedChange={(checked) =>
+                            inherit.mutate({
+                              userId: row.userId,
+                              inheritWorkspaceApis: checked,
+                            })
+                          }
+                          aria-label={`Share workspace APIs with ${row.email || row.name}`}
+                        />
+                        <span className="max-w-[9.5rem] leading-tight text-muted">
+                          {row.inheritWorkspaceApis ? "Uses workspace APIs" : "Own APIs"}
+                        </span>
+                      </label>
+                    ) : row.role === "admin" ? (
+                      <span className="text-caption text-muted">Workspace APIs</span>
+                    ) : null}
                     {!self && row.status === "ACTIVE" ? (
                       <>
                         <Button
@@ -239,6 +281,26 @@ export function TeamAccessPanel() {
                 <option value="admin">Owner</option>
               </select>
             </div>
+            {role === "member" ? (
+              <label className="flex items-start gap-3 rounded-control bg-secondary-surface/50 px-3 py-3 sm:col-span-2">
+                <Switch
+                  checked={shareApis}
+                  onCheckedChange={setShareApis}
+                  aria-label="Share workspace APIs with this login"
+                />
+                <span className="text-caption leading-snug">
+                  <span className="font-medium text-fg">Share workspace APIs</span>
+                  <span className="mt-0.5 block text-muted">
+                    Off by default. Leave this off so {email.trim() || "this login"} configures
+                    their own keys. Turn it on only if they should use your APIs.
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="text-caption text-muted sm:col-span-2">
+                Owners always use workspace APIs.
+              </p>
+            )}
             <div className="sm:col-span-2">
               <Button type="submit" disabled={create.isPending}>
                 {create.isPending ? "Creating…" : "Create login"}
@@ -256,7 +318,8 @@ export function TeamAccessPanel() {
           <div>
             <h3 className="text-card font-semibold tracking-tight">Super Admin Access</h3>
             <p className="text-caption text-muted">
-              Password for the login-screen Super Admin button. Stored as a hash.
+              Password for the login-screen Super Admin button. It signs in as the
+              workspace owner (oveshen.govender@gmail.com). Stored as a hash.
               {statusQuery.data?.superAdminConfigured ? " A password is already set." : " Not set yet."}
             </p>
           </div>

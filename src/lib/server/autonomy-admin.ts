@@ -177,6 +177,12 @@ export const revokeAutonomyKey = createServerFn({ method: "POST" })
   .handler(async ({ context, data: id }) => {
     await requireAdmin(context.userId);
     await (await load_autonomy_auth()).revokeApiKey(id);
+    try {
+      const team = await import("@/lib/server/team.server");
+      await team.unlinkAutomationSeatsByTokenId(id);
+    } catch {
+      /* seats optional */
+    }
     return { ok: true as const };
   });
 
@@ -188,6 +194,12 @@ export const rotateAutonomyKey = createServerFn({ method: "POST" })
     const existing = (await (await load_autonomy_auth()).listApiKeyRows()).find((row) => row.id === id);
     if (!existing) throw new Error("KEY_MISSING");
     await (await load_autonomy_auth()).revokeApiKey(id);
+    try {
+      const team = await import("@/lib/server/team.server");
+      await team.unlinkAutomationSeatsByTokenId(id);
+    } catch {
+      /* seats optional */
+    }
     const plaintext = (await load_autonomy_auth()).generateApiKeyPlaintext();
     const key = await (await load_autonomy_auth()).insertApiKey({
       name: existing.name,
@@ -411,6 +423,15 @@ export const getAutonomyHealth = createServerFn({ method: "GET" })
         hasHermesKey: keys.filter((row) => !row.revokedAt).length > 0,
         keyLastUsedAt: keyUsed ?? null,
       }),
+      grokBot: await (async () => {
+        try {
+          const grok = await import("@/lib/server/grok-bot.server");
+          const snap = await grok.buildGrokBotSnapshot();
+          return { connection: snap.connection, queued: snap.queued, claimed: snap.claimed };
+        } catch {
+          return null;
+        }
+      })(),
       social,
     };
   });

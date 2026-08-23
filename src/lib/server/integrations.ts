@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { requireAdmin, getUserRole } from "@/lib/server/access";
+import { requireAdmin, getUserRole, getOperatorAccess, requireSecretEditor } from "@/lib/server/access";
 
 import {
   INTEGRATION_IDS,
@@ -158,7 +158,7 @@ function xCard(
 
 async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
   (await load_discord_agent()).ensureDiscordAgentLoop();
-  const [meta, llm, yt, hf, discord, notion, daytona, airwallex, first, sa, role, agent, xPub, linear, telegram, whatsapp] = await Promise.all([
+  const [meta, llm, yt, hf, discord, notion, daytona, airwallex, first, sa, role, access, discordAgentHealth, xPub, linear, telegram, whatsapp] = await Promise.all([
     readMeta(),
     import("@/lib/server/xai.server").then((mod) => mod.llmStatus()),
     youtubeKey(),
@@ -170,6 +170,7 @@ async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
     (await load_app_settings()).readAppSetting(FIRST_LAUNCH_KEY),
     (await load_app_settings()).readAppSetting("SUPER_ADMIN_PASSWORD_HASH"),
     getUserRole(userId),
+    getOperatorAccess(userId),
     (await load_discord_agent()).readDiscordAgentHealth(),
     import("@/lib/server/social-oauth.server")
       .then((mod) => mod.publisherStatusFor("x"))
@@ -286,8 +287,15 @@ async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
     firstLaunchCompleted: first === "1" || first === "true",
     superAdminConfigured: Boolean(sa),
     role,
-    discordAgent: agent,
+    inheritWorkspaceApis: access.inheritWorkspaceApis,
+    canEditIntegrations:
+      access.role === "admin" || (access.role === "member" && !access.inheritWorkspaceApis),
+    discordAgent: discordAgentHealth,
   };
+}
+
+export async function readIntegrationsSnapshot(userId: string): Promise<IntegrationsSnapshot> {
+  return buildSnapshot(userId);
 }
 
 export const getIntegrationsStatus = createServerFn({ method: "GET" })
@@ -312,7 +320,8 @@ export const saveIntegration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => SaveSchema.parse(input))
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    if (data.id === "airwallex") await requireAdmin(context.userId);
+    else await requireSecretEditor(context.userId);
     const values = data.values;
     if (data.id === "ai") {
       const key = (values.key ?? values.apiKey ?? "").trim();
@@ -404,7 +413,8 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((id: unknown) => z.enum(INTEGRATION_IDS).parse(id))
   .handler(async ({ context, data: id }) => {
-    await requireAdmin(context.userId);
+    if (id === "airwallex") await requireAdmin(context.userId);
+    else await requireSecretEditor(context.userId);
     if (id === "ai") {
       await (await load_app_settings()).deleteAppSetting("XAI_API_KEY");
       await (await load_app_settings()).deleteAppSetting("AI_API_KEY");
@@ -529,7 +539,8 @@ export const testIntegration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((id: unknown) => z.enum(INTEGRATION_IDS).parse(id))
   .handler(async ({ context, data: id }) => {
-    await requireAdmin(context.userId);
+    if (id === "airwallex") await requireAdmin(context.userId);
+    else await requireSecretEditor(context.userId);
     const stamp = `${context.userId}:${id}`;
     const last = testLock.get(stamp) ?? 0;
     if (Date.now() - last < 4000) throw new Error("AI_RATE_LIMIT");

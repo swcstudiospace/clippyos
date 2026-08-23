@@ -52,5 +52,8 @@ export const authMiddleware = createMiddleware({ type: "function" })
     } catch (error) {
       if (error instanceof Error && error.name === "ForbiddenError") throw error;
     }
-    return next({ context: { userId } });
+    const { getOperatorAccess } = await import("@/lib/server/access");
+    const { runWithSecretScope } = await import("@/lib/server/secret-scope.server");
+    const scope = await getOperatorAccess(userId);
+    return runWithSecretScope(scope, () => next({ context: { userId } }));
   });

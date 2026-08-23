@@ -54,6 +54,7 @@ import {
   type YoutubeJobOptions,
 } from "@/lib/social";
 import type { SocialPreferredRail } from "@/lib/publishers";
+import { parsePreferredRail } from "@/lib/publishers";
 import {
   isTrustedMediaUrl,
   listPublisherStatuses,
@@ -61,7 +62,9 @@ import {
   publishViaApi,
   resolveRail,
   sourceFromProvider,
+  type RailComputer,
 } from "@/lib/server/social-publish.server";
+
 
 function asPlatform(value: unknown): SocialPlatform | null {
   return SOCIAL_PLATFORMS.includes(value as SocialPlatform)
@@ -75,6 +78,137 @@ function emitSocial(type: WebhookEventType, entityType: string, entityId: string
     .then((mod) => mod.onSocialEvent(type, entityType, entityId, data))
     .catch(() => {});
 }
+
+type RailPlan = {
+  rails: Map<SocialPlatform, "API" | "BROWSER">;
+  computers: Map<SocialPlatform, RailComputer>;
+  grokConnected: boolean;
+  grokPrefer: boolean;
+  fallbackToDaytona: boolean;
+  machine: Awaited<ReturnType<typeof getSocialMachineStatus>>;
+};
+
+async function planRails(input: {
+  platforms: SocialPlatform[];
+  preferredRail: SocialPreferredRail;
+  fallbackToBrowser: boolean;
+  mode: SocialUploadMode;
+}): Promise<RailPlan> {
+  const grokMod = await import("@/lib/server/grok-bot.server");
+  const [machine, publishers, grokConnected, grokPrefer, grokConfig] = await Promise.all([
+    getSocialMachineStatus(),
+    listPublisherStatuses(),
+    grokMod.grokBotIsConnected(),
+    grokMod.grokBotShouldTakeComputer(),
+    grokMod.readGrokBotConfig(),
+  ]);
+  const fallbackToDaytona = grokConfig.fallbackToDaytona !== false;
+  const rails = new Map<SocialPlatform, "API" | "BROWSER">();
+  const computers = new Map<SocialPlatform, RailComputer>();
+  for (const platform of input.platforms) {
+    try {
+      const resolved = await resolveRail({
+        platform,
+        preferred: input.preferredRail,
+        fallbackToBrowser: input.fallbackToBrowser,
+        daytonaConfigured: machine.configured,
+        machineRunning: machine.state === "running",
+        mode: input.mode,
+        grokBotConnected: grokConnected,
+        grokBotPrefer: grokPrefer,
+        fallbackToDaytona,
+      });
+      rails.set(platform, resolved.rail);
+      computers.set(platform, resolved.computer);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "NO_PUBLISH_RAIL";
+      if (input.preferredRail === "API") {
+        throw new Error(code === "PUBLISHER_NOT_ELIGIBLE" ? code : "PUBLISHER_NOT_ELIGIBLE");
+      }
+      if (input.preferredRail === "GROK_BOT" && !grokConnected && !(fallbackToDaytona && machine.configured)) {
+        throw new Error("GROK_BOT_NOT_CONNECTED");
+      }
+      if (grokConnected && (grokPrefer || !machine.configured || input.preferredRail === "GROK_BOT")) {
+        rails.set(platform, "BROWSER");
+        computers.set(platform, "grok_bot");
+      } else if (machine.configured) {
+        rails.set(platform, "BROWSER");
+        computers.set(platform, "daytona");
+      } else if (publishers[platform].eligible) {
+        rails.set(platform, "API");
+        computers.set(platform, null);
+      } else {
+        throw new Error(
+          code === "DAYTONA_UNAVAILABLE" || code === "GROK_BOT_NOT_CONNECTED" ? "NO_PUBLISH_RAIL" : code,
+        );
+      }
+    }
+  }
+  return { rails, computers, grokConnected, grokPrefer, fallbackToDaytona, machine };
+}
+
+async function enqueueGrokBotSocialJob(input: {
+  actorId: string;
+  jobId: string;
+  clientId: string;
+  clientName: string;
+  platforms: SocialPlatform[];
+  caption: string | null;
+  mediaUrl: string | null;
+  assetId: string | null;
+  mode: SocialUploadMode;
+  existingPosts?: SocialPost[];
+}): Promise<void> {
+  const grok = await import("@/lib/server/grok-bot.server");
+  const stamp = socialNowIso();
+  for (const platform of input.platforms) {
+    const existing = input.existingPosts?.find((row) => row.platform === platform);
+    const id = existing?.id ?? socialNewId();
+    if (!existing) {
+      await insertSocialPost({
+        id,
+        client_id: input.clientId,
+        platform,
+        status: "queued",
+        content_ref: input.assetId,
+        media_url: input.mediaUrl,
+        caption: input.caption,
+        external_url: null,
+        screenshot_url: null,
+        source: "GROK_BOT",
+        attention_reason: "Queued for the Grok Bot computer.",
+        job_id: input.jobId,
+        rail: "BROWSER",
+        external_post_id: null,
+        created_at: stamp,
+        updated_at: stamp,
+        created_by: input.actorId,
+      });
+    } else {
+      await patchSocialPost(id, {
+        status: "queued",
+        source: "GROK_BOT",
+        rail: "BROWSER",
+        attention_reason: "Queued for the Grok Bot computer.",
+      });
+    }
+  }
+  await grok.enqueueGrokBotWork({
+    kind: "social_upload",
+    title: `Upload ${input.clientName} · ${input.platforms.join(", ")}`,
+    brief: `Upload this clip on YOUR computer (not Daytona). Platforms: ${input.platforms.join(", ")}. Mode: ${input.mode}. Caption:\n${input.caption ?? ""}\nMedia: ${input.mediaUrl ?? "(none)"}\nJob ${input.jobId}. After posting, grokbot.complete_work with posts: [{ platform, status, externalUrl }]. If a site needs login, complete_work ok=false error=needs_login.`,
+    payload: {
+      jobId: input.jobId,
+      clientId: input.clientId,
+      platforms: input.platforms,
+      caption: input.caption,
+      mediaUrl: input.mediaUrl,
+      assetId: input.assetId,
+      mode: input.mode,
+    },
+  });
+}
+
 
 function deriveJobStatus(posts: SocialPost[]): SocialJobView["status"] {
   if (posts.length === 0) return "queued";
@@ -530,6 +664,8 @@ async function runPlatformsForJob(input: {
           daytonaConfigured: machine.configured,
           machineRunning: machine.state === "running",
           mode: input.mode,
+          grokBotConnected: false,
+          grokBotPrefer: false,
         });
         rail = resolved.rail;
       } catch {
@@ -1070,43 +1206,22 @@ export async function createUploadJobInternal(input: {
   let platforms = input.platforms.filter((platform) => SOCIAL_PLATFORMS.includes(platform));
   if (platforms.length === 0) throw new Error("VALIDATION");
 
-  const [machine, publishers, sessions] = await Promise.all([
-    getSocialMachineStatus(),
-    listPublisherStatuses(),
-    readSessions(),
-  ]);
-
-  const rails = new Map<SocialPlatform, "API" | "BROWSER">();
-  for (const platform of platforms) {
-    try {
-      const resolved = await resolveRail({
-        platform,
-        preferred: preferredRail,
-        fallbackToBrowser,
-        daytonaConfigured: machine.configured,
-        machineRunning: machine.state === "running",
-        mode,
-      });
-      rails.set(platform, resolved.rail);
-    } catch (error) {
-      const code = error instanceof Error ? error.message : "NO_PUBLISH_RAIL";
-      if (preferredRail === "API") throw new Error(code === "PUBLISHER_NOT_ELIGIBLE" ? code : "PUBLISHER_NOT_ELIGIBLE");
-      if (machine.configured) rails.set(platform, "BROWSER");
-      else if (publishers[platform].eligible) rails.set(platform, "API");
-      else throw new Error(code === "DAYTONA_UNAVAILABLE" ? "NO_PUBLISH_RAIL" : code);
-    }
-  }
+  const sessions = await readSessions();
+  const plan = await planRails({ platforms, preferredRail, fallbackToBrowser, mode });
+  const { rails, computers, machine } = plan;
 
   if (requireLoggedIn) {
     const blocked = platforms.filter(
-      (platform) => rails.get(platform) === "BROWSER" && sessions[platform] === "not_logged_in",
+      (platform) => computers.get(platform) === "daytona" && sessions[platform] === "not_logged_in",
     );
     platforms = platforms.filter((platform) => !blocked.includes(platform));
     if (platforms.length === 0) throw new Error("PLATFORM_NEEDS_LOGIN");
   }
 
-  const needsBrowser = platforms.some((platform) => rails.get(platform) === "BROWSER");
-  const apiEligible = platforms.some((platform) => rails.get(platform) === "API");
+  const grokPlatforms = () => platforms.filter((platform) => computers.get(platform) === "grok_bot");
+  let localPlatforms = platforms.filter((platform) => computers.get(platform) !== "grok_bot");
+  const needsDaytona = () => localPlatforms.some((platform) => computers.get(platform) === "daytona");
+  const apiEligible = () => localPlatforms.some((platform) => rails.get(platform) === "API");
 
   if (mode === "publish") {
     const { readApprovalPolicy } = await import("@/lib/server/approvals.server");
@@ -1181,22 +1296,29 @@ export async function createUploadJobInternal(input: {
     }
   }
 
-  if (needsBrowser && !machine.configured) {
-    if (apiEligible) {
-      platforms = platforms.filter((platform) => rails.get(platform) === "API");
-    } else {
+  if (needsDaytona() && !machine.configured) {
+    if (apiEligible()) {
+      localPlatforms = localPlatforms.filter((platform) => rails.get(platform) === "API");
+    } else if (grokPlatforms().length === 0) {
       throw new Error("DAYTONA_UNAVAILABLE");
+    } else {
+      localPlatforms = [];
+    }
+    platforms = [...grokPlatforms(), ...localPlatforms];
+  }
+
+  if (needsDaytona() && machine.state !== "running" && machine.state !== "starting") {
+    if (allowAutoStart && machine.configured) {
+      await startSocialMachine();
+    } else if (!apiEligible() && grokPlatforms().length === 0) {
+      throw new Error("MACHINE_STOPPED");
+    } else if (!apiEligible()) {
+      localPlatforms = localPlatforms.filter((platform) => rails.get(platform) === "API");
+      platforms = [...grokPlatforms(), ...localPlatforms];
     }
   }
 
-  const stillNeedsBrowser = platforms.some((platform) => rails.get(platform) === "BROWSER");
-  if (stillNeedsBrowser && machine.state !== "running" && machine.state !== "starting") {
-    if (allowAutoStart && machine.configured) {
-      await startSocialMachine();
-    } else if (!apiEligible) {
-      throw new Error("MACHINE_STOPPED");
-    }
-  }
+  if (platforms.length === 0) throw new Error("NO_PUBLISH_RAIL");
 
   const id = socialNewId();
   const stamp = socialNowIso();
@@ -1231,21 +1353,38 @@ export async function createUploadJobInternal(input: {
   });
   await writeAuditStart(input.actorId, id, platforms);
 
-  await runPlatformsForJob({
-    actorId: input.actorId,
-    jobId: id,
-    clientId: input.clientId,
-    clientName: client.name,
-    platforms,
-    caption: caption || null,
-    mediaUrl,
-    assetId: libraryAssetId ?? asset?.id ?? null,
-    preferredRail,
-    fallbackToBrowser,
-    mode,
-    youtube,
-    mediaMeta,
-  });
+  const grokNow = grokPlatforms();
+  if (grokNow.length) {
+    await enqueueGrokBotSocialJob({
+      actorId: input.actorId,
+      jobId: id,
+      clientId: input.clientId,
+      clientName: client.name,
+      platforms: grokNow,
+      caption: caption || null,
+      mediaUrl,
+      assetId: libraryAssetId ?? asset?.id ?? null,
+      mode,
+    });
+  }
+
+  if (localPlatforms.length) {
+    await runPlatformsForJob({
+      actorId: input.actorId,
+      jobId: id,
+      clientId: input.clientId,
+      clientName: client.name,
+      platforms: localPlatforms,
+      caption: caption || null,
+      mediaUrl,
+      assetId: libraryAssetId ?? asset?.id ?? null,
+      preferredRail,
+      fallbackToBrowser,
+      mode,
+      youtube,
+      mediaMeta,
+    });
+  }
 
   const view = await jobView(id);
   if (!view) throw new Error("JOB_MISSING");
@@ -1278,46 +1417,50 @@ export async function resumeUploadJobAfterApproval(input: {
   const clientName =
     typeof input.payload.clientName === "string" ? input.payload.clientName : view.clientId;
 
-  const machine = await getSocialMachineStatus();
-  let needsBrowser = false;
-  for (const platform of platforms) {
-    try {
-      const resolved = await resolveRail({
-        platform,
-        preferred: preferredRail,
-        fallbackToBrowser,
-        daytonaConfigured: machine.configured,
-        machineRunning: machine.state === "running",
-        mode,
-      });
-      if (resolved.rail === "BROWSER") needsBrowser = true;
-    } catch {
-      if (machine.configured) needsBrowser = true;
-    }
-  }
-  if (needsBrowser && machine.state !== "running" && machine.state !== "starting") {
+  const plan = await planRails({ platforms, preferredRail, fallbackToBrowser, mode });
+  const grokPlatforms = platforms.filter((platform) => plan.computers.get(platform) === "grok_bot");
+  let localPlatforms = platforms.filter((platform) => plan.computers.get(platform) !== "grok_bot");
+  const needsDaytona = localPlatforms.some((platform) => plan.computers.get(platform) === "daytona");
+  if (needsDaytona && plan.machine.state !== "running" && plan.machine.state !== "starting") {
     const policies = await readPlaybookPolicies();
-    if (policies.socialAutoStartForUpload && machine.configured) {
+    if (policies.socialAutoStartForUpload && plan.machine.configured) {
       await startSocialMachine();
+    } else {
+      localPlatforms = localPlatforms.filter((platform) => plan.rails.get(platform) === "API");
     }
   }
 
   await patchSocialJob(view.id, { status: "running", error_code: null });
   await writeAuditStart(input.actorId, view.id, platforms);
-  await runPlatformsForJob({
-    actorId: input.actorId,
-    jobId: view.id,
-    clientId: view.clientId,
-    clientName,
-    platforms,
-    caption,
-    mediaUrl,
-    assetId,
-    preferredRail,
-    fallbackToBrowser,
-    mode,
-    youtube,
-  });
+  if (grokPlatforms.length) {
+    await enqueueGrokBotSocialJob({
+      actorId: input.actorId,
+      jobId: view.id,
+      clientId: view.clientId,
+      clientName,
+      platforms: grokPlatforms,
+      caption,
+      mediaUrl,
+      assetId,
+      mode,
+    });
+  }
+  if (localPlatforms.length) {
+    await runPlatformsForJob({
+      actorId: input.actorId,
+      jobId: view.id,
+      clientId: view.clientId,
+      clientName,
+      platforms: localPlatforms,
+      caption,
+      mediaUrl,
+      assetId,
+      preferredRail,
+      fallbackToBrowser,
+      mode,
+      youtube,
+    });
+  }
   const next = await jobView(view.id);
   if (!next) throw new Error("JOB_MISSING");
   return rollupJob(next);
@@ -1372,27 +1515,21 @@ export async function socialRetryUploadJob(input: { actorId: string; jobId: stri
   if (failed.length === 0) return rollupJob(view);
   const preferredRail = view.preferredRail ?? "AUTO";
   const fallbackToBrowser = view.fallbackToBrowser ?? preferredRail !== "API";
-  const machine = await getSocialMachineStatus();
-  let needsBrowser = false;
-  for (const post of failed) {
-    try {
-      const resolved = await resolveRail({
-        platform: post.platform,
-        preferred: preferredRail,
-        fallbackToBrowser,
-        daytonaConfigured: machine.configured,
-        machineRunning: machine.state === "running",
-        mode: view.mode,
-      });
-      if (resolved.rail === "BROWSER") needsBrowser = true;
-    } catch {
-      if (machine.configured) needsBrowser = true;
-    }
-  }
-  if (needsBrowser && machine.state !== "running" && machine.state !== "starting") {
-    if (!policies.socialAutoStartForUpload || !machine.configured) {
-      const anyApi = failed.some((post) => post.rail === "API" || preferredRail === "API" || preferredRail === "AUTO");
-      if (!anyApi || preferredRail === "BROWSER") throw new Error("MACHINE_STOPPED");
+  const failedPlatforms = failed.map((post) => post.platform);
+  const plan = await planRails({
+    platforms: failedPlatforms,
+    preferredRail,
+    fallbackToBrowser,
+    mode: view.mode,
+  });
+  const grokPlatforms = failedPlatforms.filter((platform) => plan.computers.get(platform) === "grok_bot");
+  let localPlatforms = failedPlatforms.filter((platform) => plan.computers.get(platform) !== "grok_bot");
+  const needsDaytona = localPlatforms.some((platform) => plan.computers.get(platform) === "daytona");
+  if (needsDaytona && plan.machine.state !== "running" && plan.machine.state !== "starting") {
+    if (!policies.socialAutoStartForUpload || !plan.machine.configured) {
+      const anyApi = localPlatforms.some((platform) => plan.rails.get(platform) === "API");
+      if (!anyApi && grokPlatforms.length === 0) throw new Error("MACHINE_STOPPED");
+      localPlatforms = localPlatforms.filter((platform) => plan.rails.get(platform) === "API");
     } else {
       await startSocialMachine();
     }
@@ -1400,21 +1537,37 @@ export async function socialRetryUploadJob(input: { actorId: string; jobId: stri
   const clients = await readClients();
   const client = clients.find((row) => row.id === view.clientId);
   await patchSocialJob(view.id, { status: "running", error_code: null });
-  await runPlatformsForJob({
-    actorId: input.actorId,
-    jobId: view.id,
-    clientId: view.clientId,
-    clientName: client?.name ?? view.clientId,
-    platforms: failed.map((post) => post.platform),
-    caption: view.caption,
-    mediaUrl: failed[0]?.mediaUrl ?? null,
-    assetId: view.assetId,
-    existingPosts: failed,
-    preferredRail,
-    fallbackToBrowser,
-    mode: view.mode,
-    youtube: view.youtube,
-  });
+  if (grokPlatforms.length) {
+    await enqueueGrokBotSocialJob({
+      actorId: input.actorId,
+      jobId: view.id,
+      clientId: view.clientId,
+      clientName: client?.name ?? view.clientId,
+      platforms: grokPlatforms,
+      caption: view.caption,
+      mediaUrl: failed[0]?.mediaUrl ?? null,
+      assetId: view.assetId,
+      mode: view.mode,
+      existingPosts: failed.filter((post) => grokPlatforms.includes(post.platform)),
+    });
+  }
+  if (localPlatforms.length) {
+    await runPlatformsForJob({
+      actorId: input.actorId,
+      jobId: view.id,
+      clientId: view.clientId,
+      clientName: client?.name ?? view.clientId,
+      platforms: localPlatforms,
+      caption: view.caption,
+      mediaUrl: failed[0]?.mediaUrl ?? null,
+      assetId: view.assetId,
+      existingPosts: failed.filter((post) => localPlatforms.includes(post.platform)),
+      preferredRail,
+      fallbackToBrowser,
+      mode: view.mode,
+      youtube: view.youtube,
+    });
+  }
   const next = await jobView(view.id);
   if (!next) throw new Error("JOB_MISSING");
   return rollupJob(next);
@@ -1426,6 +1579,12 @@ export async function socialCancelUploadJob(input: { actorId: string; jobId: str
   if (view.status === "succeeded" || view.status === "cancelled") return rollupJob(view);
   const { cancelChunkedUploadsForJob } = await import("@/lib/server/chunked-upload.server");
   await cancelChunkedUploadsForJob(input.jobId);
+  try {
+    const grok = await import("@/lib/server/grok-bot.server");
+    await grok.cancelGrokBotWorkByPayload("jobId", view.id);
+  } catch {
+    /* optional */
+  }
   for (const post of view.posts) {
     if (post.status === "queued" || post.status === "running") {
       await patchSocialPost(post.id, {
@@ -1509,8 +1668,7 @@ function platformsFrom(payload: Record<string, unknown>): SocialPlatform[] {
 }
 
 function preferredRailFrom(payload: Record<string, unknown>): SocialPreferredRail {
-  const raw = payload.preferredRail ?? payload.preferred_rail;
-  return raw === "API" || raw === "BROWSER" ? raw : "AUTO";
+  return parsePreferredRail(payload.preferredRail ?? payload.preferred_rail);
 }
 
 export async function handleSocialAction(
@@ -1568,7 +1726,12 @@ export async function handleSocialAction(
       return socialResolveAsset({ clientId, assetId });
     }
     case "social.create_upload_job": {
-      const clientId = String(payload.clientId ?? "");
+      let clientId = String(payload.clientId ?? "");
+      if (!clientId && typeof payload.mediaAssetId === "string") {
+        const { getAsset } = await import("@/lib/server/library.server");
+        const asset = await getAsset(payload.mediaAssetId);
+        clientId = asset?.clientId ?? "";
+      }
       const platforms = platformsFrom(payload);
       if (!clientId || platforms.length === 0) throw new Error("VALIDATION");
       const policies = await readPlaybookPolicies();

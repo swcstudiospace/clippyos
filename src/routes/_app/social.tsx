@@ -31,6 +31,8 @@ import { userFacingErrorMessage } from "@/lib/errors";
 import { SOCIAL_PLATFORMS, type SocialPlatform, type SocialPostStatus } from "@/lib/entities";
 import type { PlatformSessionState, YoutubeJobOptions } from "@/lib/social";
 import type { SocialPreferredRail } from "@/lib/publishers";
+import { GROK_BOT_QUERY_KEY } from "@/lib/grok-bot";
+import { getGrokBotStatusFn } from "@/lib/server/grok-bot-fns";
 
 export const Route = createFileRoute("/_app/social")({
   component: SocialPage,
@@ -48,6 +50,10 @@ function SocialPage() {
     );
   }, [search.platform, search.platforms]);
   const [uploadOpen, setUploadOpen] = useState(Boolean(mediaAssetId));
+  const grokQuery = useQuery({
+    queryKey: GROK_BOT_QUERY_KEY,
+    queryFn: () => getGrokBotStatusFn(),
+  });
   const query = useQuery({
     queryKey: SOCIAL_QUERY_KEY,
     queryFn: () => getSocialSnapshot(),
@@ -190,10 +196,10 @@ function SocialPage() {
         description="On-demand posting to Instagram, X, and TikTok. Native APIs when connected; the machine stays off until you start it."
       />
 
-      {!snapshot.machine.configured ? (
+      {!snapshot.machine.configured && !grokQuery.data?.hasKey ? (
         <AIFallbackPanel
           integration="daytona"
-          title="Connect Daytona for Computer Use — or connect publisher APIs in Settings to post without the machine"
+          title="Connect Daytona for Computer Use — or connect publisher APIs / Grok Bot in Settings to post without the machine"
         />
       ) : null}
 
@@ -229,6 +235,7 @@ function SocialPage() {
           publishers={snapshot.publishers}
           machineState={snapshot.machine.state}
           configured={snapshot.machine.configured}
+          grokBotConnected={Boolean(grokQuery.data?.hasKey && grokQuery.data.enabled)}
           pending={upload.isPending}
           initialMediaAssetId={mediaAssetId}
           initialPlatforms={initialPlatforms}
@@ -274,6 +281,7 @@ function SocialPage() {
               publishers={snapshot.publishers}
               machineState={snapshot.machine.state}
               configured={snapshot.machine.configured}
+              grokBotConnected={Boolean(grokQuery.data?.hasKey && grokQuery.data.enabled)}
               pending={upload.isPending}
               initialMediaAssetId={mediaAssetId}
               onUpload={(input) => upload.mutate(input)}

@@ -548,3 +548,86 @@ export async function sweepStalePublishedPosts(): Promise<number> {
   }
   return n;
 }
+
+export type PerformanceQueueRow = {
+  id: string;
+  socialPostId: string | null;
+  externalPostId: string;
+  platform: PerformancePlatform;
+  window: PerformanceWindow;
+  runAt: string;
+  status: "PENDING" | "DONE" | "FAILED";
+  attempts: number;
+  lastError: string | null;
+  createdAt: string;
+};
+
+function mapQueueRow(rec: Record<string, unknown>): PerformanceQueueRow {
+  const statusRaw = String(rec.status ?? "PENDING");
+  const status: PerformanceQueueRow["status"] =
+    statusRaw === "DONE" || statusRaw === "FAILED" ? statusRaw : "PENDING";
+  return {
+    id: String(rec.id ?? ""),
+    socialPostId: rec.social_post_id ? String(rec.social_post_id) : null,
+    externalPostId: String(rec.external_post_id ?? ""),
+    platform: String(rec.platform ?? "OTHER") as PerformancePlatform,
+    window: String(rec.window ?? "LIFETIME") as PerformanceWindow,
+    runAt: String(rec.run_at ?? rec.created_at ?? nowIso()),
+    status,
+    attempts: Number(rec.attempts ?? 0) || 0,
+    lastError: rec.last_error ? String(rec.last_error) : null,
+    createdAt: String(rec.created_at ?? nowIso()),
+  };
+}
+
+export async function listRecentPerformanceQueue(limit = 40): Promise<PerformanceQueueRow[]> {
+  await ensurePerformanceSchema();
+  const cap = Math.min(Math.max(limit, 1), 80);
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    const { data, error } = await admin
+      .from("performance_fetch_queue")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(cap);
+    if (!error) return (data ?? []).map((row) => mapQueueRow(row as Record<string, unknown>));
+    if (!isMissingTable(error)) return [];
+  }
+  try {
+    const sql = await localSql();
+    const rows = await sql.query<Record<string, unknown>>(
+      "select * from performance_fetch_queue order by created_at desc limit $1",
+      [cap],
+    );
+    return rows.map(mapQueueRow);
+  } catch {
+    return [];
+  }
+}
+
+export async function retryPerformanceFetch(id: string): Promise<PerformanceQueueRow> {
+  await ensurePerformanceSchema();
+  const rows = await listRecentPerformanceQueue(80);
+  const hit = rows.find((row) => row.id === id);
+  if (!hit) throw new Error("JOB_MISSING");
+  const stamp = nowIso();
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    const { error } = await admin
+      .from("performance_fetch_queue")
+      .update({ status: "PENDING", last_error: null, run_at: stamp })
+      .eq("id", id);
+    if (error && !isMissingTable(error)) throw new Error("DATA_UNAVAILABLE");
+  }
+  try {
+    const sql = await localSql();
+    await sql.query(
+      "update performance_fetch_queue set status = 'PENDING', last_error = null, run_at = $2 where id = $1",
+      [id, stamp],
+    );
+  } catch {
+    /* remote path may have already applied */
+  }
+  void sweepDuePerformanceFetches(4).catch(() => {});
+  return { ...hit, status: "PENDING", lastError: null, runAt: stamp };
+}

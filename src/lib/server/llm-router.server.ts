@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
-import { requireAdmin } from "@/lib/server/access";
+import { requireAdmin, requireSecretEditor } from "@/lib/server/access";
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import {
   DEFAULT_LLM_ROUTER,
@@ -213,7 +213,7 @@ export const saveLlmApiKey = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const setting = data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY";
     await writeAppSetting(setting, data.key);
     return { ok: true as const };
@@ -225,7 +225,7 @@ export const disconnectLlmProvider = createServerFn({ method: "POST" })
     z.object({ provider: z.enum(["xai-api", "openai-compat"]) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const { deleteAppSetting } = await import("@/lib/server/app-settings.server");
     await deleteAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY");
     return { ok: true as const };
@@ -237,7 +237,7 @@ export const testLlmProvider = createServerFn({ method: "POST" })
     z.object({ provider: z.enum(LLM_PROVIDER_IDS) }).parse(input),
   )
   .handler(async ({ context, data }) => {
-    await requireAdmin(context.userId);
+    await requireSecretEditor(context.userId);
     const router = await readLlmRouter();
     const { message } = await xaiChat({
       messages: [{ role: "user", content: "Reply with the single word pong." }],

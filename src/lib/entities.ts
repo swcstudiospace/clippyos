@@ -12,13 +12,39 @@ export type PaymentType = (typeof PAYMENT_TYPES)[number];
 export const PAYMENT_STATUSES = ["PENDING", "PAID", "OVERDUE"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
-export const TEAM_ROLES = [
+export const HUMAN_ROLES = [
   "CHANNEL_MANAGER",
   "SHORT_FORM_EDITOR",
   "LONG_FORM_EDITOR",
   "THUMBNAIL_DESIGNER",
 ] as const;
+export type HumanRole = (typeof HUMAN_ROLES)[number];
+
+export const TEAM_ROLES = [
+  "CHANNEL_MANAGER",
+  "SHORT_FORM_EDITOR",
+  "LONG_FORM_EDITOR",
+  "THUMBNAIL_DESIGNER",
+  "AUTOMATION",
+] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
+
+export const AUTOMATION_KINDS = ["GROK_BOT", "HERMES_WORKER", "OTHER"] as const;
+export type AutomationKind = (typeof AUTOMATION_KINDS)[number];
+
+export const BOT_ROLE_KEYS = [
+  "CLIPPY_OPS",
+  "PUBLISH_DESK",
+  "CLIENT_SUCCESS",
+  "ENG_BOT",
+  "LEARNING_BOT",
+  "REVENUE_OPS",
+  "CUSTOM",
+] as const;
+export type BotRoleKey = (typeof BOT_ROLE_KEYS)[number];
+
+export const AUTOMATION_RUNTIME_HINTS = ["HERMES", "GROK_BOT", "AUTO"] as const;
+export type AutomationRuntimeHint = (typeof AUTOMATION_RUNTIME_HINTS)[number];
 
 export const PROGRESS_STAGES = [
   "WAITING_FOR_FOOTAGE",
@@ -77,7 +103,7 @@ export const SOCIAL_POST_STATUSES = [
 ] as const;
 export type SocialPostStatus = (typeof SOCIAL_POST_STATUSES)[number];
 
-export const SOCIAL_POST_SOURCES = ["DAYTONA", "X", "TIKTOK", "INSTAGRAM", "YOUTUBE"] as const;
+export const SOCIAL_POST_SOURCES = ["DAYTONA", "GROK_BOT", "X", "TIKTOK", "INSTAGRAM", "YOUTUBE"] as const;
 export type SocialPostSource = (typeof SOCIAL_POST_SOURCES)[number];
 
 export type SocialPost = AuditFields & {
@@ -171,10 +197,20 @@ export type Payment = AuditFields & {
 
 export type TeamMember = AuditFields &
   SoftDelete & {
-    clientId: string;
+    clientId: string | null;
     role: TeamRole;
     name: string;
     cost: string | null;
+    isAutomation: boolean;
+    automationKind: AutomationKind | null;
+    botLabel: string | null;
+    botRoleKey: BotRoleKey | null;
+    mcpTokenId: string | null;
+    mcpTokenLabel: string | null;
+    runtimeHint: AutomationRuntimeHint | null;
+    isActive: boolean;
+    notes: string | null;
+    assignedClientIds: string[];
   };
 
 export type ClientProgress = AuditFields & {
