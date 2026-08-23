@@ -211,10 +211,10 @@ test("linear exhausted retries map to FAILED; retry scope is write-scoped", () =
 });
 
 test("sanitizeHealthError never leaks bearer or MCP tokens", () => {
-  const raw = "Bearer abcdefghijklmnop failed; token cos_mcp_secretvalue123 agk_alsoasecret";
+  const raw = "Bearer abcdefghijklmnop failed; token cos_mcp_secretvalue123 agk_alsoasecret cos_oa_oauthsecret";
   const cleaned = sanitizeHealthError(raw) ?? "";
   assert.equal(cleaned.includes("cos_mcp_secretvalue123"), false);
-  assert.equal(cleaned.includes("agk_alsoasecret"), false);
+  assert.equal(cleaned.includes("cos_oa_oauthsecret"), false);
   assert.equal(cleaned.includes("abcdefghijklmnop"), false);
   assert.match(cleaned, /\[redacted\]/);
 });

@@ -51,6 +51,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { publishedMcpEndpoints } from "@/lib/app-hosts";
 
 function origin(): string {
   if (typeof window === "undefined") return "";
@@ -161,7 +162,9 @@ export function AutomationPanel() {
 
   const base = origin();
   const apiBase = `${base}/api/v1`;
-  const mcpUrl = `${base}/api/mcp`;
+  const endpoints = publishedMcpEndpoints();
+  const mcpUrl = endpoints.canonical;
+  const mcpAliasUrl = endpoints.alias;
   const webhookUrl = `${base}/api/webhooks/inbound`;
 
   const data = snap.data;
@@ -670,7 +673,8 @@ export function AutomationPanel() {
           </div>
         </div>
         <div className="mt-4 flex flex-col gap-3">
-          <CopyRow label="MCP endpoint" value={mcpUrl} />
+          <CopyRow label="MCP endpoint · os.swcstudio.space" value={mcpUrl} />
+          <CopyRow label="MCP endpoint · clippyos.grok.me" value={mcpAliasUrl} />
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={data.mcpConfigured ? "green" : "neutral"}>
               {data.mcpConfigured ? "Token issued" : "Not configured"}

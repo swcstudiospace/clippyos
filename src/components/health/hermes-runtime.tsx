@@ -45,7 +45,7 @@ export function HermesRuntimeCard({ runtime }: { runtime: HealthHermesRuntime })
           {runtime.pastedIntoHermes ? "Playbook pasted" : "Playbook not pasted"}
         </Badge>
         <Badge tone={runtime.mcpConfigured ? "green" : "neutral"}>
-          {runtime.mcpConfigured ? `MCP …${runtime.mcpLast4 ?? "ok"}` : "MCP not minted"}
+          {runtime.mcpConfigured ? `MCP …${runtime.mcpLast4 ?? "ok"}` : "MCP not connected"}
         </Badge>
         {runtime.grokBot ? (
           <Badge tone={runtime.grokBot.connection === "online" || runtime.grokBot.connection === "working" ? "green" : "neutral"}>

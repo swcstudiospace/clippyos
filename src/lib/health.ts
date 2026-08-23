@@ -212,6 +212,9 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /xai-[a-zA-Z0-9_-]+/gi,
   /ghp_[a-zA-Z0-9]+/gi,
   /cos_mcp_[a-zA-Z0-9]+/gi,
+  /cos_oa_[a-zA-Z0-9]+/gi,
+  /cos_rt_[a-zA-Z0-9]+/gi,
+  /cos_ac_[a-zA-Z0-9]+/gi,
   /agk_[a-zA-Z0-9]+/gi,
   /Bearer\s+[A-Za-z0-9._-]+/gi,
   /Bot\s+[A-Za-z0-9._-]+/gi,
@@ -517,7 +520,7 @@ export function deriveHealthBanner(input: {
     return { severity: "critical", title: "All social rails are down — connect a publisher or Daytona." };
   }
   if (mcpFailing) {
-    return { severity: "critical", title: "MCP is not authenticated — mint a token in Settings." };
+    return { severity: "critical", title: "MCP is not authenticated — connect Grok with OAuth or mint a Hermes key in Settings." };
   }
   const errors = input.integrations.filter((row) => row.tone === "error");
   if (errors.length) {

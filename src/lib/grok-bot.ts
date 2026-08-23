@@ -5,6 +5,7 @@ export const GROK_BOT_QUERY_KEY = ["grok-bot"] as const;
 export const GROK_BOT_CONNECTION_STATES = [
   "not_connected",
   "key_only",
+  "oauth_ready",
   "waiting",
   "online",
   "working",
@@ -14,6 +15,7 @@ export type GrokBotConnectionState = (typeof GROK_BOT_CONNECTION_STATES)[number]
 export const GROK_BOT_CONNECTION_LABELS: Record<GrokBotConnectionState, string> = {
   not_connected: "Not connected",
   key_only: "Key ready",
+  oauth_ready: "OAuth connected",
   waiting: "Waiting for Bot",
   online: "Online",
   working: "Working",
@@ -54,6 +56,7 @@ export type GrokBotSnapshot = {
   botName: string;
   connection: GrokBotConnectionState;
   hasKey: boolean;
+  hasOAuth: boolean;
   keyLast4: string | null;
   keyLastUsedAt: string | null;
   pastedConnectorAt: string | null;
@@ -62,6 +65,7 @@ export type GrokBotSnapshot = {
   claimed: number;
   work: GrokBotWorkItem[];
   mcpUrl: string;
+  mcpAliasUrl: string;
   connectorsUrl: string;
   botAppUrl: string;
   docsUrl: string;
@@ -82,14 +86,16 @@ export function grokBotHeartbeatFresh(iso: string | null, now = Date.now()): boo
 
 export function deriveGrokBotConnection(input: {
   hasKey: boolean;
+  hasOAuth?: boolean;
   pastedConnectorAt: string | null;
   lastHeartbeatAt: string | null;
   claimed: number;
 }): GrokBotConnectionState {
-  if (!input.hasKey) return "not_connected";
+  if (!input.hasKey && !input.hasOAuth) return "not_connected";
   if (input.claimed > 0 && grokBotHeartbeatFresh(input.lastHeartbeatAt)) return "working";
   if (grokBotHeartbeatFresh(input.lastHeartbeatAt)) return "online";
   if (input.pastedConnectorAt) return "waiting";
+  if (input.hasOAuth && !input.hasKey) return "oauth_ready";
   return "key_only";
 }
 
@@ -99,7 +105,7 @@ export function grokBotConnectionTone(
   if (state === "online") return "green";
   if (state === "working") return "purple";
   if (state === "waiting") return "orange";
-  if (state === "key_only") return "blue";
+  if (state === "key_only" || state === "oauth_ready") return "blue";
   return "neutral";
 }
 
@@ -119,17 +125,20 @@ export function formatGrokBotConnectorJson(mcpUrl: string, token = "<GROK_BOT_MC
 export function grokBotOperatorBrief(input: {
   origin: string;
   mcpUrl: string;
+  mcpAliasUrl?: string;
   botName: string;
 }): string {
+  const alias = input.mcpAliasUrl || "https://clippyos.grok.me/api/mcp";
   return `# ${input.botName}
 
 You are a ClippyOS operator Bot. ClippyOS is the system of record for a clipping studio (clients, library, social publishes, approvals, analytics). You have your own cloud computer. Hermes + the Daytona Social Machine are the default in-OS rails. You are the premium alternative: always-on, signed into real apps, including sites with no clean API.
 
 ## Connect
-1. MCP server: ${input.mcpUrl}
-2. Auth: Bearer token from ClippyOS Settings → Grok Bot (shown once).
-3. Add it in Grok Bot → Settings → Plugins, or grok.com/connectors → New Connector → Custom.
-4. Call grokbot.heartbeat on a short cadence, then grokbot.list_work.
+1. MCP server — same workspace, either URL works:
+   - ${input.mcpUrl} (custom domain)
+   - ${alias} (Grok host)
+2. Auth: OAuth. grok.com/connectors → New Connector → Custom → paste either MCP URL. Complete sign-in when Grok asks. Do not paste a bearer key unless you are wiring Hermes.
+3. Call grokbot.heartbeat on a short cadence, then grokbot.list_work.
 
 ## How you work
 - ClippyOS is the OS. Do not invent clients, views, or publishes.

@@ -49,12 +49,8 @@ const GUIDE_STEPS = [
     body: "Open x.ai/bot, create a named teammate, and keep it always-on. Every Bot on that account shares one cloud computer.",
   },
   {
-    title: "Mint a ClippyOS MCP key",
-    body: "Create the Grok Bot key below, or mint a scoped ClippyOS MCP token. It is shown once. No secrets, no Super Admin.",
-  },
-  {
     title: "Add ClippyOS as a Custom connector",
-    body: "grok.com/connectors → New Connector → Custom. Paste the MCP URL and Authorization: Bearer <token>.",
+    body: "grok.com/connectors → New Connector → Custom. Paste either MCP URL (os.swcstudio.space or clippyos.grok.me). Grok opens ClippyOS so an admin can approve OAuth.",
   },
   {
     title: "Paste the operator brief",
@@ -93,7 +89,7 @@ export function GrokBotPanel() {
   const briefQuery = useQuery({
     queryKey: [...GROK_BOT_QUERY_KEY, "brief"],
     queryFn: () => grokBotBriefFn(),
-    enabled: Boolean(query.data?.hasKey),
+    enabled: Boolean(query.data),
   });
 
   const save = useMutation({
@@ -263,30 +259,14 @@ export function GrokBotPanel() {
                 1
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-medium">Mint MCP key</p>
+                <p className="font-medium">Add Custom connector (OAuth)</p>
                 <p className="mt-1 text-caption text-muted">
-                  {snap.hasKey
-                    ? `Key …${snap.keyLast4} ready${snap.keyLastUsedAt ? ` · last used ${formatRelativeTime(snap.keyLastUsedAt)}` : ""}`
-                    : "Hermes-wide key for Grok Bot work. For least-privilege scopes, mint a ClippyOS MCP token instead."}
+                  Paste either MCP URL at grok.com/connectors — same workspace. Prefer os.swcstudio.space.
+                  Grok signs in with OAuth — no bearer key.
                 </p>
-                <Button className="mt-2 min-h-11" onClick={() => mint.mutate()} disabled={mint.isPending}>
-                  <KeyRound className="size-4" aria-hidden="true" />
-                  {snap.hasKey ? "Mint another Grok Bot key" : "Create Grok Bot key"}
-                </Button>
-                <a href="/settings#clippy-mcp" className="mt-2 inline-block text-caption text-accent underline-offset-2 hover:underline">
-                  Mint a scoped ClippyOS MCP token
-                </a>
-              </div>
-            </li>
-            <li className="flex gap-3">
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary-surface text-caption font-semibold">
-                2
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">Add Custom connector</p>
-                <p className="mt-1 text-caption text-muted">Remote MCP over HTTPS. Bearer token. Not local stdio.</p>
                 <div className="mt-2 flex flex-col gap-2">
-                  <CopyRow label="MCP URL" value={snap.mcpUrl} />
+                  <CopyRow label="MCP URL · os.swcstudio.space" value={snap.mcpUrl} />
+                  <CopyRow label="MCP URL · clippyos.grok.me" value={snap.mcpAliasUrl} />
                   <CopyRow label="Connector JSON" value={connectorJson} />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -305,7 +285,7 @@ export function GrokBotPanel() {
             </li>
             <li className="flex gap-3">
               <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary-surface text-caption font-semibold">
-                3
+                2
               </span>
               <div className="min-w-0 flex-1">
                 <p className="font-medium">Paste operator brief</p>
@@ -315,7 +295,7 @@ export function GrokBotPanel() {
                     : "Tell the Bot to heartbeat and list_work. Never start Daytona."}
                 </p>
                 <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-control bg-secondary-surface px-3 py-2 text-caption">
-                  {briefQuery.data?.brief ?? "Mint a key to load the brief."}
+                  {briefQuery.data?.brief ?? "Loading brief…"}
                 </pre>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button
@@ -338,6 +318,28 @@ export function GrokBotPanel() {
                 </div>
               </div>
             </li>
+            <li className="flex gap-3">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary-surface text-caption font-semibold">
+                3
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Optional Hermes key</p>
+                <p className="mt-1 text-caption text-muted">
+                  {snap.hasOAuth
+                    ? "OAuth is connected. Mint a key only if Hermes needs bearer auth."
+                    : snap.hasKey
+                    ? `Key …${snap.keyLast4} ready${snap.keyLastUsedAt ? ` · last used ${formatRelativeTime(snap.keyLastUsedAt)}` : ""}`
+                    : "Grok should use OAuth. Mint a bearer key only for Hermes."}
+                </p>
+                <Button className="mt-2 min-h-11" onClick={() => mint.mutate()} disabled={mint.isPending}>
+                  <KeyRound className="size-4" aria-hidden="true" />
+                  {snap.hasKey ? "Mint another Hermes key" : "Create Hermes key"}
+                </Button>
+                <a href="/settings#clippy-mcp" className="mt-2 inline-block text-caption text-accent underline-offset-2 hover:underline">
+                  ClippyOS MCP settings
+                </a>
+              </div>
+            </li>
           </ol>
 
           <div className="mt-5 flex flex-wrap gap-2">
@@ -349,7 +351,7 @@ export function GrokBotPanel() {
               variant="secondary"
               className="min-h-11"
               onClick={() => ping.mutate()}
-              disabled={ping.isPending || !snap.hasKey || !snap.enabled}
+              disabled={ping.isPending || (!snap.hasKey && !snap.hasOAuth) || !snap.enabled}
             >
               <Radio className="size-4" aria-hidden="true" />
               Queue a ping
@@ -363,7 +365,7 @@ export function GrokBotPanel() {
               label="Heartbeat"
               value={snap.lastHeartbeatAt ? formatRelativeTime(snap.lastHeartbeatAt) : "—"}
             />
-            <Stat label="Key" value={snap.hasKey ? `…${snap.keyLast4}` : "None"} />
+            <Stat label="Auth" value={snap.hasOAuth ? "OAuth" : snap.hasKey ? `…${snap.keyLast4}` : "None"} />
           </dl>
 
           {snap.work.length ? (

@@ -162,6 +162,14 @@ export async function buildHealthSnapshot(input: {
       .catch(() => null),
   ]);
 
+  let oauthGrantCount = 0;
+  try {
+    const oauth = await import("@/lib/server/mcp-oauth.server");
+    oauthGrantCount = await oauth.countActiveMcpOAuthGrants();
+  } catch {
+    oauthGrantCount = 0;
+  }
+
   const clientName = new Map(clients.filter((row) => !row.deletedAt).map((row) => [row.id, row.name]));
   const dismissed = await readDismissed();
   const views = (await import("@/lib/server/social")).attachPostsToJobs(socialJobs, socialPosts);
@@ -349,7 +357,7 @@ export async function buildHealthSnapshot(input: {
     publishers: publishers.filter(Boolean),
     hermes,
     grok,
-    mcpConfigured: Boolean(mcpHash) || mcpTokens.some((row) => !row.revokedAt),
+    mcpConfigured: Boolean(mcpHash) || mcpTokens.some((row) => !row.revokedAt) || oauthGrantCount > 0,
     twitchConfigured: Boolean(twitch),
   });
 
@@ -367,7 +375,7 @@ export async function buildHealthSnapshot(input: {
     pastedAt: hermes?.pastedAt ?? null,
     lastDelivery: hermes?.lastDelivery ?? { at: null, status: null, eventType: null },
     scopes: hermesKey?.scopes ?? [],
-    mcpConfigured: Boolean(mcpHash) || activeMcp.length > 0,
+    mcpConfigured: Boolean(mcpHash) || activeMcp.length > 0 || oauthGrantCount > 0,
     mcpLastUsedAt: mcpUsed || activeMcp.map((row) => row.lastUsedAt).filter(Boolean).sort().at(-1) || null,
     mcpLast4: mcpLast4 || activeMcp[0]?.last4 || null,
     grokBot: grok
@@ -383,7 +391,7 @@ export async function buildHealthSnapshot(input: {
       source: row.source,
     })),
     revokedTokenCount: mcpTokens.filter((row) => row.revokedAt).length + keys.filter((row) => row.revokedAt).length,
-    activeTokenCount: activeMcp.length + activeHermes.length,
+    activeTokenCount: activeMcp.length + activeHermes.length + oauthGrantCount,
   };
 
   const banner = deriveHealthBanner({
@@ -485,7 +493,7 @@ function buildIntegrationCards(input: {
     lastSuccessAt: input.hermes ? null : null,
     lastError: null,
     testId: null,
-    detail: input.mcpConfigured ? "Tokens minted" : "Mint a token in Settings",
+    detail: input.mcpConfigured ? "OAuth or keys ready" : "Connect Grok with OAuth in Settings",
   });
   const hermesTone =
     input.hermes?.hermesConnection === "fully_connected"

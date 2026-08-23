@@ -1,6 +1,6 @@
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import { listApiKeyRows } from "@/lib/server/autonomy-auth.server";
-import { publicOrigin } from "@/lib/server/public-origin";
+import { CANONICAL_APP_ORIGIN, publishedMcpEndpoints } from "@/lib/app-hosts";
 import {
   deriveGrokBotConnection,
   grokBotOperatorBrief,
@@ -101,7 +101,13 @@ export async function grokBotKeyRow() {
 export async function grokBotIsConnected(): Promise<boolean> {
   const [config, key] = await Promise.all([readGrokBotConfig(), grokBotKeyRow()]);
   if (!config.enabled) return false;
-  return Boolean(key);
+  if (key) return true;
+  try {
+    const oauth = await import("@/lib/server/mcp-oauth.server");
+    return oauth.hasActiveMcpOAuthGrant();
+  } catch {
+    return false;
+  }
 }
 
 export async function grokBotShouldTakeComputer(): Promise<boolean> {
@@ -264,11 +270,18 @@ export async function heartbeatGrokBot(note?: string): Promise<{ ok: true; at: s
 }
 
 export async function buildGrokBotSnapshot(): Promise<GrokBotSnapshot> {
-  const origin = publicOrigin() || "";
-  const mcpUrl = origin ? `${origin}/api/mcp` : "/api/mcp";
+  const endpoints = publishedMcpEndpoints();
+  const mcpUrl = endpoints.canonical;
   const [config, key, work] = await Promise.all([readGrokBotConfig(), grokBotKeyRow(), readWork()]);
   const queued = work.filter((row) => row.status === "queued").length;
   const claimed = work.filter((row) => row.status === "claimed").length;
+  let hasOAuth = false;
+  try {
+    const oauth = await import("@/lib/server/mcp-oauth.server");
+    hasOAuth = await oauth.hasActiveMcpOAuthGrant();
+  } catch {
+    hasOAuth = false;
+  }
   return {
     enabled: config.enabled,
     preferAsComputer: config.preferAsComputer,
@@ -276,11 +289,13 @@ export async function buildGrokBotSnapshot(): Promise<GrokBotSnapshot> {
     botName: config.botName,
     connection: deriveGrokBotConnection({
       hasKey: Boolean(key),
+      hasOAuth,
       pastedConnectorAt: config.pastedConnectorAt,
       lastHeartbeatAt: config.lastHeartbeatAt,
       claimed,
     }),
     hasKey: Boolean(key),
+    hasOAuth,
     keyLast4: key?.last4 ?? null,
     keyLastUsedAt: key?.lastUsedAt ?? null,
     pastedConnectorAt: config.pastedConnectorAt,
@@ -289,13 +304,19 @@ export async function buildGrokBotSnapshot(): Promise<GrokBotSnapshot> {
     claimed,
     work: work.slice(0, 20),
     mcpUrl,
+    mcpAliasUrl: endpoints.alias,
     connectorsUrl: "https://grok.com/connectors",
     botAppUrl: "https://x.ai/bot",
     docsUrl: "https://docs.x.ai/grok-bot/overview",
   };
 }
 
-export function operatorBriefFor(origin: string, botName: string): string {
-  const mcpUrl = origin ? `${origin.replace(/\/+$/, "")}/api/mcp` : "/api/mcp";
-  return grokBotOperatorBrief({ origin, mcpUrl, botName });
+export function operatorBriefFor(_origin: string, botName: string): string {
+  const endpoints = publishedMcpEndpoints();
+  return grokBotOperatorBrief({
+    origin: CANONICAL_APP_ORIGIN,
+    mcpUrl: endpoints.canonical,
+    mcpAliasUrl: endpoints.alias,
+    botName,
+  });
 }

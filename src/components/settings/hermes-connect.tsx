@@ -45,6 +45,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { cn } from "@/lib/utils";
+import { publishedMcpEndpoints } from "@/lib/app-hosts";
 import {
   Dialog,
   DialogContent,
@@ -108,7 +109,7 @@ export function HermesConnect({
   const requiredDone = Number(steps.mintKey) + Number(steps.pastePlaybook) + Number(steps.socialPolicy);
   const connection = data.connect.hermesConnection;
   const apiBase = `${origin}/api/v1`;
-  const mcpUrl = `${origin}/api/mcp`;
+  const mcpUrl = publishedMcpEndpoints().canonical;
   const webhookUrl = `${origin}/api/webhooks/inbound`;
 
   const packageText = useMemo(

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { sanitizeText } from "@/lib/sanitize";
-import { publicOrigin } from "@/lib/server/public-origin";
+import { CANONICAL_APP_ORIGIN, publishedMcpEndpoints } from "@/lib/app-hosts";
+import { mcpOAuthDiscovery } from "@/lib/mcp-oauth";
 import {
   DEFAULT_MCP_PRESET,
   MCP_PRESET_IDS,
@@ -98,10 +99,19 @@ export async function revokeRemoteMcpToken(id: string): Promise<void> {
 }
 
 export async function buildRemoteMcpSnapshot(): Promise<RemoteMcpSnapshot> {
-  const origin = publicOrigin();
+  const endpoints = publishedMcpEndpoints();
   const tokens = await listRemoteMcpTokens();
+  let grants: RemoteMcpSnapshot["grants"] = [];
+  try {
+    const oauth = await import("@/lib/server/mcp-oauth.server");
+    grants = await oauth.listMcpOAuthGrants();
+  } catch {
+    grants = [];
+  }
   return {
-    mcpUrl: origin ? `${origin}/api/mcp` : "/api/mcp",
+    mcpUrl: endpoints.canonical,
+    mcpAliasUrl: endpoints.alias,
+    mcpUrls: endpoints.urls,
     connectorsUrl: "https://grok.com/connectors",
     protocol: "2025-03-26",
     transport: "streamable-http",
@@ -111,6 +121,8 @@ export async function buildRemoteMcpSnapshot(): Promise<RemoteMcpSnapshot> {
       label: MCP_PRESET_LABELS[id],
       scopes: [...MCP_SCOPE_PRESETS[id]],
     })),
+    oauth: mcpOAuthDiscovery(CANONICAL_APP_ORIGIN),
+    grants,
   };
 }
 

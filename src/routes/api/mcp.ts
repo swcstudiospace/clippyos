@@ -2,25 +2,25 @@ import { createFileRoute } from "@tanstack/react-router";
 import { authenticateMcpToken } from "@/lib/server/autonomy-auth.server";
 import { handleMcpRpc } from "@/lib/server/mcp.server";
 import { writeAuditLog } from "@/lib/server/autonomy-audit.server";
+import {
+  mcpOauthCorsHeaders,
+  mcpOauthJson,
+  mcpOauthOptions,
+  mcpUnauthorized,
+} from "@/lib/server/mcp-oauth-http.server";
 
-function json(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
-  });
+function json(status: number, body: unknown, extra?: HeadersInit) {
+  return mcpOauthJson(status, body, extra);
 }
 
 function sseWrap(payload: unknown): Response {
   const data = JSON.stringify(payload);
+  const headers = mcpOauthCorsHeaders();
+  headers.set("Content-Type", "text/event-stream; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
   return new Response(`event: message\ndata: ${data}\n\n`, {
     status: 200,
-    headers: {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-store",
-    },
+    headers,
   });
 }
 
@@ -40,28 +40,36 @@ function transportMeta(authenticated: boolean) {
   };
 }
 
+function authError(request: Request, code: string): Response {
+  if (code === "RATE_LIMITED") {
+    return json(429, { error: { code, message: "Too many requests." } });
+  }
+  if (code === "TOKEN_REVOKED") {
+    return json(
+      401,
+      {
+        error: {
+          code: "TOKEN_REVOKED",
+          message: "This MCP token was revoked. Reconnect with OAuth or mint a new Hermes key in Settings.",
+        },
+      },
+      { "WWW-Authenticate": new Headers(mcpUnauthorized(request).headers).get("WWW-Authenticate") ?? "" },
+    );
+  }
+  return mcpUnauthorized(request, "Invalid or missing MCP credentials. Use OAuth or a Bearer key.");
+}
+
 async function handle(request: Request): Promise<Response> {
   const rid = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
   const authorization = request.headers.get("authorization");
 
   if (request.method === "GET") {
-    if (!authorization) return json(200, transportMeta(false));
+    if (!authorization) return mcpUnauthorized(request);
     try {
       await authenticateMcpToken(authorization);
     } catch (error) {
       const code = error instanceof Error ? error.message : "UNAUTHORIZED";
-      if (code === "RATE_LIMITED") {
-        return json(429, { error: { code, message: "Too many requests." } });
-      }
-      if (code === "TOKEN_REVOKED") {
-        return json(401, {
-          error: {
-            code: "TOKEN_REVOKED",
-            message: "This MCP token was revoked. Mint a new one in Settings.",
-          },
-        });
-      }
-      return json(401, { error: { code: "UNAUTHORIZED", message: "Invalid MCP token." } });
+      return authError(request, code);
     }
     return json(200, transportMeta(true));
   }
@@ -81,15 +89,7 @@ async function handle(request: Request): Promise<Response> {
       result: "denied",
       errorCode: code === "TOKEN_REVOKED" ? "TOKEN_REVOKED" : "UNAUTHORIZED",
     });
-    if (code === "TOKEN_REVOKED") {
-      return json(401, {
-        error: {
-          code: "TOKEN_REVOKED",
-          message: "This MCP token was revoked. Mint a new one in Settings.",
-        },
-      });
-    }
-    return json(401, { error: { code: "UNAUTHORIZED", message: "Invalid MCP token." } });
+    return authError(request, code);
   }
 
   let body: { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
@@ -108,6 +108,7 @@ async function handle(request: Request): Promise<Response> {
 export const Route = createFileRoute("/api/mcp")({
   server: {
     handlers: {
+      OPTIONS: () => mcpOauthOptions(),
       GET: ({ request }) => handle(request),
       POST: ({ request }) => handle(request),
     },

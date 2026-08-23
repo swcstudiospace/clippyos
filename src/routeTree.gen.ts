@@ -11,10 +11,16 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as AuthorizeRouteImport } from './routes/authorize'
 import { Route as DocsRouteImport } from './routes/docs'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PortalRouteImport } from './routes/portal'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as TokenRouteImport } from './routes/token'
+import { Route as DotwellKnownOauthAuthorizationServerRouteImport } from './routes/[.]well-known/oauth-authorization-server'
+import { Route as DotwellKnownOauthProtectedResourceRouteImport } from './routes/[.]well-known/oauth-protected-resource'
+import { Route as DotwellKnownOpenidConfigurationRouteImport } from './routes/[.]well-known/openid-configuration'
 import { Route as AppAgentRouteImport } from './routes/_app/agent'
 import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
 import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
@@ -37,6 +43,9 @@ import { Route as ApiAgencySchemaRouteImport } from './routes/api/agency-schema'
 import { Route as ApiDemoRouteImport } from './routes/api/demo'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiMcpRouteImport } from './routes/api/mcp'
+import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
+import { Route as OauthRegisterRouteImport } from './routes/oauth.register'
+import { Route as OauthTokenRouteImport } from './routes/oauth.token'
 import { Route as PortalIndexRouteImport } from './routes/portal.index'
 import { Route as PortalActivityRouteImport } from './routes/portal/activity'
 import { Route as PortalApprovalsRouteImport } from './routes/portal/approvals'
@@ -57,6 +66,8 @@ import { Route as ApiWebhooksAirwallexRouteImport } from './routes/api/webhooks/
 import { Route as ApiWebhooksInboundRouteImport } from './routes/api/webhooks/inbound'
 import { Route as ApiWebhooksTelegramRouteImport } from './routes/api/webhooks/telegram'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api/webhooks/whatsapp'
+import { Route as DotwellKnownOauthProtectedResourceApiMcpRouteImport } from './routes/[.]well-known/oauth-protected-resource.api.mcp'
+import { Route as ApiMcpDotwellKnownOauthProtectedResourceRouteImport } from './routes/api/mcp.[.]well-known.oauth-protected-resource'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -65,6 +76,11 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthorizeRoute = AuthorizeRouteImport.update({
+  id: '/authorize',
+  path: '/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsRoute = DocsRouteImport.update({
@@ -82,11 +98,39 @@ const PortalRoute = PortalRouteImport.update({
   path: '/portal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TokenRoute = TokenRouteImport.update({
+  id: '/token',
+  path: '/token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DotwellKnownOauthAuthorizationServerRoute =
+  DotwellKnownOauthAuthorizationServerRouteImport.update({
+    id: '/.well-known/oauth-authorization-server',
+    path: '/.well-known/oauth-authorization-server',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownOauthProtectedResourceRoute =
+  DotwellKnownOauthProtectedResourceRouteImport.update({
+    id: '/.well-known/oauth-protected-resource',
+    path: '/.well-known/oauth-protected-resource',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownOpenidConfigurationRoute =
+  DotwellKnownOpenidConfigurationRouteImport.update({
+    id: '/.well-known/openid-configuration',
+    path: '/.well-known/openid-configuration',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AppAgentRoute = AppAgentRouteImport.update({
   id: '/agent',
   path: '/agent',
@@ -197,6 +241,21 @@ const ApiMcpRoute = ApiMcpRouteImport.update({
   path: '/api/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: '/oauth/authorize',
+  path: '/oauth/authorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthRegisterRoute = OauthRegisterRouteImport.update({
+  id: '/oauth/register',
+  path: '/oauth/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthTokenRoute = OauthTokenRouteImport.update({
+  id: '/oauth/token',
+  path: '/oauth/token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PortalIndexRoute = PortalIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -297,13 +356,31 @@ const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
   path: '/api/webhooks/whatsapp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownOauthProtectedResourceApiMcpRoute =
+  DotwellKnownOauthProtectedResourceApiMcpRouteImport.update({
+    id: '/api/mcp',
+    path: '/api/mcp',
+    getParentRoute: () => DotwellKnownOauthProtectedResourceRoute,
+  } as any)
+const ApiMcpDotwellKnownOauthProtectedResourceRoute =
+  ApiMcpDotwellKnownOauthProtectedResourceRouteImport.update({
+    id: '/.well-known/oauth-protected-resource',
+    path: '/.well-known/oauth-protected-resource',
+    getParentRoute: () => ApiMcpRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/authorize': typeof AuthorizeRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
+  '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/token': typeof TokenRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  '/.well-known/openid-configuration': typeof DotwellKnownOpenidConfigurationRoute
   '/agent': typeof AppAgentRoute
   '/analytics': typeof AppAnalyticsRoute
   '/approvals': typeof AppApprovalsRoute
@@ -325,7 +402,10 @@ export interface FileRoutesByFullPath {
   '/api/agency-schema': typeof ApiAgencySchemaRoute
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/mcp': typeof ApiMcpRoute
+  '/api/mcp': typeof ApiMcpRouteWithChildren
+  '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/oauth/register': typeof OauthRegisterRoute
+  '/oauth/token': typeof OauthTokenRoute
   '/portal/activity': typeof PortalActivityRoute
   '/portal/approvals': typeof PortalApprovalsRoute
   '/portal/assets': typeof PortalAssetsRoute
@@ -346,12 +426,20 @@ export interface FileRoutesByFullPath {
   '/api/webhooks/telegram': typeof ApiWebhooksTelegramRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
   '/clients/': typeof AppClientsIndexRoute
+  '/.well-known/oauth-protected-resource/api/mcp': typeof DotwellKnownOauthProtectedResourceApiMcpRoute
+  '/api/mcp/.well-known/oauth-protected-resource': typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/authorize': typeof AuthorizeRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/token': typeof TokenRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  '/.well-known/openid-configuration': typeof DotwellKnownOpenidConfigurationRoute
   '/agent': typeof AppAgentRoute
   '/analytics': typeof AppAnalyticsRoute
   '/approvals': typeof AppApprovalsRoute
@@ -372,7 +460,10 @@ export interface FileRoutesByTo {
   '/api/agency-schema': typeof ApiAgencySchemaRoute
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/mcp': typeof ApiMcpRoute
+  '/api/mcp': typeof ApiMcpRouteWithChildren
+  '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/oauth/register': typeof OauthRegisterRoute
+  '/oauth/token': typeof OauthTokenRoute
   '/portal/activity': typeof PortalActivityRoute
   '/portal/approvals': typeof PortalApprovalsRoute
   '/portal/assets': typeof PortalAssetsRoute
@@ -393,15 +484,23 @@ export interface FileRoutesByTo {
   '/api/webhooks/telegram': typeof ApiWebhooksTelegramRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
   '/clients': typeof AppClientsIndexRoute
+  '/.well-known/oauth-protected-resource/api/mcp': typeof DotwellKnownOauthProtectedResourceApiMcpRoute
+  '/api/mcp/.well-known/oauth-protected-resource': typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/authorize': typeof AuthorizeRoute
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/portal': typeof PortalRouteWithChildren
+  '/register': typeof RegisterRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/token': typeof TokenRoute
+  '/.well-known/oauth-authorization-server': typeof DotwellKnownOauthAuthorizationServerRoute
+  '/.well-known/oauth-protected-resource': typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  '/.well-known/openid-configuration': typeof DotwellKnownOpenidConfigurationRoute
   '/_app/agent': typeof AppAgentRoute
   '/_app/analytics': typeof AppAnalyticsRoute
   '/_app/approvals': typeof AppApprovalsRoute
@@ -423,7 +522,10 @@ export interface FileRoutesById {
   '/api/agency-schema': typeof ApiAgencySchemaRoute
   '/api/demo': typeof ApiDemoRoute
   '/api/health': typeof ApiHealthRoute
-  '/api/mcp': typeof ApiMcpRoute
+  '/api/mcp': typeof ApiMcpRouteWithChildren
+  '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/oauth/register': typeof OauthRegisterRoute
+  '/oauth/token': typeof OauthTokenRoute
   '/portal/activity': typeof PortalActivityRoute
   '/portal/approvals': typeof PortalApprovalsRoute
   '/portal/assets': typeof PortalAssetsRoute
@@ -444,15 +546,23 @@ export interface FileRoutesById {
   '/api/webhooks/telegram': typeof ApiWebhooksTelegramRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
   '/_app/clients/': typeof AppClientsIndexRoute
+  '/.well-known/oauth-protected-resource/api/mcp': typeof DotwellKnownOauthProtectedResourceApiMcpRoute
+  '/api/mcp/.well-known/oauth-protected-resource': typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/authorize'
     | '/docs'
     | '/login'
     | '/portal'
+    | '/register'
     | '/reset-password'
+    | '/token'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
+    | '/.well-known/openid-configuration'
     | '/agent'
     | '/analytics'
     | '/approvals'
@@ -475,6 +585,9 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/api/mcp'
+    | '/oauth/authorize'
+    | '/oauth/register'
+    | '/oauth/token'
     | '/portal/activity'
     | '/portal/approvals'
     | '/portal/assets'
@@ -495,12 +608,20 @@ export interface FileRouteTypes {
     | '/api/webhooks/telegram'
     | '/api/webhooks/whatsapp'
     | '/clients/'
+    | '/.well-known/oauth-protected-resource/api/mcp'
+    | '/api/mcp/.well-known/oauth-protected-resource'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/authorize'
     | '/docs'
     | '/login'
+    | '/register'
     | '/reset-password'
+    | '/token'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
+    | '/.well-known/openid-configuration'
     | '/agent'
     | '/analytics'
     | '/approvals'
@@ -522,6 +643,9 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/api/mcp'
+    | '/oauth/authorize'
+    | '/oauth/register'
+    | '/oauth/token'
     | '/portal/activity'
     | '/portal/approvals'
     | '/portal/assets'
@@ -542,14 +666,22 @@ export interface FileRouteTypes {
     | '/api/webhooks/telegram'
     | '/api/webhooks/whatsapp'
     | '/clients'
+    | '/.well-known/oauth-protected-resource/api/mcp'
+    | '/api/mcp/.well-known/oauth-protected-resource'
   id:
     | '__root__'
     | '/'
     | '/_app'
+    | '/authorize'
     | '/docs'
     | '/login'
     | '/portal'
+    | '/register'
     | '/reset-password'
+    | '/token'
+    | '/.well-known/oauth-authorization-server'
+    | '/.well-known/oauth-protected-resource'
+    | '/.well-known/openid-configuration'
     | '/_app/agent'
     | '/_app/analytics'
     | '/_app/approvals'
@@ -572,6 +704,9 @@ export interface FileRouteTypes {
     | '/api/demo'
     | '/api/health'
     | '/api/mcp'
+    | '/oauth/authorize'
+    | '/oauth/register'
+    | '/oauth/token'
     | '/portal/activity'
     | '/portal/approvals'
     | '/portal/assets'
@@ -592,19 +727,30 @@ export interface FileRouteTypes {
     | '/api/webhooks/telegram'
     | '/api/webhooks/whatsapp'
     | '/_app/clients/'
+    | '/.well-known/oauth-protected-resource/api/mcp'
+    | '/api/mcp/.well-known/oauth-protected-resource'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  AuthorizeRoute: typeof AuthorizeRoute
   DocsRoute: typeof DocsRoute
   LoginRoute: typeof LoginRoute
   PortalRoute: typeof PortalRouteWithChildren
+  RegisterRoute: typeof RegisterRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  TokenRoute: typeof TokenRoute
+  DotwellKnownOauthAuthorizationServerRoute: typeof DotwellKnownOauthAuthorizationServerRoute
+  DotwellKnownOauthProtectedResourceRoute: typeof DotwellKnownOauthProtectedResourceRouteWithChildren
+  DotwellKnownOpenidConfigurationRoute: typeof DotwellKnownOpenidConfigurationRoute
   ApiAgencySchemaRoute: typeof ApiAgencySchemaRoute
   ApiDemoRoute: typeof ApiDemoRoute
   ApiHealthRoute: typeof ApiHealthRoute
-  ApiMcpRoute: typeof ApiMcpRoute
+  ApiMcpRoute: typeof ApiMcpRouteWithChildren
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute
+  OauthRegisterRoute: typeof OauthRegisterRoute
+  OauthTokenRoute: typeof OauthTokenRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronOpsRoute: typeof ApiCronOpsRoute
   ApiLibraryFileRoute: typeof ApiLibraryFileRoute
@@ -634,6 +780,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/authorize': {
+      id: '/authorize'
+      path: '/authorize'
+      fullPath: '/authorize'
+      preLoaderRoute: typeof AuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs': {
       id: '/docs'
       path: '/docs'
@@ -655,11 +808,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/token': {
+      id: '/token'
+      path: '/token'
+      fullPath: '/token'
+      preLoaderRoute: typeof TokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-authorization-server': {
+      id: '/.well-known/oauth-authorization-server'
+      path: '/.well-known/oauth-authorization-server'
+      fullPath: '/.well-known/oauth-authorization-server'
+      preLoaderRoute: typeof DotwellKnownOauthAuthorizationServerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/oauth-protected-resource': {
+      id: '/.well-known/oauth-protected-resource'
+      path: '/.well-known/oauth-protected-resource'
+      fullPath: '/.well-known/oauth-protected-resource'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/openid-configuration': {
+      id: '/.well-known/openid-configuration'
+      path: '/.well-known/openid-configuration'
+      fullPath: '/.well-known/openid-configuration'
+      preLoaderRoute: typeof DotwellKnownOpenidConfigurationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/agent': {
@@ -816,6 +1004,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMcpRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/oauth/authorize': {
+      id: '/oauth/authorize'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize'
+      preLoaderRoute: typeof OauthAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/register': {
+      id: '/oauth/register'
+      path: '/oauth/register'
+      fullPath: '/oauth/register'
+      preLoaderRoute: typeof OauthRegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/token': {
+      id: '/oauth/token'
+      path: '/oauth/token'
+      fullPath: '/oauth/token'
+      preLoaderRoute: typeof OauthTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal/': {
       id: '/portal/'
       path: '/'
@@ -956,6 +1165,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWebhooksWhatsappRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/.well-known/oauth-protected-resource/api/mcp': {
+      id: '/.well-known/oauth-protected-resource/api/mcp'
+      path: '/api/mcp'
+      fullPath: '/.well-known/oauth-protected-resource/api/mcp'
+      preLoaderRoute: typeof DotwellKnownOauthProtectedResourceApiMcpRouteImport
+      parentRoute: typeof DotwellKnownOauthProtectedResourceRoute
+    }
+    '/api/mcp/.well-known/oauth-protected-resource': {
+      id: '/api/mcp/.well-known/oauth-protected-resource'
+      path: '/.well-known/oauth-protected-resource'
+      fullPath: '/api/mcp/.well-known/oauth-protected-resource'
+      preLoaderRoute: typeof ApiMcpDotwellKnownOauthProtectedResourceRouteImport
+      parentRoute: typeof ApiMcpRoute
+    }
   }
 }
 
@@ -1040,17 +1263,55 @@ const PortalRouteChildren: PortalRouteChildren = {
 const PortalRouteWithChildren =
   PortalRoute._addFileChildren(PortalRouteChildren)
 
+interface DotwellKnownOauthProtectedResourceRouteChildren {
+  DotwellKnownOauthProtectedResourceApiMcpRoute: typeof DotwellKnownOauthProtectedResourceApiMcpRoute
+}
+
+const DotwellKnownOauthProtectedResourceRouteChildren: DotwellKnownOauthProtectedResourceRouteChildren =
+  {
+    DotwellKnownOauthProtectedResourceApiMcpRoute:
+      DotwellKnownOauthProtectedResourceApiMcpRoute,
+  }
+
+const DotwellKnownOauthProtectedResourceRouteWithChildren =
+  DotwellKnownOauthProtectedResourceRoute._addFileChildren(
+    DotwellKnownOauthProtectedResourceRouteChildren,
+  )
+
+interface ApiMcpRouteChildren {
+  ApiMcpDotwellKnownOauthProtectedResourceRoute: typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
+}
+
+const ApiMcpRouteChildren: ApiMcpRouteChildren = {
+  ApiMcpDotwellKnownOauthProtectedResourceRoute:
+    ApiMcpDotwellKnownOauthProtectedResourceRoute,
+}
+
+const ApiMcpRouteWithChildren =
+  ApiMcpRoute._addFileChildren(ApiMcpRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  AuthorizeRoute: AuthorizeRoute,
   DocsRoute: DocsRoute,
   LoginRoute: LoginRoute,
   PortalRoute: PortalRouteWithChildren,
+  RegisterRoute: RegisterRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  TokenRoute: TokenRoute,
+  DotwellKnownOauthAuthorizationServerRoute:
+    DotwellKnownOauthAuthorizationServerRoute,
+  DotwellKnownOauthProtectedResourceRoute:
+    DotwellKnownOauthProtectedResourceRouteWithChildren,
+  DotwellKnownOpenidConfigurationRoute: DotwellKnownOpenidConfigurationRoute,
   ApiAgencySchemaRoute: ApiAgencySchemaRoute,
   ApiDemoRoute: ApiDemoRoute,
   ApiHealthRoute: ApiHealthRoute,
-  ApiMcpRoute: ApiMcpRoute,
+  ApiMcpRoute: ApiMcpRouteWithChildren,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
+  OauthRegisterRoute: OauthRegisterRoute,
+  OauthTokenRoute: OauthTokenRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronOpsRoute: ApiCronOpsRoute,
   ApiLibraryFileRoute: ApiLibraryFileRoute,

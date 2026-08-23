@@ -1,8 +1,9 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
+import { mcpOAuthLoginRedirect } from "@/lib/mcp-oauth";
 import { captureClientError, userFacingErrorMessage } from "@/lib/errors";
 import { unlockSuperAdmin } from "@/lib/server/team-access";
 import { OrbsBackground } from "@/components/layout/orbs-background";
@@ -34,7 +35,12 @@ function LoginPage() {
   const { user, isPending } = useCurrentUserState();
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const wantsAccess = searchStr.includes("intent=access");
+  const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
+  useEffect(() => {
+    if (user && oauthRedirect) window.location.replace(oauthRedirect);
+  }, [user, oauthRedirect]);
   if (isPending) return <SplashScreen label="Loading" />;
+  if (user && oauthRedirect) return <SplashScreen label="Continuing" />;
   if (user) return <Navigate to={wantsAccess ? "/billing" : "/home"} />;
   return <LoginForm />;
 }
@@ -54,6 +60,8 @@ function ProviderGlyph({ id }: { id: string }) {
 function LoginForm() {
   const searchStr = useRouterState({ select: (s) => s.location.searchStr });
   const wantsAccess = searchStr.includes("intent=access");
+  const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
+  const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(wantsAccess ? "signup" : "signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -71,7 +79,7 @@ function LoginForm() {
     setOauthBusy(providerId);
     try {
       await signIn(providerId, {
-        callbackURL: wantsAccess ? "/billing" : "/home",
+        callbackURL: afterSignIn,
         errorCallbackURL: "/login",
       });
     } catch (error) {
@@ -123,7 +131,7 @@ function LoginForm() {
         });
         if (error) throw new Error("Could not sign in");
       }
-      window.location.assign(mode === "signup" || wantsAccess ? "/billing" : "/home");
+      window.location.assign(oauthRedirect ?? (mode === "signup" || wantsAccess ? "/billing" : "/home"));
     } catch (error) {
       captureClientError(error, { source: "email-auth" });
       setFormError(userFacingErrorMessage(error));

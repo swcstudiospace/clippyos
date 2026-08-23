@@ -27,6 +27,16 @@ test("connection states: key → waiting → online → working", () => {
   );
   assert.equal(
     deriveGrokBotConnection({
+      hasKey: false,
+      hasOAuth: true,
+      pastedConnectorAt: null,
+      lastHeartbeatAt: null,
+      claimed: 0,
+    }),
+    "oauth_ready",
+  );
+  assert.equal(
+    deriveGrokBotConnection({
       hasKey: true,
       pastedConnectorAt: "2026-08-23T00:00:00.000Z",
       lastHeartbeatAt: null,
@@ -62,15 +72,20 @@ test("connector JSON and operator brief mention MCP URL", () => {
   const brief = grokBotOperatorBrief({
     origin: "https://os.swcstudio.space",
     mcpUrl: "https://os.swcstudio.space/api/mcp",
+    mcpAliasUrl: "https://clippyos.grok.me/api/mcp",
     botName: "ClippyOS Operator",
   });
   assert.equal(brief.includes("grokbot.list_work"), true);
   assert.equal(brief.includes("Never start or stop the Daytona"), true);
+  assert.equal(brief.includes("OAuth"), true);
+  assert.equal(brief.includes("https://os.swcstudio.space/api/mcp"), true);
+  assert.equal(brief.includes("https://clippyos.grok.me/api/mcp"), true);
 });
 
 test("connection tone maps states", () => {
   assert.equal(grokBotConnectionTone("not_connected"), "neutral");
   assert.equal(grokBotConnectionTone("key_only"), "blue");
+  assert.equal(grokBotConnectionTone("oauth_ready"), "blue");
   assert.equal(grokBotConnectionTone("waiting"), "orange");
   assert.equal(grokBotConnectionTone("online"), "green");
   assert.equal(grokBotConnectionTone("working"), "purple");

@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  CANONICAL_APP_ORIGIN,
+  GROK_APP_ORIGIN,
+  authorizationServersFor,
   collectAppOrigins,
   dynamicBaseAllowedHosts,
   isAllowedAppHost,
+  isPublishedMcpHost,
+  mcpResourcesEquivalent,
+  mcpUrlFor,
+  originFromRequest,
+  publishedMcpEndpoints,
 } from "./app-hosts.ts";
 
 test("custom studio domain and grok.me are both trusted", () => {
@@ -40,3 +48,88 @@ test("dynamic baseURL allowlist covers both published hosts", () => {
   assert.equal(hosts.includes("clippyos.grok.me"), true);
   assert.equal(hosts.includes("*.grok.me"), true);
 });
+
+test("published MCP endpoints prefer the custom domain and keep grok.me as an alias", () => {
+  const endpoints = publishedMcpEndpoints();
+  assert.equal(endpoints.canonical, "https://os.swcstudio.space/api/mcp");
+  assert.equal(endpoints.alias, "https://clippyos.grok.me/api/mcp");
+  assert.deepEqual([...endpoints.urls], [
+    "https://os.swcstudio.space/api/mcp",
+    "https://clippyos.grok.me/api/mcp",
+  ]);
+  assert.equal(mcpUrlFor(CANONICAL_APP_ORIGIN), endpoints.canonical);
+  assert.equal(mcpUrlFor(GROK_APP_ORIGIN), endpoints.alias);
+  assert.equal(isPublishedMcpHost("os.swcstudio.space"), true);
+  assert.equal(isPublishedMcpHost("clippyos.grok.me"), true);
+  assert.equal(isPublishedMcpHost("evil.example"), false);
+});
+
+test("OAuth resource matching treats both published MCP URLs as the same workspace", () => {
+  assert.equal(
+    mcpResourcesEquivalent(
+      "https://os.swcstudio.space/api/mcp",
+      "https://clippyos.grok.me/api/mcp/",
+    ),
+    true,
+  );
+  assert.equal(
+    mcpResourcesEquivalent(
+      "https://os.swcstudio.space/api/mcp",
+      "https://os.swcstudio.space/api/mcp",
+    ),
+    true,
+  );
+  assert.equal(
+    mcpResourcesEquivalent(
+      "https://os.swcstudio.space/api/mcp",
+      "https://evil.example/api/mcp",
+    ),
+    false,
+  );
+  assert.equal(
+    mcpResourcesEquivalent("https://os.swcstudio.space/api/mcp", "https://os.swcstudio.space/home"),
+    false,
+  );
+});
+
+test("originFromRequest prefers the inbound Host so both published MCP URLs advertise themselves", () => {
+  const custom = originFromRequest({
+    url: "http://127.0.0.1:8080/.well-known/oauth-protected-resource",
+    headers: {
+      get(name: string) {
+        if (name === "host") return "os.swcstudio.space";
+        if (name === "x-forwarded-proto") return "https";
+        return null;
+      },
+    },
+  });
+  assert.equal(custom, "https://os.swcstudio.space");
+
+  const grok = originFromRequest({
+    url: "http://127.0.0.1:8080/api/mcp",
+    headers: {
+      get(name: string) {
+        if (name === "x-forwarded-host") return "clippyos.grok.me";
+        if (name === "host") return "127.0.0.1:8080";
+        if (name === "x-forwarded-proto") return "https";
+        return null;
+      },
+    },
+  });
+  assert.equal(grok, "https://clippyos.grok.me");
+});
+
+test("authorization servers list the host that was hit first, then the sibling published origin", () => {
+  assert.deepEqual(authorizationServersFor("https://os.swcstudio.space"), [
+    "https://os.swcstudio.space",
+    "https://clippyos.grok.me",
+  ]);
+  assert.deepEqual(authorizationServersFor("https://clippyos.grok.me"), [
+    "https://clippyos.grok.me",
+    "https://os.swcstudio.space",
+  ]);
+  assert.deepEqual(authorizationServersFor("https://preview.grok-sandbox.com"), [
+    "https://preview.grok-sandbox.com",
+  ]);
+});
+

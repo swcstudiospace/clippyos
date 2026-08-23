@@ -35,11 +35,13 @@ import {
   type McpPresetId,
   type RemoteMcpSnapshot,
 } from "@/lib/remote-mcp";
+import { formatClippyOsMcpOauthConnectorJson } from "@/lib/mcp-oauth";
 import {
   getRemoteMcpSnapshotFn,
   mintRemoteMcpTokenFn,
   revokeRemoteMcpTokenFn,
 } from "@/lib/server/remote-mcp-fns";
+import { revokeMcpOAuthGrantFn } from "@/lib/server/mcp-oauth-fns";
 
 async function copy(label: string, value: string) {
   const ok = await copyTextToClipboard(value);
@@ -49,7 +51,7 @@ async function copy(label: string, value: string) {
 
 export function ClippyOsMcpPanel() {
   const queryClient = useQueryClient();
-  const [label, setLabel] = useState("Grok Bot");
+  const [label, setLabel] = useState("Hermes");
   const [preset, setPreset] = useState<McpPresetId>(DEFAULT_MCP_PRESET);
   const [secret, setSecret] = useState<{ value: string; json: string } | null>(null);
 
@@ -80,7 +82,20 @@ export function ClippyOsMcpPanel() {
     onError: (error) => toast.error(userFacingErrorMessage(error)),
   });
 
+  const revokeGrant = useMutation({
+    mutationFn: (id: string) => revokeMcpOAuthGrantFn({ data: id }),
+    onSuccess: (snap) => {
+      queryClient.setQueryData(REMOTE_MCP_QUERY_KEY, snap);
+      toast.success("OAuth grant revoked");
+    },
+    onError: (error) => toast.error(userFacingErrorMessage(error)),
+  });
+
   const connectorJson = useMemo(() => {
+    const url = query.data?.mcpUrl ?? "/api/mcp";
+    return formatClippyOsMcpOauthConnectorJson(url);
+  }, [query.data?.mcpUrl]);
+  const bearerJson = useMemo(() => {
     const url = query.data?.mcpUrl ?? "/api/mcp";
     return formatClippyOsMcpConnectorJson(url);
   }, [query.data?.mcpUrl]);
@@ -106,14 +121,16 @@ export function ClippyOsMcpPanel() {
   const snap: RemoteMcpSnapshot = query.data;
   const active = snap.tokens.filter((row) => !row.revokedAt);
   const revoked = snap.tokens.filter((row) => row.revokedAt);
+  const activeGrants = (snap.grants ?? []).filter((row) => !row.revokedAt);
 
   return (
     <section id="clippy-mcp" className="flex scroll-mt-24 flex-col gap-4">
       <div>
         <h2 className="text-section font-semibold tracking-tight">ClippyOS MCP</h2>
         <p className="mt-1 max-w-3xl text-body text-muted">
-          Remote MCP for Grok Bot, Cursor, and other connectors. Bearer tokens are shown once. Tools follow the
-          scopes you mint — publish still waits on Approvals, and secrets never leave the server.
+          Grok connectors sign in with OAuth. Hermes can still use a bearer key. Same workspace on
+          os.swcstudio.space and clippyos.grok.me — paste either MCP URL. Publish waits on Approvals,
+          and secrets never leave the server.
         </p>
       </div>
 
@@ -127,26 +144,30 @@ export function ClippyOsMcpPanel() {
             <div>
               <h3 className="text-card font-semibold tracking-tight">Remote MCP server</h3>
               <p className="mt-1 text-caption text-muted">
-                Streamable HTTP and SSE at a stable URL. Authorization: Bearer required. No anonymous tool list.
+                Streamable HTTP. Grok discovers OAuth from the MCP URL. Hermes keys still work as Bearer.
               </p>
             </div>
           </div>
-          <Badge tone={active.length ? "green" : "neutral"}>
-            {active.length ? `${active.length} live token${active.length === 1 ? "" : "s"}` : "No tokens"}
+          <Badge tone={activeGrants.length || active.length ? "green" : "neutral"}>
+            {activeGrants.length
+              ? `${activeGrants.length} OAuth grant${activeGrants.length === 1 ? "" : "s"}`
+              : active.length
+                ? `${active.length} live key${active.length === 1 ? "" : "s"}`
+                : "Not connected"}
           </Badge>
         </div>
 
         <div className="mt-5 grid gap-3">
-          <CopyRow label="MCP URL" value={snap.mcpUrl} />
-          <CopyRow label="Connector JSON" value={connectorJson} />
+          <CopyRow label="MCP URL · os.swcstudio.space" value={snap.mcpUrl} />
+          <CopyRow label="MCP URL · clippyos.grok.me" value={snap.mcpAliasUrl} />
+          <CopyRow label="Grok connector JSON" value={connectorJson} />
         </div>
 
         <div className="mt-5 rounded-control bg-secondary-surface/60 px-3 py-3">
-          <p className="font-medium">Grok Bot setup</p>
+          <p className="font-medium">Connect Grok with OAuth</p>
           <p className="mt-1 text-caption text-muted">
-            grok.com/connectors → New Connector → Custom. Paste the MCP URL and header{" "}
-            <span className="text-fg">Authorization: Bearer {"<token>"}</span>. The Bot lists only the tools this
-            token is scoped for.
+            grok.com/connectors → New Connector → Custom. Paste either MCP URL — prefer the custom domain.
+            Grok will open ClippyOS so an admin can approve access. No bearer key.
           </p>
           <Button variant="secondary" asChild className="mt-3 min-h-11">
             <a href={snap.connectorsUrl} target="_blank" rel="noreferrer">
@@ -162,6 +183,12 @@ export function ClippyOsMcpPanel() {
             mint.mutate();
           }}
         >
+          <div>
+            <p className="font-medium">Hermes key (optional)</p>
+            <p className="mt-1 text-caption text-muted">
+              Mint a bearer token for Hermes or other clients that cannot complete OAuth. Shown once.
+            </p>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="mcp-token-label">Label</Label>
@@ -170,7 +197,7 @@ export function ClippyOsMcpPanel() {
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
                 maxLength={80}
-                placeholder="Grok Bot"
+                placeholder="Hermes"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -195,18 +222,54 @@ export function ClippyOsMcpPanel() {
               ?.scopes.map((scope) => MCP_SCOPE_LABELS[scope])
               .join(" · ")}
           </p>
-          <Button type="submit" className="min-h-11" disabled={mint.isPending}>
+          <Button type="submit" variant="secondary" className="min-h-11" disabled={mint.isPending}>
             <KeyRound className="size-4" aria-hidden="true" />
-            {mint.isPending ? "Minting…" : "Mint token"}
+            {mint.isPending ? "Minting…" : "Mint Hermes key"}
           </Button>
+          <CopyRow label="Hermes connector JSON" value={bearerJson} />
         </form>
       </GlassCard>
 
       <GlassCard>
-        <h3 className="text-card font-semibold tracking-tight">Tokens</h3>
+        <h3 className="text-card font-semibold tracking-tight">OAuth grants</h3>
+        <p className="mt-1 text-caption text-muted">Grok and other connectors that signed in. Revoke to disconnect.</p>
+        {activeGrants.length === 0 ? (
+          <p className="mt-4 text-caption text-muted">No OAuth connections yet. Add the MCP URL in Grok first.</p>
+        ) : (
+          <ul className="mt-4 grid gap-2">
+            {activeGrants.map((row) => (
+              <li
+                key={row.id}
+                className="flex flex-col gap-2 rounded-control bg-secondary-surface/60 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{row.clientName}</p>
+                  <p className="text-caption text-muted">
+                    {row.scopes.filter((scope) => scope !== "mcp:discover").join(" · ") || "discover"}
+                    {row.lastUsedAt ? ` · used ${formatRelativeTime(row.lastUsedAt)}` : " · unused"}
+                    {` · ${formatRelativeTime(row.createdAt)}`}
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  className="min-h-11"
+                  disabled={revokeGrant.isPending}
+                  onClick={() => revokeGrant.mutate(row.id)}
+                >
+                  <ShieldOff className="size-4" aria-hidden="true" />
+                  Revoke
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </GlassCard>
+
+      <GlassCard>
+        <h3 className="text-card font-semibold tracking-tight">Hermes keys</h3>
         <p className="mt-1 text-caption text-muted">Last four, label, and scopes. Secrets are never listed.</p>
         {active.length === 0 && revoked.length === 0 ? (
-          <p className="mt-4 text-caption text-muted">No connector tokens yet. Mint one above.</p>
+          <p className="mt-4 text-caption text-muted">No Hermes keys yet. Mint one above if you need bearer auth.</p>
         ) : (
           <ul className="mt-4 grid gap-2">
             {active.map((row) => (
@@ -247,7 +310,7 @@ export function ClippyOsMcpPanel() {
       <Dialog open={Boolean(secret)} onOpenChange={(open) => !open && setSecret(null)}>
         <DialogContent className="w-[min(100%-2rem,32rem)]">
           <DialogTitle>ClippyOS MCP token</DialogTitle>
-          <DialogDescription>Store this in Grok Bot or Cursor now. It is shown once.</DialogDescription>
+          <DialogDescription>Store this in Hermes now. Grok should use OAuth instead. Shown once.</DialogDescription>
           <code className="mt-4 block max-h-40 overflow-auto break-all rounded-control bg-secondary-surface px-3 py-3 text-caption">
             {secret?.value}
           </code>

@@ -35,7 +35,7 @@ export function userFacingErrorMessage(error: unknown): string {
     return "Please sign in to continue.";
   }
   if (error instanceof Error && error.message === "TOKEN_REVOKED") {
-    return "That MCP token was revoked. Mint a new one in Settings → ClippyOS MCP, then relink the AI teammate.";
+    return "That MCP token was revoked. Reconnect with OAuth in Settings → ClippyOS MCP, or mint a new Hermes key.";
   }
   if (error instanceof Error && error.message === "Forbidden") {
     return "You do not have access to that.";
@@ -47,7 +47,7 @@ export function userFacingErrorMessage(error: unknown): string {
     return "That teammate is no longer on the roster.";
   }
   if (error instanceof Error && error.message === "GROK_BOT_NOT_CONNECTED") {
-    return "Connect Grok Bot in Settings first — mint a key and add the ClippyOS connector in Grok Bot.";
+    return "Connect Grok Bot in Settings first — add the ClippyOS MCP URL at grok.com/connectors and approve OAuth.";
   }
   if (error instanceof Error && error.message === "GROK_BOT_UNAVAILABLE") {
     return "Grok Bot isn’t online. Open the Bot app so it can pick up ClippyOS work.";

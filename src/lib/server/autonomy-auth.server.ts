@@ -14,6 +14,7 @@ import {
   parseMcpScopes,
   type McpScope,
 } from "@/lib/remote-mcp";
+import { MCP_OAUTH_ACCESS_PREFIX } from "@/lib/mcp-oauth";
 
 export type McpCatalog = "hermes" | "remote";
 
@@ -421,6 +422,10 @@ export async function authenticateMcpToken(header: string | null): Promise<Auton
     throw new Error("UNAUTHORIZED");
   }
   const token = header.slice(7).trim();
+  if (token.startsWith(MCP_OAUTH_ACCESS_PREFIX)) {
+    const { authenticateMcpOAuthAccessToken } = await import("@/lib/server/mcp-oauth.server");
+    return authenticateMcpOAuthAccessToken(token);
+  }
   if (token.startsWith(REMOTE_MCP_TOKEN_PREFIX)) {
     return authenticateRemoteMcpToken(token);
   }

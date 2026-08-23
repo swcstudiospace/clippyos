@@ -3,8 +3,8 @@ import { z } from "zod";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { requireAdmin } from "@/lib/server/access";
 import { DEFAULT_HERMES_SCOPES } from "@/lib/autonomy";
-import { formatGrokBotConnectorJson, grokBotOperatorBrief } from "@/lib/grok-bot";
-import { publicOrigin } from "@/lib/server/public-origin";
+import { formatClippyOsMcpOauthConnectorJson } from "@/lib/mcp-oauth";
+import { publishedMcpEndpoints } from "@/lib/app-hosts";
 
 export const getGrokBotStatusFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -61,14 +61,14 @@ export const grokBotBriefFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     if (!context.userId) throw new Error("Unauthorized");
-    const { readGrokBotConfig } = await import("@/lib/server/grok-bot.server");
-    const origin = publicOrigin();
+    const { readGrokBotConfig, operatorBriefFor } = await import("@/lib/server/grok-bot.server");
+    const endpoints = publishedMcpEndpoints();
     const config = await readGrokBotConfig();
-    const mcpUrl = origin ? `${origin}/api/mcp` : "/api/mcp";
     return {
-      brief: grokBotOperatorBrief({ origin, mcpUrl, botName: config.botName }),
-      connectorJson: formatGrokBotConnectorJson(mcpUrl),
-      mcpUrl,
+      brief: operatorBriefFor(endpoints.canonical, config.botName),
+      connectorJson: formatClippyOsMcpOauthConnectorJson(endpoints.canonical),
+      mcpUrl: endpoints.canonical,
+      mcpAliasUrl: endpoints.alias,
     };
   });
 

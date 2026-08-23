@@ -1,4 +1,5 @@
 import type { ApiKeyScope } from "@/lib/autonomy";
+import type { McpOAuthDiscovery, McpOAuthGrantRow } from "@/lib/mcp-oauth";
 
 export const REMOTE_MCP_QUERY_KEY = ["clippy-os-mcp"] as const;
 
@@ -466,11 +467,15 @@ export type RemoteMcpTokenRow = {
 
 export type RemoteMcpSnapshot = {
   mcpUrl: string;
+  mcpAliasUrl: string;
+  mcpUrls: readonly string[];
   connectorsUrl: string;
   protocol: string;
   transport: string;
   tokens: RemoteMcpTokenRow[];
   presets: Array<{ id: McpPresetId; label: string; scopes: McpScope[] }>;
+  oauth: McpOAuthDiscovery;
+  grants: McpOAuthGrantRow[];
 };
 
 export function isMcpScope(value: string): value is McpScope {
