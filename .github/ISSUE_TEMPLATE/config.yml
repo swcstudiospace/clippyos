@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/swcstudiospace/clippyos/security/advisories/new
+    about: >-
+      Report security issues privately via GitHub vulnerability reporting —
+      never in public issues. See SECURITY.md for scope and response targets.
+  - name: Questions and support
+    url: https://github.com/swcstudiospace/clippyos#readme
+    about: Start with the README, AGENTS.md, and SUPPORT.md before opening an issue.

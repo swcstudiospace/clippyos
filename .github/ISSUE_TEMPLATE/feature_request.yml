@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest a capability for ClippyOS
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What are you trying to run in your clipping agency that ClippyOS doesn't cover yet?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should happen? Which module does it belong to?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope acknowledgment
+      options:
+        - label: This respects the architecture contracts in AGENTS.md (RLS model, server-only boundary, immutable migrations)
+          required: true

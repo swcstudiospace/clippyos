@@ -1,0 +1,64 @@
+name: Bug report
+description: Report something broken in ClippyOS
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Security vulnerabilities
+        must NOT be reported here — see SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Observed behavior vs expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to '...'
+        2. Click '...'
+        3. See error
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dashboard / Home
+        - Money / Billing
+        - Clients / Onboarding
+        - Leads
+        - Ideation
+        - Agent / Autonomy
+        - Thumbnails
+        - Library / Storage
+        - Social publishing
+        - Inbox (Telegram/WhatsApp)
+        - Approvals / Safety
+        - Health / Jobs
+        - Analytics
+        - Team
+        - Client portal
+        - Auth / login
+        - MCP / integrations
+        - Docs / marketing pages
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, OS, local or deployed URL context.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Redact any secrets, tokens, or client data first.
