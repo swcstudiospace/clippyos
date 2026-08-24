@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-0vZSBttN.js";import{t}from"./useNavigate-a8B_s7pr.js";var n=e();function r(){return(0,n.jsx)(t,{to:`/portal/home`})}export{r as component};
