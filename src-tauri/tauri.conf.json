@@ -37,8 +37,11 @@
       "icons/icon.ico",
       "icons/icon.png"
     ],
+    "externalBin": [
+      "binaries/node"
+    ],
     "resources": {
-      "server/": "server/"
+      "../dist-desktop/server": "server/"
     },
     "publisher": "ClippyOS",
     "category": "Business",

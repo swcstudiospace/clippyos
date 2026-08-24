@@ -180,6 +180,34 @@ to a Vercel project; `npm run build` compiles, patches SSR exports, and
 applies pending migrations before the deploy goes warm. Liveness:
 `GET /api/health`.
 
+## Desktop app (Tauri)
+
+ClippyOS also ships as a desktop application — a Tauri 2.0 wrapper around the
+same web app. Three npm scripts drive it:
+
+| Command | What it does |
+|---|---|
+| `npm run desktop:dev` | Tauri dev mode against the Vite dev server on :8080 |
+| `npm run desktop:build` | Bundles the app for the current platform |
+| `npm run desktop:server` | Stages the Node engine into `dist-desktop/` for bundling |
+
+The window loads one of two backends:
+
+- **Cloud mode** — if `CLIPPYOS_CLOUD_ORIGIN` is set (must be an `https://`
+  URL), the window loads that origin directly and no local engine runs.
+- **Local mode** — otherwise, a bundled Node sidecar spawns a local server on
+  a free port; override with `CLIPPYOS_SIDECAR_PORT`. If the engine can't
+  start, the window shows an offline loading page.
+
+Bundles are produced by [.github/workflows/desktop-release.yml](.github/workflows/desktop-release.yml)
+on `v*` tags: deb + AppImage on Linux, dmg + app for macOS (aarch64 and
+x86_64), msi + NSIS installers on Windows. They are unsigned unless signing
+secrets are configured in the release environment.
+
+End users need nothing installed — the Node runtime ships alongside the app
+binary. Building from source requires a stable Rust toolchain for the cargo
+build.
+
 ## How this repo is engineered
 
 Every change travels the same pipeline — planning before code, review before

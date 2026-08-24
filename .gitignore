@@ -18,3 +18,9 @@ tmp
 
 # Rust/Tauri build artifacts
 src-tauri/target/
+
+# Platform sidecar binaries (provisioned by CI/local builds)
+src-tauri/binaries/
+
+# Desktop build outputs
+/dist-desktop/

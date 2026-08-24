@@ -1,0 +1,116 @@
+name: desktop-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            node-dist: node-linux-x64
+            ext: ''
+            args: --bundles deb,appimage
+
+          - os: macos-14
+            target: aarch64-apple-darwin
+            node-dist: node-darwin-arm64
+            ext: ''
+            args: --bundles dmg,app
+
+          - os: macos-13
+            target: x86_64-apple-darwin
+            node-dist: node-darwin-x64
+            ext: ''
+            args: --bundles dmg,app
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            node-dist: node-win-x64
+            ext: '.exe'
+            args: --bundles msi,nsis
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # Vendor the matching official Node.js v22.14.0 executable as a Tauri
+      # sidecar binary. matrix.node-dist names the official dist flavor
+      # (e.g. node-linux-x64 -> node-v22.14.0-linux-x64.tar.gz); only the
+      # node executable is kept, placed at
+      # src-tauri/binaries/node-<rust-target><ext> before the build.
+      - name: Download Node.js sidecar binary
+        shell: bash
+        env:
+          NODE_VERSION: v22.14.0
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/binaries
+          DEST="src-tauri/binaries/node-${{ matrix.target }}${{ matrix.ext }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            TMP_DIR="$(cygpath -m "$RUNNER_TEMP")"
+            ARCHIVE="node-${NODE_VERSION}-win-x64.zip"
+            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}" -o "${TMP_DIR}/${ARCHIVE}"
+            powershell -NoProfile -Command "Expand-Archive -Path '${TMP_DIR}/${ARCHIVE}' -DestinationPath '${TMP_DIR}' -Force"
+            cp "${RUNNER_TEMP}/node-${NODE_VERSION}-win-x64/node.exe" "$DEST"
+          else
+            NODE_DIST="${{ matrix.node-dist }}"
+            FLAVOR="${NODE_DIST#node-}"
+            ARCHIVE="node-${NODE_VERSION}-${FLAVOR}.tar.gz"
+            TMP_DIR="$(mktemp -d)"
+            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}" -o "${TMP_DIR}/${ARCHIVE}"
+            tar -xzf "${TMP_DIR}/${ARCHIVE}" -C "$TMP_DIR"
+            cp "${TMP_DIR}/node-${NODE_VERSION}-${FLAVOR}/bin/node" "$DEST"
+            chmod +x "$DEST"
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Optional code signing (future enablement) — none of these secrets are
+      # required today; releases are published as unsigned artifacts.
+      #   APPLE_CERTIFICATE             base64-encoded Apple Developer ID .p12
+      #   APPLE_CERTIFICATE_PASSWORD    password for the Apple .p12 certificate
+      #   APPLE_KEYCHAIN_PASSWORD       keychain password used for macOS signing
+      #   WINDOWS_CERTIFICATE           base64-encoded .pfx code-signing cert
+      #   WINDOWS_CERTIFICATE_PASSWORD  password for the .pfx certificate
+      - name: Build and publish desktop release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'ClippyOS v__VERSION__'
+          releaseDraft: true
+          prerelease: false
+          args: "${{ matrix.args }} --target ${{ matrix.target }}"
