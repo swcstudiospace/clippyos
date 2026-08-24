@@ -27,6 +27,7 @@ import { Route as AppApprovalsRouteImport } from './routes/_app/approvals'
 import { Route as AppBillingRouteImport } from './routes/_app/billing'
 import { Route as AppCalendarRouteImport } from './routes/_app/calendar'
 import { Route as AppClientsRouteImport } from './routes/_app/clients'
+import { Route as AppClippingRouteImport } from './routes/_app/clipping'
 import { Route as AppHealthRouteImport } from './routes/_app/health'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
 import { Route as AppIdeationRouteImport } from './routes/_app/ideation'
@@ -160,6 +161,11 @@ const AppCalendarRoute = AppCalendarRouteImport.update({
 const AppClientsRoute = AppClientsRouteImport.update({
   id: '/clients',
   path: '/clients',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClippingRoute = AppClippingRouteImport.update({
+  id: '/clipping',
+  path: '/clipping',
   getParentRoute: () => AppRoute,
 } as any)
 const AppHealthRoute = AppHealthRouteImport.update({
@@ -393,6 +399,7 @@ export interface FileRoutesByFullPath {
   '/billing': typeof AppBillingRoute
   '/calendar': typeof AppCalendarRoute
   '/clients': typeof AppClientsRouteWithChildren
+  '/clipping': typeof AppClippingRoute
   '/health': typeof AppHealthRoute
   '/home': typeof AppHomeRoute
   '/ideation': typeof AppIdeationRoute
@@ -452,6 +459,7 @@ export interface FileRoutesByTo {
   '/approvals': typeof AppApprovalsRoute
   '/billing': typeof AppBillingRoute
   '/calendar': typeof AppCalendarRoute
+  '/clipping': typeof AppClippingRoute
   '/health': typeof AppHealthRoute
   '/home': typeof AppHomeRoute
   '/ideation': typeof AppIdeationRoute
@@ -515,6 +523,7 @@ export interface FileRoutesById {
   '/_app/billing': typeof AppBillingRoute
   '/_app/calendar': typeof AppCalendarRoute
   '/_app/clients': typeof AppClientsRouteWithChildren
+  '/_app/clipping': typeof AppClippingRoute
   '/_app/health': typeof AppHealthRoute
   '/_app/home': typeof AppHomeRoute
   '/_app/ideation': typeof AppIdeationRoute
@@ -578,6 +587,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/calendar'
     | '/clients'
+    | '/clipping'
     | '/health'
     | '/home'
     | '/ideation'
@@ -637,6 +647,7 @@ export interface FileRouteTypes {
     | '/approvals'
     | '/billing'
     | '/calendar'
+    | '/clipping'
     | '/health'
     | '/home'
     | '/ideation'
@@ -699,6 +710,7 @@ export interface FileRouteTypes {
     | '/_app/billing'
     | '/_app/calendar'
     | '/_app/clients'
+    | '/_app/clipping'
     | '/_app/health'
     | '/_app/home'
     | '/_app/ideation'
@@ -902,6 +914,13 @@ declare module '@tanstack/react-router' {
       path: '/clients'
       fullPath: '/clients'
       preLoaderRoute: typeof AppClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clipping': {
+      id: '/_app/clipping'
+      path: '/clipping'
+      fullPath: '/clipping'
+      preLoaderRoute: typeof AppClippingRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/health': {
@@ -1222,6 +1241,7 @@ interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
   AppCalendarRoute: typeof AppCalendarRoute
   AppClientsRoute: typeof AppClientsRouteWithChildren
+  AppClippingRoute: typeof AppClippingRoute
   AppHealthRoute: typeof AppHealthRoute
   AppHomeRoute: typeof AppHomeRoute
   AppIdeationRoute: typeof AppIdeationRoute
@@ -1244,6 +1264,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
   AppCalendarRoute: AppCalendarRoute,
   AppClientsRoute: AppClientsRouteWithChildren,
+  AppClippingRoute: AppClippingRoute,
   AppHealthRoute: AppHealthRoute,
   AppHomeRoute: AppHomeRoute,
   AppIdeationRoute: AppIdeationRoute,
