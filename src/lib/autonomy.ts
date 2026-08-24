@@ -10,6 +10,7 @@ export const API_KEY_SCOPES = [
   "write:clients",
   "actions:ai",
   "write:social",
+  "write:clipping",
   "skills:execute",
   "skills:manage",
   "approvals:admin",
@@ -39,6 +40,7 @@ export const SCOPE_LABELS: Record<ApiKeyScope, string> = {
   "write:clients": "Write clients",
   "actions:ai": "AI actions",
   "write:social": "Social machine & upload",
+  "write:clipping": "Run clipping browser procedures",
   "skills:execute": "Execute skills",
   "skills:manage": "Manage skills",
   "approvals:admin": "Decide approvals",
@@ -854,6 +856,20 @@ export const MCP_TOOLS: readonly McpToolDef[] = [
     domain: "Clipping Agent",
     description: "Draft a pending_review skill from a successful Agent run.",
     scopes: ["skills:execute"],
+  },
+  {
+    name: "clipping.check_crayo_login",
+    domain: "Clipping Agent",
+    description:
+      "Open crayo.io on the already-running Social Machine and classify the session (logged_in | login_wall | unknown), persisting the result. Never starts the VM.",
+    scopes: ["write:clipping"],
+  },
+  {
+    name: "clipping.run_browser_procedure",
+    domain: "Clipping Agent",
+    description:
+      "Replay an approved browser-procedure skill's recorded steps on the Social Machine. Pass skillSlug only — inline steps are rejected (leash). Audited.",
+    scopes: ["write:clipping"],
   },
   {
     name: "approvals.list_pending",

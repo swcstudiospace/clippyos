@@ -26,6 +26,7 @@ import type { SocialPlatform } from "@/lib/entities";
 import {
   DEFAULT_SOCIAL_LOCALE,
   DEFAULT_SOCIAL_TIMEZONE,
+  escapePowerShellSingleQuoted,
   HOT_SNAPSHOT_NAME,
   DEFAULT_SOCIAL_MACHINE_SIZE,
   ensureUploadDirCommand,
@@ -908,7 +909,46 @@ export async function openPlatformInMachine(platform: SocialPlatform): Promise<v
   const sandbox = await daytona.get(status.sandboxId);
   const os = await resolveOs(sandbox);
   const url = PLATFORM_HOME_URL[platform];
-  await sandbox.process.executeCommand(openUrlCommand(os, url), undefined, undefined, 20);
+  await sandbox.process.executeCommand(await machineOpenUrlCommand(os, url), undefined, undefined, 20);
+}
+/**
+ * Open-url command builder used everywhere the Social Machine browser is
+ * pointed at a page. When a residential proxy is configured, launch a real
+ * Chromium-family executable with --proxy-server=<proxyUrl> instead of relying
+ * on Start-Process default-browser association (which ignores per-launch
+ * flags). Windows falls back chrome.exe -> chromium.exe -> msedge.exe, then to
+ * the plain default-browser open; Linux pins google-chrome/chromium directly.
+ *
+ * The returned command string carries the configured proxy URL — never log it,
+ * echo it into tool results, or store it.
+ */
+export async function machineOpenUrlCommand(os: SocialMachineOs, url: string): Promise<string> {
+  const config = await loadDaytonaConfig();
+  const proxyUrl = config?.proxyUrl ? parseHttpsProxy(config.proxyUrl) : null;
+  if (!proxyUrl) return openUrlCommand(os, url);
+  if (!/^https:\/\//i.test(url)) throw new Error("VALIDATION");
+  if (os === "windows") {
+    const safeProxy = escapePowerShellSingleQuoted(proxyUrl);
+    const safeUrl = escapePowerShellSingleQuoted(url);
+    const candidates = [
+      "(Join-Path $env:ProgramFiles 'Google\\Chrome\\Application\\chrome.exe')",
+      "(Join-Path ${env:ProgramFiles(x86)} 'Google\\Chrome\\Application\\chrome.exe')",
+      "(Join-Path $env:LOCALAPPDATA 'Google\\Chrome\\Application\\chrome.exe')",
+      "(Join-Path $env:ProgramFiles 'Chromium\\Application\\chromium.exe')",
+      "(Join-Path $env:ProgramFiles 'Microsoft\\Edge\\Application\\msedge.exe')",
+      "(Join-Path ${env:ProgramFiles(x86)} 'Microsoft\\Edge\\Application\\msedge.exe')",
+    ];
+    const launch = candidates
+      .map(
+        (path) =>
+          `$b = ${path}; if (Test-Path $b) { Start-Process $b -ArgumentList '--proxy-server=${safeProxy}','${safeUrl}'; exit };`,
+      )
+      .join(" ");
+    return `powershell -NoProfile -Command "${launch.replace(/;$/, "")} Start-Process '${safeUrl}'"`;
+  }
+  const quoted = url.replace(/'/g, `'\\''`);
+  const quotedProxy = proxyUrl.replace(/'/g, `'\\''`);
+  return `google-chrome --no-sandbox --proxy-server='${quotedProxy}' '${quoted}' >/dev/null 2>&1 || chromium --no-sandbox --proxy-server='${quotedProxy}' '${quoted}' >/dev/null 2>&1 || true`;
 }
 
 export async function transferAndOpenUpload(input: {
@@ -950,7 +990,7 @@ export async function transferAndOpenUpload(input: {
   }
 
   const url = PLATFORM_UPLOAD_URL[input.platform];
-  await sandbox.process.executeCommand(openUrlCommand(os, url), undefined, undefined, 20);
+  await sandbox.process.executeCommand(await machineOpenUrlCommand(os, url), undefined, undefined, 20);
 
   if (input.caption) {
     try {

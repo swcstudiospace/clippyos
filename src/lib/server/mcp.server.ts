@@ -1,4 +1,5 @@
-import { MCP_RESOURCES, MCP_TOOLS } from "@/lib/autonomy";
+import { hasScope, MCP_RESOURCES, MCP_TOOLS } from "@/lib/autonomy";
+import { writeAuditLog } from "@/lib/server/autonomy-audit.server";
 import { addonIdForTool } from "@/lib/addons";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import type { AutonomyActor } from "@/lib/server/autonomy-auth.server";
@@ -661,6 +662,12 @@ const TOOL_INPUTS: Record<string, Record<string, unknown>> = {
     type: "object",
     properties: { agentRunId: { type: "string" } },
   },
+  "clipping.check_crayo_login": { type: "object", properties: {} },
+  "clipping.run_browser_procedure": {
+    type: "object",
+    required: ["skillSlug"],
+    properties: { skillSlug: { type: "string" } },
+  },
   "tasks.get": {
     type: "object",
     required: ["id"],
@@ -978,6 +985,24 @@ export async function handleMcpRpc(
     if (rawName.startsWith("skill.")) {
       name = "skills.invoke";
       args = { id: rawName.slice("skill.".length), args: rawArgs };
+    }
+    // Leash: the clipping autonomous tools require write:clipping — the generic
+    // clipping.* fallback would otherwise accept a read-scoped key.
+    if (
+      (name === "clipping.check_crayo_login" || name === "clipping.run_browser_procedure") &&
+      !hasScope(actor.scopes, "write:clipping")
+    ) {
+      await writeAuditLog({
+        requestId,
+        actor,
+        action: name,
+        result: "denied",
+        errorCode: "FORBIDDEN",
+      });
+      return rpcResult(id, {
+        isError: true,
+        content: [{ type: "text", text: "This tool requires the write:clipping scope." }],
+      });
     }
     const meta = params._meta && typeof params._meta === "object" ? (params._meta as Record<string, unknown>) : {};
     const result = await runAutonomyAction({
