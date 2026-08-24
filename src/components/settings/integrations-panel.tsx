@@ -78,7 +78,7 @@ const ICONS: Record<IntegrationId, typeof Sparkles> = {
   daytona: MonitorPlay,
   telegram: MessageCircle,
   whatsapp: Phone,
-  airwallex: CreditCard,
+  whop: CreditCard,
 };
 
 export function IntegrationsPanel() {
@@ -149,7 +149,7 @@ export function IntegrationsPanel() {
             id={id}
             isAdmin={Boolean(isAdmin)}
             canEdit={
-              id === "airwallex"
+              id === "whop"
                 ? Boolean(isAdmin)
                 : canEditIntegrations
             }
@@ -590,48 +590,32 @@ function IntegrationCard({
               </p>
             </>
           ) : null}
-          {id === "airwallex" ? (
+          {id === "whop" ? (
             <>
               <Field
-                id="awx-client"
-                label="Client ID"
-                type="text"
-                value={fields.clientId ?? ""}
-                onChange={(value) => setFields((cur) => ({ ...cur, clientId: value }))}
-                placeholder={configured ? "•••• stored on the server" : "Airwallex client ID"}
-              />
-              <Field
-                id="awx-key"
+                id="whop-key"
                 label="API key"
                 value={fields.apiKey ?? ""}
                 onChange={(value) => setFields((cur) => ({ ...cur, apiKey: value }))}
-                placeholder={configured ? "•••• stored on the server" : "Airwallex API key"}
+                placeholder={configured ? "•••• stored on the server" : "Whop API key"}
               />
               <Field
-                id="awx-wh"
+                id="whop-wh"
                 label="Webhook secret"
                 value={fields.webhookSecret ?? ""}
                 onChange={(value) => setFields((cur) => ({ ...cur, webhookSecret: value }))}
-                placeholder={configured ? "•••• stored" : "Webhook signing secret"}
+                placeholder={configured ? "•••• stored" : "ws_… signing secret"}
               />
               <Field
-                id="awx-le"
-                label="Legal entity ID"
+                id="whop-account"
+                label="Account ID"
                 type="text"
-                value={fields.legalEntityId ?? ""}
-                onChange={(value) => setFields((cur) => ({ ...cur, legalEntityId: value }))}
-                placeholder="le_…"
+                value={fields.accountId ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, accountId: value }))}
+                placeholder="biz_…"
               />
               <Field
-                id="awx-acct"
-                label="Linked payment account ID"
-                type="text"
-                value={fields.linkedPaymentAccountId ?? ""}
-                onChange={(value) => setFields((cur) => ({ ...cur, linkedPaymentAccountId: value }))}
-                placeholder="acct_…"
-              />
-              <Field
-                id="awx-env"
+                id="whop-env"
                 label="Environment (sandbox or live)"
                 type="text"
                 value={fields.env ?? ""}
@@ -639,34 +623,41 @@ function IntegrationCard({
                 placeholder="sandbox"
               />
               <Field
-                id="awx-starter"
-                label="Starter price ID"
+                id="whop-community"
+                label="Community URL"
                 type="text"
-                value={fields.priceStarter ?? ""}
-                onChange={(value) => setFields((cur) => ({ ...cur, priceStarter: value }))}
-                placeholder="pri_…"
+                value={fields.communityUrl ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, communityUrl: value }))}
+                placeholder="https://whop.com/your-community"
               />
               <Field
-                id="awx-pro"
-                label="Pro price ID"
+                id="whop-starter"
+                label="Starter plan ID"
                 type="text"
-                value={fields.pricePro ?? ""}
-                onChange={(value) => setFields((cur) => ({ ...cur, pricePro: value }))}
-                placeholder="pri_…"
+                value={fields.planStarter ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, planStarter: value }))}
+                placeholder="plan_…"
               />
               <Field
-                id="awx-agency"
-                label="Agency price ID"
+                id="whop-pro"
+                label="Pro plan ID"
                 type="text"
-                value={fields.priceAgency ?? ""}
-                onChange={(value) => setFields((cur) => ({ ...cur, priceAgency: value }))}
-                placeholder="pri_…"
+                value={fields.planPro ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, planPro: value }))}
+                placeholder="plan_…"
+              />
+              <Field
+                id="whop-agency"
+                label="Agency plan ID"
+                type="text"
+                value={fields.planAgency ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, planAgency: value }))}
+                placeholder="plan_…"
               />
               <p className="text-caption text-muted">
-                Hosted Billing Checkout only — cards, Apple Pay, and Google Pay for
-                subscriptions. Test Connection logs in; it never opens checkout. Crypto
-                (e.g. BitPay) is an Airwallex one-off PAYMENT method, not recurring
-                subscriptions.
+                Embedded checkout only — cards, wallets, and 100+ local payment methods for
+                subscriptions. Test Connection pings the Whop API; it never opens checkout.
+                Subscribers also join your Whop community automatically.
               </p>
             </>
           ) : null}
@@ -730,7 +721,7 @@ function IntegrationCard({
         </form>
       ) : (
         <p className="mt-3 text-caption text-muted">
-          {id === "airwallex"
+          {id === "whop"
             ? "Only owners can change billing keys."
             : "Workspace APIs are shared with this login, so keys are read-only. Ask an owner to let you use your own APIs."}
         </p>

@@ -34,7 +34,7 @@ In scope:
 
 - Web app auth and session handling (`src/lib/auth/`)
 - Server functions and API routes (`src/routes/api/**`), including webhooks
-  (Telegram, WhatsApp, Airwallex), MCP endpoints, and OAuth 2.1 flows
+  (Telegram, WhatsApp, Whop), MCP endpoints, and OAuth 2.1 flows
 - Data isolation / RLS assumptions documented in `supabase/schema.sql`
 - Storage chain (Supabase Storage, S3 overflow, IPFS pin layer)
 - Operator secret storage and automation-seat scoping
@@ -42,7 +42,7 @@ In scope:
 Out of scope:
 
 - Third-party services themselves (Supabase, Vercel, Daytona, Telegram,
-  WhatsApp, Airwallex) — report to those vendors
+  WhatsApp, Whop) — report to those vendors
 - Volumetric denial-of-service
 - Social-platform account challenges caused by datacenter IPs
 

@@ -20,15 +20,19 @@ import { getUserRole } from "@/lib/server/access";
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
 import { isMissingTable } from "@/lib/server/mappers";
 import {
-  airwallexHasPrice,
-  airwallexLast4,
-  cancelAirwallexSubscription,
-  createBillingCheckout,
-  loadAirwallexConfig,
-  publicAppOrigin,
-  retrieveCheckout,
-  retrieveSubscription,
-} from "@/lib/server/airwallex.server";
+  cancelMembershipAtPeriodEnd,
+  createCheckoutConfiguration,
+  listMembershipsByPlan,
+  loadWhopConfig,
+  mapWhopEvent,
+  retrieveMembership,
+  shouldIgnoreStatusFlip,
+  whopCard,
+  whopHasPlans,
+  persistWhopCard,
+  type WhopEventApplication,
+} from "@/lib/server/whop.server";
+import { publicAppOrigin } from "@/lib/server/public-origin.server";
 import {
   readAppSetting,
   writeAppSetting,
@@ -37,7 +41,7 @@ import {
 const SUB_KEY = "WORKSPACE_SUBSCRIPTION_JSON";
 const INVOICES_KEY = "BILLING_INVOICES_JSON";
 const PRODUCT_KEY = "PRODUCT_ONBOARDING_JSON";
-const EVENTS_KEY = "AIRWALLEX_WEBHOOK_EVENTS_JSON";
+const EVENTS_KEY = "WHOP_WEBHOOK_EVENTS_JSON";
 const DEFAULT_SUB_ID = "default";
 
 let schemaReady: Promise<void> | null = null;
@@ -102,7 +106,7 @@ function asStatus(value: unknown): BillingStatus {
   return "none";
 }
 
-function asPlanKey(value: unknown, priceId?: string | null): SaasPlanKey | null {
+function asPlanKey(value: unknown): SaasPlanKey | null {
   const raw = String(value ?? "").toLowerCase();
   if ((SAAS_PLAN_KEYS as readonly string[]).includes(raw)) return raw as SaasPlanKey;
   return null;
@@ -281,148 +285,11 @@ async function alreadyProcessed(eventId: string): Promise<boolean> {
   return false;
 }
 
-function planKeyFromPrice(
-  priceId: string | null,
-  priceIds: { starter: string | null; pro: string | null; agency: string | null },
-): SaasPlanKey | null {
-  if (!priceId) return null;
-  for (const key of SAAS_PLAN_KEYS) {
-    if (priceIds[key] === priceId) return key;
-  }
-  return null;
-}
 
-function mrrForPlan(planKey: SaasPlanKey | null): number | null {
-  if (planKey === "starter") return 99;
-  if (planKey === "pro") return 249;
-  if (planKey === "agency") return 499;
-  return null;
-}
-
-function pickString(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value;
-  }
-  return null;
-}
-
-function nestedString(value: unknown, key: string): string | null {
-  if (!value || typeof value !== "object") return null;
-  const rec = value as Record<string, unknown>;
-  return pickString(rec[key]);
-}
-
-function pickTime(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      const ms = value > 1e12 ? value : value * 1000;
-      return new Date(ms).toISOString();
-    }
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Date.parse(value);
-      if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
-    }
-  }
-  return null;
-}
-
-export async function applyAirwallexObject(
-  object: Record<string, unknown>,
-  eventName: string,
-): Promise<void> {
-  const config = await loadAirwallexConfig();
-  const nested =
-    object.data && typeof object.data === "object"
-      ? (object.data as Record<string, unknown>)
-      : object;
-  const inner =
-    nested.object && typeof nested.object === "object"
-      ? (nested.object as Record<string, unknown>)
-      : nested;
-
-  const name = eventName.toLowerCase();
-  const statusHint = pickString(inner.status, inner.subscription_status, inner.state);
-  const priceId = pickString(
-    inner.price_id,
-    (inner.line_items as { price_id?: string }[] | undefined)?.[0]?.price_id,
-    (inner.items as { price_id?: string }[] | undefined)?.[0]?.price_id,
-  );
-  const subscriptionId = pickString(
-    inner.subscription_id,
-    inner.id?.toString().startsWith("sub") ? inner.id : null,
-    typeof inner.id === "string" && /sub/i.test(inner.id) ? inner.id : null,
-  );
-  const checkoutId = pickString(
-    inner.checkout_id,
-    inner.id?.toString().startsWith("bco") ? inner.id : null,
-  );
-  const customerId = pickString(
-    inner.billing_customer_id,
-    inner.customer_id,
-    inner.billingCustomerId,
-  );
-  const periodEnd = pickTime(
-    inner.current_period_end,
-    inner.currentPeriodEnd,
-    inner.next_billing_at,
-    nestedString(inner.current_period, "end"),
-  );
-
-  let status = asStatus(statusHint);
-  if (name.includes("checkout") && name.includes("complet")) status = "active";
-  if (name.includes("active") && !name.includes("inact")) status = "active";
-  if (name.includes("trial")) status = "in_trial";
-  if (name.includes("unpaid") || name.includes("past_due") || name.includes("pastdue")) {
-    status = name.includes("unpaid") ? "unpaid" : "past_due";
-  }
-  if (name.includes("cancel")) status = "canceled";
-  if (name.includes("payment_failed") || name.includes("invoice.payment_failed")) {
-    status = "past_due";
-  }
-  if (name.includes("invoice") && name.includes("paid")) {
-    status = "active";
-  }
-
-  const planKey =
-    asPlanKey(inner.plan_key) ??
-    planKeyFromPrice(priceId, config?.priceIds ?? { starter: null, pro: null, agency: null });
-
-  const patch: Partial<WorkspaceSubscription> = {};
-  if (status !== "none" || name.includes("checkout") || name.includes("subscription")) {
-    if (status !== "none") patch.status = status;
-  }
-  if (planKey) patch.planKey = planKey;
-  if (priceId) patch.priceId = priceId;
-  if (subscriptionId) patch.externalSubscriptionId = subscriptionId;
-  if (checkoutId) patch.externalCheckoutId = checkoutId;
-  if (customerId) patch.externalCustomerId = customerId;
-  if (periodEnd) patch.currentPeriodEnd = periodEnd;
-  if (typeof inner.cancel_at_period_end === "boolean") {
-    patch.cancelAtPeriodEnd = inner.cancel_at_period_end;
-  }
-  if (planKey) patch.mrr = mrrForPlan(planKey);
-
-  if (name.includes("invoice")) {
-    const invoiceId = pickString(inner.id, inner.invoice_id) ?? crypto.randomUUID();
-    const amountRaw = inner.amount ?? inner.total_amount ?? inner.amount_due ?? 0;
-    const amount = typeof amountRaw === "number" ? amountRaw : Number(amountRaw) || 0;
-    const invoiceStatus = pickString(inner.status) ?? (name.includes("paid") ? "paid" : "open");
-    await upsertInvoice({
-      id: invoiceId,
-      externalId: invoiceId,
-      amount,
-      currency: pickString(inner.currency) ?? "USD",
-      status: invoiceStatus,
-      hostedUrl: pickString(inner.hosted_url, inner.invoice_url, inner.url),
-      periodStart: pickTime(inner.period_start, nestedString(inner.period, "start")),
-      periodEnd: pickTime(inner.period_end, nestedString(inner.period, "end")),
-      paidAt: name.includes("paid") ? nowIso() : pickTime(inner.paid_at),
-      createdAt: pickTime(inner.created_at) ?? nowIso(),
-    });
-    patch.lastInvoiceStatus = invoiceStatus;
-    patch.lastInvoiceAt = nowIso();
-  }
-
+async function applyWhopApplication(application: WhopEventApplication): Promise<void> {
+  const { patch, invoice, card } = application;
+  if (invoice) await upsertInvoice(invoice);
+  await persistWhopCard(card);
   if (Object.keys(patch).length > 0) {
     await writeSubscription(patch);
     if (patch.status === "past_due" || patch.status === "canceled" || patch.status === "unpaid") {
@@ -433,35 +300,43 @@ export async function applyAirwallexObject(
   }
 }
 
-export async function handleAirwallexWebhook(
+export async function handleWhopWebhook(
   eventId: string,
   eventName: string,
-  payload: Record<string, unknown>,
+  data: Record<string, unknown>,
 ): Promise<void> {
   if (eventId && (await alreadyProcessed(eventId))) return;
-  await applyAirwallexObject(payload, eventName);
+  const config = await loadWhopConfig();
+  const application = mapWhopEvent(
+    eventName,
+    data,
+    config?.planIds ?? { starter: null, pro: null, agency: null },
+  );
+  // Whop does not guarantee delivery order: a late payment.*/invoice.* event
+  // must not resurrect a workspace that membership.deactivated canceled.
+  const current = await readSubscription();
+  if (application.patch.status && shouldIgnoreStatusFlip(current.status, eventName)) {
+    delete application.patch.status;
+  }
+  await applyWhopApplication(application);
 }
 
-export async function refreshFromAirwallex(): Promise<WorkspaceSubscription> {
-  const config = await loadAirwallexConfig();
+
+export async function refreshFromWhop(): Promise<WorkspaceSubscription> {
+  const config = await loadWhopConfig();
   const current = await readSubscription();
   if (!config) return current;
-  if (current.externalCheckoutId) {
-    const checkout = await retrieveCheckout(config, current.externalCheckoutId);
-    if (checkout) {
-      const status = String(checkout.status ?? "").toUpperCase();
-      if (status === "COMPLETED") {
-        await applyAirwallexObject(checkout, "billing_checkout.completed");
-      }
-      const subId = pickString(checkout.subscription_id);
-      if (subId) {
-        const remote = await retrieveSubscription(config, subId);
-        if (remote) await applyAirwallexObject(remote, "subscription.updated");
-      }
-    }
-  } else if (current.externalSubscriptionId) {
-    const remote = await retrieveSubscription(config, current.externalSubscriptionId);
-    if (remote) await applyAirwallexObject(remote, "subscription.updated");
+  let remote: Record<string, unknown> | null = null;
+  if (current.externalSubscriptionId) {
+    remote = await retrieveMembership(config, current.externalSubscriptionId);
+  } else if (current.externalCheckoutId && current.priceId) {
+    // Webhook may have been missed right after checkout; reconcile by plan id.
+    const rows = await listMembershipsByPlan(config, current.priceId);
+    remote =
+      rows.find((row) => row.checkout_configuration_id === current.externalCheckoutId) ?? null;
+  }
+  if (remote) {
+    await applyWhopApplication(mapWhopEvent("membership.synced", remote, config.planIds));
   }
   return readSubscription();
 }
@@ -486,15 +361,15 @@ export async function buildBillingSnapshot(
     getUserRole(userId),
     readSubscription(),
     readInvoices(),
-    loadAirwallexConfig(),
+    loadWhopConfig(),
   ]);
   const workspaceRole: WorkspaceRole = role === "admin" ? "owner" : "member";
   const hasCreds = Boolean(config);
-  const hasPrice = Boolean(config && airwallexHasPrice(config));
+  const hasPrice = Boolean(config && whopHasPlans(config));
   const enforced = hasCreds && hasPrice;
   const plans: SaasPlan[] = SAAS_PLAN_KEYS.map((key) => ({
     ...DEFAULT_SAAS_PLANS[key],
-    priceId: config?.priceIds[key] ?? null,
+    priceId: config?.planIds[key] ?? null,
   }));
   const plan = subscription.planKey ? DEFAULT_SAAS_PLANS[subscription.planKey] : null;
   const seatsUsed = await countSeats();
@@ -507,13 +382,13 @@ export async function buildBillingSnapshot(
     invoices,
     seatsUsed,
     seatLimit: plan?.seats ?? null,
-    airwallex: {
+    whop: {
       configured: hasCreds,
       env: config?.env ?? "sandbox",
       hasWebhookSecret: Boolean(config?.webhookSecret),
-      legalEntitySet: Boolean(config?.legalEntityId),
-      paymentAccountSet: Boolean(config?.linkedPaymentAccountId),
-      last4: await airwallexLast4(),
+      accountIdSet: Boolean(config?.accountId),
+      communityUrl: config?.communityUrl ?? null,
+      last4: (await whopCard())?.last4 ?? null,
     },
     returnCheckout,
   };
@@ -524,42 +399,39 @@ export async function startHostedCheckout(input: {
   planKey: SaasPlanKey;
   email: string;
   name: string;
-}): Promise<{ url: string }> {
-  const config = await loadAirwallexConfig();
-  if (!config) throw new Error("AIRWALLEX_UNAVAILABLE");
-  const priceId = config.priceIds[input.planKey];
-  if (!priceId) throw new Error("AIRWALLEX_PRICE_MISSING");
+}): Promise<{ sessionId: string; hostedUrl: string | null }> {
+  const config = await loadWhopConfig();
+  if (!config) throw new Error("WHOP_UNAVAILABLE");
+  const planId = config.planIds[input.planKey];
+  if (!planId) throw new Error("WHOP_PRICE_MISSING");
   const origin = publicAppOrigin();
-  const checkout = await createBillingCheckout(config, {
-    priceId,
-    email: input.email,
-    name: input.name,
-    requestId: crypto.randomUUID(),
-    successUrl: `${origin}/billing?checkout=success`,
-    backUrl: `${origin}/billing?checkout=back`,
+  const session = await createCheckoutConfiguration(config, {
+    planId,
+    metadata: { planKey: input.planKey },
+    redirectUrl: `${origin}/billing?checkout=success`,
   });
   await writeSubscription({
     planKey: input.planKey,
-    priceId,
-    externalCheckoutId: checkout.id,
+    priceId: session.planId ?? planId,
+    externalCheckoutId: session.id,
   });
   void import("@/lib/server/safety-hooks.server")
     .then((mod) =>
       mod.onPayLinkCreated({
         actorId: input.userId,
-        checkoutId: checkout.id,
+        checkoutId: session.id,
         planKey: input.planKey,
       }),
     )
     .catch(() => {});
-  return { url: checkout.url };
+  return { sessionId: session.id, hostedUrl: session.url };
 }
 
 export async function requestCancelAtPeriodEnd(): Promise<WorkspaceSubscription> {
-  const config = await loadAirwallexConfig();
+  const config = await loadWhopConfig();
   const current = await readSubscription();
   if (config && current.externalSubscriptionId) {
-    await cancelAirwallexSubscription(config, current.externalSubscriptionId);
+    await cancelMembershipAtPeriodEnd(config, current.externalSubscriptionId);
   }
   return writeSubscription({ cancelAtPeriodEnd: true });
 }

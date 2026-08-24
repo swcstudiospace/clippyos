@@ -7,7 +7,7 @@ import { auth } from "@/lib/auth/server";
 import {
   buildBillingSnapshot,
   readProductOnboarding,
-  refreshFromAirwallex,
+  refreshFromWhop,
   requestCancelAtPeriodEnd,
   startHostedCheckout,
   writeProductOnboarding,
@@ -38,7 +38,7 @@ export const getBillingSnapshot = createServerFn({ method: "GET" })
 export const refreshBillingEntitlement = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .handler(async ({ context }): Promise<BillingSnapshot> => {
-    await refreshFromAirwallex();
+    await refreshFromWhop();
     return buildBillingSnapshot(context.userId, "success");
   });
 
@@ -49,7 +49,7 @@ const CheckoutSchema = z.object({
 export const startBillingCheckout = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => CheckoutSchema.parse(input))
-  .handler(async ({ context, data }): Promise<{ url: string }> => {
+  .handler(async ({ context, data }): Promise<{ sessionId: string; hostedUrl: string | null }> => {
     await requireAdmin(context.userId);
     const user = await authUser(context.userId);
     if (!user.email) throw new Error("BILLING_EMAIL_REQUIRED");

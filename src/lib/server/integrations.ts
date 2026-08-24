@@ -113,9 +113,11 @@ async function daytonaKey(): Promise<string | null> {
   return loadDaytonaApiKey();
 }
 
-async function airwallexConfigured(): Promise<boolean> {
-  const { loadAirwallexConfig } = await import("@/lib/server/airwallex.server");
-  return Boolean(await loadAirwallexConfig());
+// Dynamic like every branch here: keeps provider modules out of the
+// client-reachable integrations graph until a server function runs.
+async function whopConfigured(): Promise<boolean> {
+  const { loadWhopConfig } = await import("@/lib/server/whop.server");
+  return Boolean(await loadWhopConfig());
 }
 
 function healthFor(configured: boolean, meta: IntegrationMeta, liveOk: boolean): IntegrationHealth {
@@ -158,7 +160,7 @@ function xCard(
 
 async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
   (await load_discord_agent()).ensureDiscordAgentLoop();
-  const [meta, llm, yt, hf, discord, notion, daytona, airwallex, first, sa, role, access, discordAgentHealth, xPub, linear, telegram, whatsapp] = await Promise.all([
+  const [meta, llm, yt, hf, discord, notion, daytona, whop, first, sa, role, access, discordAgentHealth, xPub, linear, telegram, whatsapp] = await Promise.all([
     readMeta(),
     import("@/lib/server/xai.server").then((mod) => mod.llmStatus()),
     youtubeKey(),
@@ -166,7 +168,7 @@ async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
     (await load_discord()).loadDiscordToken(),
     notionToken(),
     daytonaKey(),
-    airwallexConfigured(),
+    whopConfigured(),
     (await load_app_settings()).readAppSetting(FIRST_LAUNCH_KEY),
     (await load_app_settings()).readAppSetting("SUPER_ADMIN_PASSWORD_HASH"),
     getUserRole(userId),
@@ -271,13 +273,15 @@ async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
       last4: (await load_discord()).last4(whatsapp?.token ?? null),
       required: false,
     },
-    airwallex: {
-      id: "airwallex" as const,
-      configured: Boolean(airwallex),
-      health: healthFor(Boolean(airwallex), meta.airwallex ?? emptyMeta(), false),
-      lastTestedAt: saneIso(meta.airwallex?.lastTestedAt),
-      lastError: meta.airwallex?.lastError ?? null,
-      last4: (await import("@/lib/server/airwallex.server").then((mod) => mod.airwallexLast4())),
+    whop: {
+      id: "whop" as const,
+      configured: Boolean(whop),
+      health: healthFor(Boolean(whop), meta.whop ?? emptyMeta(), false),
+      lastTestedAt: saneIso(meta.whop?.lastTestedAt),
+      lastError: meta.whop?.lastError ?? null,
+      last4: (
+        await import("@/lib/server/whop.server").then((mod) => mod.whopCard())
+      )?.last4 ?? null,
       required: false,
     },
   } satisfies Record<IntegrationId, IntegrationCardStatus>;
@@ -320,7 +324,7 @@ export const saveIntegration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => SaveSchema.parse(input))
   .handler(async ({ context, data }) => {
-    if (data.id === "airwallex") await requireAdmin(context.userId);
+    if (data.id === "whop") await requireAdmin(context.userId);
     else await requireSecretEditor(context.userId);
     const values = data.values;
     if (data.id === "ai") {
@@ -384,9 +388,10 @@ export const saveIntegration = createServerFn({ method: "POST" })
         verifyToken: values.verifyToken,
         appSecret: values.appSecret,
       });
-    } else if (data.id === "airwallex") {
-      const { persistAirwallexSettings } = await import("@/lib/server/airwallex.server");
-      await persistAirwallexSettings(values);
+    } else if (data.id === "whop") {
+      // Same rationale as whopConfigured above.
+      const { persistWhopSettings } = await import("@/lib/server/whop.server");
+      await persistWhopSettings(values);
     } else if (data.id === "x") {
       const clientId = (values.clientId ?? "").trim();
       const clientSecret = (values.clientSecret ?? "").trim();
@@ -413,7 +418,7 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((id: unknown) => z.enum(INTEGRATION_IDS).parse(id))
   .handler(async ({ context, data: id }) => {
-    if (id === "airwallex") await requireAdmin(context.userId);
+    if (id === "whop") await requireAdmin(context.userId);
     else await requireSecretEditor(context.userId);
     if (id === "ai") {
       await (await load_app_settings()).deleteAppSetting("XAI_API_KEY");
@@ -447,9 +452,10 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
     } else if (id === "whatsapp") {
       const { disconnectWhatsApp } = await import("@/lib/server/channels.server");
       await disconnectWhatsApp();
-    } else if (id === "airwallex") {
-      const { disconnectAirwallex } = await import("@/lib/server/airwallex.server");
-      await disconnectAirwallex();
+    } else if (id === "whop") {
+      // Same rationale as whopConfigured above.
+      const { disconnectWhop } = await import("@/lib/server/whop.server");
+      await disconnectWhop();
     } else if (id === "x") {
       const { disconnectPublisherTokens } = await import("@/lib/server/social-oauth.server");
       await disconnectPublisherTokens("x");
@@ -525,9 +531,11 @@ async function testDaytona(): Promise<void> {
   await testDaytonaConnection();
 }
 
-async function testAirwallex(): Promise<void> {
-  const { testAirwallexConnection } = await import("@/lib/server/airwallex.server");
-  await testAirwallexConnection();
+async function testWhop(): Promise<void> {
+  const { loadWhopConfig, testWhopConnection } = await import("@/lib/server/whop.server");
+  const config = await loadWhopConfig();
+  if (!config) throw new Error("WHOP_UNAVAILABLE");
+  await testWhopConnection(config);
 }
 
 async function testLinear(): Promise<void> {
@@ -539,7 +547,7 @@ export const testIntegration = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((id: unknown) => z.enum(INTEGRATION_IDS).parse(id))
   .handler(async ({ context, data: id }) => {
-    if (id === "airwallex") await requireAdmin(context.userId);
+    if (id === "whop") await requireAdmin(context.userId);
     else await requireSecretEditor(context.userId);
     const stamp = `${context.userId}:${id}`;
     const last = testLock.get(stamp) ?? 0;
@@ -558,7 +566,7 @@ export const testIntegration = createServerFn({ method: "POST" })
         const { testWhatsAppConnection } = await import("@/lib/server/channels.server");
         await testWhatsAppConnection();
       }
-      else if (id === "airwallex") await testAirwallex();
+      else if (id === "whop") await testWhop();
       else if (id === "linear") await testLinear();
       else if (id === "x") {
         const { testPublisherConnection } = await import("@/lib/server/social-oauth.server");
@@ -589,8 +597,8 @@ export const testIntegration = createServerFn({ method: "POST" })
                     ? "Daytona rejected that API key. Test never starts a machine."
                     : message === "CHANNEL_NOT_CONFIGURED" || message === "CHANNEL_UNAVAILABLE"
                       ? "That channel rejected the credentials. Test never sends a customer message."
-                    : message === "AIRWALLEX_UNAVAILABLE"
-                    ? "Airwallex rejected those credentials. Test never opens checkout."
+                    : message === "WHOP_UNAVAILABLE" || message.startsWith("WHOP_TEST_FAILED")
+                    ? "Whop rejected those credentials. Test never opens checkout."
                     : message === "PUBLISHER_APP_MISSING"
                       ? "Save the X Client ID and secret, then Connect."
                       : message === "PUBLISHER_NOT_CONNECTED" || message === "PUBLISHER_TOKEN_EXPIRED"

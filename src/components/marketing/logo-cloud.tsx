@@ -9,7 +9,7 @@ const LOGOS: { title: string; mark: ReactNode }[] = [
   { title: "Telegram", mark: <TelegramMark /> },
   { title: "WhatsApp", mark: <WhatsAppMark /> },
   { title: "Discord", mark: <DiscordMark /> },
-  { title: "Airwallex", mark: <AirwallexMark /> },
+  { title: "Whop", mark: <WhopMark /> },
   { title: "Hermes Agent", mark: <NousMark /> },
   { title: "Grok Bot", mark: <GrokBotMark /> },
   { title: "Linear", mark: <LinearMark /> },
@@ -98,10 +98,10 @@ function DiscordMark() {
   );
 }
 
-function AirwallexMark() {
+function WhopMark() {
   return (
     <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden="true">
-      <path d="M12 3 3.5 21h3.4l1.6-3.4h7l1.6 3.4h3.4L12 3zm0 5.3 2.5 5.3h-5z" />
+      <path d="M2.5 6.5h3.2l1.9 8.1L9.9 6.5h3.4l2.3 8.1 1.9-8.1h3l-3.3 11.5h-3.5l-2.2-7.6-2.2 7.6H5.8z" />
     </svg>
   );
 }

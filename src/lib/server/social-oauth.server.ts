@@ -8,7 +8,7 @@ import {
   readAppSetting,
   writeAppSetting,
 } from "@/lib/server/app-settings.server";
-import { publicAppOrigin } from "@/lib/server/airwallex.server";
+import { publicAppOrigin } from "@/lib/server/public-origin.server";
 import { last4 } from "@/lib/server/discord.server";
 import type { SocialPlatform } from "@/lib/entities";
 import type {

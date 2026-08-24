@@ -18,8 +18,8 @@ async function load_app_settings() {
 async function load_isolation() {
   return import("@/lib/auth/isolation.server");
 }
-async function load_airwallex() {
-  return import("@/lib/server/airwallex.server");
+async function load_public_origin() {
+  return import("@/lib/server/public-origin.server");
 }
 
 const scryptAsync = promisify(scrypt);
@@ -425,7 +425,7 @@ export const createMemberResetLink = createServerFn({ method: "POST" })
       usedAt: null,
     });
     await writeResetRows(rows);
-    return { url: `${(await load_airwallex()).publicAppOrigin()}/reset-password?token=${token}` };
+    return { url: `${(await load_public_origin()).publicAppOrigin()}/reset-password?token=${token}` };
   });
 
 export const completePasswordReset = createServerFn({ method: "POST" })

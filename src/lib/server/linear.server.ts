@@ -11,7 +11,7 @@ import {
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
 import { isMissingTable } from "@/lib/server/mappers";
 import { last4 } from "@/lib/server/discord.server";
-import { publicAppOrigin } from "@/lib/server/airwallex.server";
+import { publicAppOrigin } from "@/lib/server/public-origin.server";
 import { ensureLinearSchema } from "@/lib/server/linear-schema.server";
 import {
   DEFAULT_LINEAR_FLAGS,
@@ -225,7 +225,7 @@ async function gql<T>(
   variables?: Record<string, unknown>,
   attempt = 0,
 ): Promise<T> {
-  let token = await loadToken();
+  const token = await loadToken();
   if (!token) throw new Error("LINEAR_NOT_CONFIGURED");
   const response = await fetch(GRAPHQL, {
     method: "POST",
@@ -658,7 +658,7 @@ export async function listLinearLinks(ids?: { type: LinearEntityType; id: string
   await ensureLinearSchema();
   const admin = await getAgencyAdmin();
   if (admin) {
-    let q = admin.from("linear_links").select("*").order("created_at", { ascending: false }).limit(200);
+    const q = admin.from("linear_links").select("*").order("created_at", { ascending: false }).limit(200);
     const { data, error } = await q;
     if (!error && data) {
       const rows = (data as Record<string, unknown>[]).map(mapLink);

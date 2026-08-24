@@ -160,10 +160,10 @@ export const ADDON_META: Record<IntegrationId, AddonMeta> = {
     requiredFor: "Professional WhatsApp Cloud API liaison",
     usedBy: ["Inbox"],
   },
-  airwallex: {
-    id: "airwallex",
+  whop: {
+    id: "whop",
     layer: "control-plane",
-    requiredFor: "Workspace subscription checkout and entitlement",
+    requiredFor: "Workspace subscription checkout, entitlement, and community",
     usedBy: ["Billing", "Access gate"],
   },
 };

@@ -9,7 +9,7 @@ export const INTEGRATION_IDS = [
   "daytona",
   "telegram",
   "whatsapp",
-  "airwallex",
+  "whop",
 ] as const;
 
 export type IntegrationId = (typeof INTEGRATION_IDS)[number];
@@ -122,9 +122,9 @@ export const INTEGRATION_COPY: Record<
     required: false,
     time: "~8 min",
   },
-  airwallex: {
-    name: "Airwallex Billing",
-    purpose: "SaaS subscription checkout for ClippyOS itself — not client invoices.",
+  whop: {
+    name: "Whop Billing",
+    purpose: "SaaS subscription checkout + community for ClippyOS itself — not client invoices.",
     required: false,
     time: "~8 min",
   },
@@ -147,7 +147,7 @@ export const BANNER_BY_PATH: Array<{
   { match: (path) => path.startsWith("/social") || path.startsWith("/agent") || path.startsWith("/health"), id: "daytona" },
   { match: (path) => path.startsWith("/inbox"), id: "telegram" },
   { match: (path) => path.startsWith("/inbox"), id: "whatsapp" },
-  { match: (path) => path.startsWith("/billing"), id: "airwallex" },
+  { match: (path) => path.startsWith("/billing"), id: "whop" },
 ];
 
 export function healthLabel(health: IntegrationHealth): string {

@@ -88,12 +88,12 @@ export type WorkspaceSubscription = {
   updatedAt: string | null;
 };
 
-export type AirwallexPublicConfig = {
+export type WhopPublicConfig = {
   configured: boolean;
   env: "sandbox" | "live";
   hasWebhookSecret: boolean;
-  legalEntitySet: boolean;
-  paymentAccountSet: boolean;
+  accountIdSet: boolean;
+  communityUrl: string | null;
   last4: string | null;
 };
 
@@ -106,7 +106,7 @@ export type BillingSnapshot = {
   invoices: BillingInvoice[];
   seatsUsed: number;
   seatLimit: number | null;
-  airwallex: AirwallexPublicConfig;
+  whop: WhopPublicConfig;
   returnCheckout: "success" | "back" | null;
 };
 
@@ -231,7 +231,7 @@ export function parseClientChecklist(raw: unknown): ClientOnboardingChecklist {
 
 export const PRODUCT_ONBOARDING_STEPS = [
   "invite",
-  "airwallex",
+  "billing",
   "daytona",
   "first_client",
   "approvals",
@@ -248,8 +248,8 @@ export const PRODUCT_ONBOARDING_COPY: Record<
     body: "Owners add Members in Settings → Team access. One person, one workspace.",
     href: "/settings#team",
   },
-  airwallex: {
-    title: "Confirm Airwallex",
+  billing: {
+    title: "Connect Whop billing",
     body: "Keys stay in Settings → Integrations. Test Connection never opens checkout.",
     href: "/settings#integrations",
   },

@@ -324,41 +324,37 @@ export const GUIDES: Record<IntegrationId, GuideDef> = {
       "Test Connection succeeds without sending a chat",
     ],
   },
-  airwallex: {
-    id: "airwallex",
-    title: "Airwallex Billing",
+  whop: {
+    id: "whop",
+    title: "Whop Billing",
     time: "~8 min",
     intro:
-      "Powers ClippyOS’s own SaaS subscription. Agency client invoices stay on the Money tab. Test Connection only fetches a token — it never opens checkout.",
+      "Powers ClippyOS’s own SaaS subscription and the member community. Agency client invoices stay on the Money tab. Test Connection only pings the API — it never opens checkout.",
     steps: [
       {
         title: "Create API credentials",
-        body: "In Airwallex, create an API client (Client ID + API key). Use the sandbox host first. Copy the webhook secret for this app’s endpoint.",
-        copy: { label: "Airwallex", value: "https://www.airwallex.com" },
+        body: "In the Whop dashboard, open Developer and create an API key. Use sandbox.whop.com first for testing. Copy the account ID (biz_…) from Settings.",
+        copy: { label: "Whop dashboard", value: "https://whop.com/dashboard/developer" },
       },
       {
-        title: "Create Product + Prices",
-        body: "In Billing, create a Product (ClippyOS) and monthly Prices for Starter / Pro / Agency. Paste each price_id into the Airwallex card.",
-      },
-      {
-        title: "Legal entity and payment account",
-        body: "If your account has more than one legal entity or linked payment account, paste those IDs. Hosted Checkout needs them to create the subscription.",
+        title: "Create Product + Plans",
+        body: "Create a Product (ClippyOS) with monthly renewal Plans for Starter / Pro / Agency. Paste each plan_… ID into the Whop card. Add your community URL so subscribers get a join link.",
       },
       {
         title: "Webhook endpoint",
-        body: "Point Airwallex to this app’s webhook URL. Events: billing_checkout.completed, subscription.* , invoice.paid / invoice.payment_failed. Signature uses x-timestamp + x-signature HMAC.",
-        copy: { label: "Webhook path", value: "/api/webhooks/airwallex" },
+        body: "Point Whop to this app’s webhook URL. Events: membership.activated, membership.deactivated, membership.cancel_at_period_end_changed, payment.succeeded, payment.failed, invoice.paid, invoice.past_due. Signatures follow Standard Webhooks (HMAC-SHA256, v1,).",
+        copy: { label: "Webhook path", value: "/api/webhooks/whop" },
       },
       {
         title: "Test Connection, then subscribe",
-        body: "Save, Test Connection (login ping only). Open Billing and Subscribe — Airwallex Hosted Checkout collects cards and supported wallets. Access unlocks after the webhook or the success return.",
+        body: "Save, Test Connection. Open Billing and Subscribe — Whop embedded checkout collects cards, wallets, and local payment methods. Access unlocks after the membership.activated webhook or the success return, and buyers land in your Whop community.",
       },
     ],
     checklist: [
-      "Client ID and API key saved",
-      "At least one price_id saved",
+      "API key and account ID saved",
+      "At least one plan_… ID saved",
       "Webhook secret saved and endpoint configured",
-      "Test Connection succeeds without opening checkout",
+      "Sandbox checkout with test card flips Billing to active",
     ],
   },
 };

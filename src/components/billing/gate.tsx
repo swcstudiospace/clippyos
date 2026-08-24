@@ -37,8 +37,8 @@ export function BillingGate({ snapshot }: { snapshot: BillingSnapshot }) {
           <p className="text-body text-muted">
             {owner
               ? pastDue
-                ? "The last invoice didn’t clear. Open Billing to pay or update the payment method via Airwallex Hosted Checkout."
-                : "Choose a plan on Billing. Checkout is hosted by Airwallex — cards, Apple Pay, and Google Pay. ClippyOS never sees card numbers."
+                ? "The last invoice didn’t clear. Open Billing to pay or update the payment method via Whop Checkout."
+                : "Choose a plan on Billing. Checkout is embedded via Whop — cards, wallets, and local payment methods. ClippyOS never sees card numbers."
               : "This workspace doesn’t have an active ClippyOS subscription yet. Ask an Owner to subscribe from Billing."}
           </p>
           {owner ? (

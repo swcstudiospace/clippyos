@@ -113,7 +113,7 @@ leashed:
 - **Outbound webhooks** — ~40 event types (`payment.collected`,
   `approval.requested`, `social.upload.succeeded`, `agent.run.*`, …) signed
   and delivered to your endpoints.
-- **Inbound channels** — Telegram, WhatsApp Cloud API, and Airwallex payment
+- **Inbound channels** — Telegram, WhatsApp Cloud API, and Whop payment
   webhooks (`src/routes/api/webhooks/`).
 - **First-party connectors** — Linear issue sync, Discord agent runs, xAI /
   Grok models, Higgsfield image generation, Resend email, YouTube Data API,

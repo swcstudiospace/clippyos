@@ -334,14 +334,20 @@ export function userFacingErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message === "DAYTONA_UNAVAILABLE") {
     return "Connect Daytona in Settings for Computer Use, or connect a publisher API to post without the machine.";
   }
-  if (error instanceof Error && error.message === "AIRWALLEX_UNAVAILABLE") {
-    return "Connect Airwallex in Settings. Test Connection never opens checkout.";
+  if (error instanceof Error && error.message === "WHOP_UNAVAILABLE") {
+    return "Connect Whop in Settings → Integrations before checkout.";
   }
-  if (error instanceof Error && error.message === "AIRWALLEX_CHECKOUT_FAILED") {
-    return "Airwallex couldn’t create checkout. Confirm price IDs, legal entity, and payment account.";
+  if (error instanceof Error && error.message.startsWith("WHOP_CHECKOUT_FAILED")) {
+    return "Whop couldn’t create checkout. Confirm plan IDs, account ID, and environment.";
   }
-  if (error instanceof Error && error.message === "AIRWALLEX_PRICE_MISSING") {
-    return "Save an Airwallex price ID for that plan in Settings → Integrations.";
+  if (error instanceof Error && error.message === "WHOP_PRICE_MISSING") {
+    return "Save a Whop plan ID for that plan in Settings → Integrations.";
+  }
+  if (error instanceof Error && error.message.startsWith("WHOP_TEST_FAILED")) {
+    return "Whop rejected that API key. Check the key and environment.";
+  }
+  if (error instanceof Error && error.message.startsWith("WHOP_MEMBERSHIP_LOOKUP_FAILED")) {
+    return "Couldn’t reach Whop to refresh your subscription. Try again shortly.";
   }
   if (error instanceof Error && error.message === "BILLING_EMAIL_REQUIRED") {
     return "Your account needs an email before checkout.";

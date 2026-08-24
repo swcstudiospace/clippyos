@@ -14,7 +14,7 @@ Pair it with [README.md](README.md) (product tour) and
 | Path | What lives there |
 |---|---|
 | `src/routes/` | TanStack Start file routes: `_app/*` (18 operator screens), `portal/*` (client portal), `api/*` (HTTP surface), `login.tsx`, public landing |
-| `src/routes/api/` | `v1.$.ts` (scoped REST API), `mcp.ts` + `oauth/` (MCP over OAuth 2.1), `webhooks/` (telegram, whatsapp, airwallex, inbound), `cron/ops.ts`, `health.ts`, `library.*`, `auth/$` |
+|`src/routes/api/`|`v1.$.ts` (scoped REST API), `mcp.ts` + `oauth/` (MCP over OAuth 2.1), `webhooks/` (telegram, whatsapp, whop, inbound), `cron/ops.ts`, `health.ts`, `library.*`, `auth/$`|
 | `src/lib/` | Client-safe domain modules (`autonomy.ts`, `playbooks.ts`, `skills.ts`, `nav.ts`, …) and co-located `*.test.ts` |
 | `src/lib/server/` | **Server-only** domain logic (agent loop, social ops, publishers per platform, storage, integrations). Never import from client code |
 | `src/lib/auth/` | Better Auth wiring; `*.server.ts` variants verify sessions |
