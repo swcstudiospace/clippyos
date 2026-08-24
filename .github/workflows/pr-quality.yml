@@ -1,0 +1,137 @@
+# AI code review on every pull request: a Greptile agent review plus an omp
+# coding-agent pass. Each reviewer posts a single PR comment keyed by a hidden
+# HTML marker and updates that comment in place on subsequent pushes, so
+# repeated reviews never pile up as duplicate comments.
+
+name: pr-quality
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  greptile-review:
+    name: Greptile review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Greptile CLI
+        run: npm install -g greptile@latest
+
+      - name: Run Greptile review
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          GREPTILE_API_KEY: ${{ secrets.GREPTILE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          greptile review -b "$BASE_REF" --agent 2>&1 | tee greptile-review.md
+
+      - name: Post Greptile review comment
+        if: github.event.pull_request.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MARKER: '<!-- greptile-review -->'
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          LIST="repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100"
+          if [ -s greptile-review.md ]; then
+            jq -n --arg marker "$MARKER" --rawfile body greptile-review.md \
+              '{body: ($marker + "\n\n## Greptile review\n\n" + $body)}' > review-comment.json
+          else
+            jq -n --arg marker "$MARKER" \
+              --arg body "Greptile review produced no output — check that the \`GREPTILE_API_KEY\` repository secret is configured." \
+              '{body: ($marker + "\n\n## Greptile review\n\n" + $body)}' > review-comment.json
+          fi
+          COMMENT_ID=$(gh api "$LIST" | jq -r --arg m "$MARKER" '[.[] | select(.body | startswith($m))][0].id // empty')
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" --input review-comment.json > /dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --input review-comment.json > /dev/null
+          fi
+
+  omp-review:
+    name: omp agent review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install omp CLI
+        run: npm install -g @oh-my-pi/pi-coding-agent@latest
+
+      # Job-level `if` cannot read secrets, so export a flag instead: the omp
+      # review and its comment only run when OMP_API_KEY is configured.
+      - name: Export OMP API key flag
+        env:
+          OMP_API_KEY: ${{ secrets.OMP_API_KEY }}
+        run: echo "HAS_KEY=$([ -n "$OMP_API_KEY" ] && echo true || echo false)" >> "$GITHUB_ENV"
+
+      - name: Generate PR diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin "$BASE_REF"
+          git diff "origin/${BASE_REF}...HEAD" > /tmp/pr.diff
+
+      - name: Run omp review
+        if: env.HAS_KEY == 'true'
+        env:
+          OMP_API_KEY: ${{ secrets.OMP_API_KEY }}
+          OMP_MODEL: ${{ vars.OMP_MODEL || 'gpt-5.2' }}
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          omp -p --no-session --no-pty --api-key "$OMP_API_KEY" --model "$OMP_MODEL" --cwd "$GITHUB_WORKSPACE" "Senior staff engineer review of this PR diff (@/tmp/pr.diff). Report correctness bugs, security issues, contract violations (AGENTS.md §3), and missing tests. Be terse; severity-tag each finding." 2>&1 | tee omp-review.md
+
+      - name: Post omp review comment
+        if: github.event.pull_request.number != '' && env.HAS_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MARKER: '<!-- omp-review -->'
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          LIST="repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100"
+          if [ -s omp-review.md ]; then
+            jq -n --arg marker "$MARKER" --rawfile body omp-review.md \
+              '{body: ($marker + "\n\n## omp agent review\n\n" + $body)}' > omp-comment.json
+          else
+            jq -n --arg marker "$MARKER" \
+              --arg body "omp review produced no output." \
+              '{body: ($marker + "\n\n## omp agent review\n\n" + $body)}' > omp-comment.json
+          fi
+          COMMENT_ID=$(gh api "$LIST" | jq -r --arg m "$MARKER" '[.[] | select(.body | startswith($m))][0].id // empty')
+          if [ -n "$COMMENT_ID" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments/${COMMENT_ID}" --input omp-comment.json > /dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --input omp-comment.json > /dev/null
+          fi

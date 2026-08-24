@@ -208,6 +208,21 @@ End users need nothing installed — the Node runtime ships alongside the app
 binary. Building from source requires a stable Rust toolchain for the cargo
 build.
 
+## CI/CD & code review
+
+Every pull request triggers two independent AI reviews, posted as PR comments
+and updated in place on later pushes
+([pr-quality.yml](.github/workflows/pr-quality.yml)): a **Greptile** agent
+review (`greptile review --agent`) and an **omp** coding-agent pass over the
+full diff. Enable them with the `GREPTILE_API_KEY` and `OMP_API_KEY`
+repository secrets — either may be omitted, and that reviewer quietly skips
+the run. Optionally set the `OMP_MODEL` repository variable to pin the omp
+model (defaults to `gpt-5.2`). Desktop packaging runs
+([desktop-release.yml](.github/workflows/desktop-release.yml)) open a draft
+release on `v*` tags and also attach every platform's installers as per-run
+artifacts (`desktop-bundles-*`), downloadable from the workflow run page even
+before a release is published.
+
 ## How this repo is engineered
 
 Every change travels the same pipeline — planning before code, review before

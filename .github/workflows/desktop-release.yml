@@ -114,3 +114,14 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: "${{ matrix.args }} --target ${{ matrix.target }}"
+
+      # Every packaging run uploads the raw installer bundles as downloadable
+      # artifacts, so bundles stay reachable even before the draft release is
+      # published.
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-bundles-${{ matrix.os }}
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: warn
+          retention-days: 14
