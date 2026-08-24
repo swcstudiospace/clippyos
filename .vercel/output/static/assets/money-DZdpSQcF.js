@@ -1,1 +1,0 @@
-import{n as e,t}from"./createServerFn-DanUjmJH.js";import{t as n}from"./middleware-DEgpzpRy.js";var r=t({method:`GET`}).middleware([n]).handler(e(`37ad4f7bcfb156ee6382bd7e2e70c60f2f14c3daa62bb6ae3de4e6ed23938c90`));export{r as t};
