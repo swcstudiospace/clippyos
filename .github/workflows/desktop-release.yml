@@ -13,30 +13,34 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
+            runs-on: [self-hosted, linux]
             target: x86_64-unknown-linux-gnu
             node-dist: node-linux-x64
             ext: ''
             args: --bundles deb,appimage
 
           - os: macos-14
+            runs-on: macos-14
             target: aarch64-apple-darwin
             node-dist: node-darwin-arm64
             ext: ''
             args: --bundles dmg,app
 
           - os: macos-13
+            runs-on: macos-13
             target: x86_64-apple-darwin
             node-dist: node-darwin-x64
             ext: ''
             args: --bundles dmg,app
 
           - os: windows-latest
+            runs-on: windows-latest
             target: x86_64-pc-windows-msvc
             node-dist: node-win-x64
             ext: '.exe'
             args: --bundles msi,nsis
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runs-on }}
 
     steps:
       - name: Checkout repository
