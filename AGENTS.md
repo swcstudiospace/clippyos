@@ -21,7 +21,7 @@ Pair it with [README.md](README.md) (product tour) and
 | `src/lib/supabase/` | Storage/secret resolution for the clip library |
 | `migrations/` | Add-only SQL migrations `NNNN_name.sql`; tracked in `_migrations` |
 | `supabase/schema.sql` | Consolidated schema mirror — keep in sync with migrations |
-| `scripts/` | Pipeline + QA: `migrate.mjs`, `with-app-env.mjs`, `check-auth-invariant.mjs`, `patch-ssr-exports.mjs`, `browser-smoke.mjs`, `qa-*.mjs` Playwright suites |
+| `scripts/` | Pipeline + QA: `migrate.ts`, `with-app-env.ts`, `check-auth-invariant.ts`, `patch-ssr-exports.ts`, `browser-smoke.ts`, `qa-*.ts` Playwright suites |
 | `server/middleware/` | Platform chrome (PWA/branding injector) — do not modify |
 | `public/marketing/` | Captured product GIFs/JPGs used by the README and landing page |
 | `.github/` | CI (`workflows/ci.yml`: Node 22 → `npm ci && npm test && npm run typecheck`), issue/PR templates |
@@ -29,10 +29,10 @@ Pair it with [README.md](README.md) (product tour) and
 ## 2. Commands (run them as written)
 
 ```bash
-npm run dev        # vite dev on 0.0.0.0:8080 via scripts/with-app-env.mjs
+npm run dev        # vite dev on 0.0.0.0:8080 via scripts/with-app-env.ts
 npm run build      # vite build → patch-ssr-exports → db:migrate (applies SQL)
 npm run preview    # serves built output on 127.0.0.1:8081
-npm test           # node --test over scripts/**/*.test.mjs + src/**/*.test.ts
+npm test           # node --test over scripts/**/*.test.ts + src/**/*.test.ts
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint .
 npm run format     # prettier
@@ -43,8 +43,8 @@ npm run db:migrate # apply pending migrations to DATABASE_URL target
 Hard rules:
 
 - Start dev through `npm run dev` only — invoking `vite` directly skips
-  `scripts/with-app-env.mjs` and desyncs `VITE_AUTH_ENABLED`
-  (`scripts/check-auth-invariant.mjs` exists to catch exactly that).
+  `scripts/with-app-env.ts` and desyncs `VITE_AUTH_ENABLED`
+  (`scripts/check-auth-invariant.ts` exists to catch exactly that).
 - Port contracts are load-bearing: dev `0.0.0.0:8080`, preview
   `127.0.0.1:8081`, both strictPort (`vite.config.ts`). Do not change them.
 - Never commit a `.env`. `.env.example` documents names only.
@@ -118,16 +118,16 @@ Hard rules:
 
 - Units use the Node built-in runner: bare behavioral sentences,
   `test("...", ...)`, small factory helpers, assertions on whole values — no
-  `describe`/`it` nesting. Co-locate as `*.test.mjs` (scripts) or
+  `describe`/`it` nesting. Co-locate as `*.test.ts` (scripts) or
   `src/**/*.test.ts`.
-- UI flows have Playwright suites `scripts/qa-*.mjs` (23 of them, one per
+- UI flows have Playwright suites `scripts/qa-*.ts` (23 of them, one per
   surface: portal, autonomy, library, publishers, safety, mobile, …). Extend
   the matching suite when you change a screen.
-- `node scripts/browser-smoke.mjs` renders desktop + mobile headlessly and
+- `node scripts/browser-smoke.ts` renders desktop + mobile headlessly and
   prints a JSON verdict (status, body text, console errors, screenshots).
   A clean verdict is part of done for UI work.
-- Marketing captures regenerate via `scripts/capture-marketing*.mjs`;
-  brand gates live in `scripts/brand-check.mjs` (og card size, x-banner).
+- Marketing captures regenerate via `scripts/capture-marketing*.ts`;
+  brand gates live in `scripts/brand-check.ts` (og card size, x-banner).
 
 ## 5. Definition of done
 
@@ -137,7 +137,7 @@ Run on your change and quote real output:
 2. `npm run typecheck`
 3. `npm run lint`
 4. Auth/route changes: `npm run check:auth` against a running dev server
-5. UI touched: relevant `scripts/qa-*.mjs` or `browser-smoke.mjs`
+5. UI touched: relevant `scripts/qa-*.ts` or `browser-smoke.ts`
 
 CI enforces 1–2 on Node 22 (`.github/workflows/ci.yml`); the rest is on you.
 

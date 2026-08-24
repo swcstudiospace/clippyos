@@ -128,7 +128,7 @@ leashed:
 | State/data | TanStack Query + Router, Zustand, Zod |
 | Auth | Better Auth (Google / X / email-password), portal bearer tokens |
 | DB access | Parameterized SQL over `pg` (managed Postgres) or PGLite (WASM) |
-| Testing | Node built-in runner for units; Playwright suites (`scripts/qa-*.mjs`) for flows |
+| Testing | Node built-in runner for units; Playwright suites (`scripts/qa-*.ts`) for flows |
 
 ## Quickstart
 
@@ -222,8 +222,8 @@ hardening, verification before release:
 4. **Harden** — threat-model new inputs; secrets scanned; auth invariant
    re-checked (`npm run check:auth`).
 5. **Verify** — `npm test`, `npm run typecheck`, `npm run lint` locally and
-   in CI; UI changes exercised through the Playwright `qa-*.mjs` suites and
-   the dual-viewport `browser-smoke.mjs` verdict.
+   in CI; UI changes exercised through the Playwright `qa-*.ts` suites and
+   the dual-viewport `browser-smoke.ts` verdict.
 6. **Release** — conventional commit, deploy on merge, migrations apply in
    the build, rollback = redeploy previous tag.
 

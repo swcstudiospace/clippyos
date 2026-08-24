@@ -67,7 +67,7 @@ Do all of this — the routes alone render the disabled branch:
 1. **Flag:** delete the `VITE_AUTH_ENABLED` key from `.grok/app-env.json` and
    **restart the dev server**. Vite reads env at startup, so HMR will not pick
    it up. `npm run dev`, `npm run build` and `npm run preview` all read that
-   file through `scripts/with-app-env.mjs`, so preview and the built output flip
+   file through `scripts/with-app-env.ts`, so preview and the built output flip
    together — never start Vite directly.
 2. **Schema:** `cp migrations/auth/0001_auth.sql migrations/0001_auth.sql`, then
    restart so it applies. It is tracked by basename in `_migrations`, so a

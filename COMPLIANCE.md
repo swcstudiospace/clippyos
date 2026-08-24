@@ -54,7 +54,7 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 
 | Control | ClippyOS Implementation | Status |
 |---------|------------------------|--------|
-| CA-2 | Security Assessments | ✅ `scripts/qa-*.mjs` Playwright suites (23 surfaces), browser smoke tests |
+| CA-2 | Security Assessments | ✅ `scripts/qa-*.ts` Playwright suites (23 surfaces), browser smoke tests |
 | CA-3 | System Interconnections | ✅ Documented in `AGENTS.md`; API contracts in `src/routes/api/v1.$.ts` |
 | CA-7 | Continuous Monitoring | ✅ `/health` endpoint, cron ops, SLO strip, integration grid |
 
@@ -64,7 +64,7 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 |---------|------------------------|--------|
 | CM-2 | Baseline Configuration | ✅ `package.json` locked, migrations add-only, `supabase/schema.sql` mirror |
 | CM-3 | Configuration Change Control | ✅ PR required, CI gates (typecheck, lint, test), conventional commits |
-| CM-4 | Security Impact Analysis | ✅ `check-auth-invariant.mjs` prevents dev/prod flag drift |
+| CM-4 | Security Impact Analysis | ✅ `check-auth-invariant.ts` prevents dev/prod flag drift |
 | CM-7 | Least Functionality | ✅ No preview fallbacks with literal keys; degraded mode on missing secrets |
 | CM-8 | System Component Inventory | ✅ `package.json` + `migrations/` + `scripts/` as source of truth |
 | CM-11 | User-Installed Software | ✅ Skills sandbox defaults to no network; agent-proposed skills pending review |
@@ -144,7 +144,7 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 | Control | ClippyOS Implementation | Status |
 |---------|------------------------|--------|
 | RA-3 | Risk Assessment | ✅ `/health` endpoint surfaces missing secrets, integration status, DLQ depth |
-| RA-5 | Vulnerability Scanning | ✅ `npm audit` in CI, Dependabot, `scripts/brand-check.mjs` for supply chain |
+| RA-5 | Vulnerability Scanning | ✅ `npm audit` in CI, Dependabot, `scripts/brand-check.ts` for supply chain |
 
 ### SA — System & Services Acquisition
 
@@ -184,7 +184,7 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 ### Continuous Monitoring (ConMon)
 
 - **Monthly**: `npm run check:auth` against live dev; dependency updates via Dependabot
-- **Quarterly**: Full test suite (`npm test` + Playwright QA suites), penetration testing via `scripts/qa-safety.mjs`
+- **Quarterly**: Full test suite (`npm test` + Playwright QA suites), penetration testing via `scripts/qa-safety.ts`
 - **Annually**: Architecture review against `AGENTS.md` contracts; third-party dependency audit
 
 ### POA&M (Plan of Action & Milestones)
@@ -200,7 +200,7 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 
 - All dependencies pinned in `package-lock.json`
 - No `postinstall` or `prepare` scripts in dependencies
-- `scripts/brand-check.mjs` validates OG card sizes (prevents phishing via oversized cards)
+- `scripts/brand-check.ts` validates OG card sizes (prevents phishing via oversized cards)
 - Skills sandbox: network disabled by default; explicit allowlist per skill
 
 ---
@@ -213,8 +213,8 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 | `SECURITY.md` | Root | IR-1, IR-4, SI-11, AT-2 |
 | `supabase/schema.sql` | Root | CM-2, CM-8, SC-28 |
 | `migrations/*.sql` | `/migrations` | CM-2, CM-3, SI-2 |
-| `scripts/qa-*.mjs` | `/scripts` | CA-2, CA-7, SI-4 |
-| `scripts/check-auth-invariant.mjs` | `/scripts` | CM-4, AC-3 |
+| `scripts/qa-*.ts` | `/scripts` | CA-2, CA-7, SI-4 |
+| `scripts/check-auth-invariant.ts` | `/scripts` | CM-4, AC-3 |
 | `src/lib/server/autonomy-audit.server.ts` | `/src/lib/server` | AU-2, AU-3, AU-9, AU-12 |
 | `src/lib/server/secret-scope.server.ts` | `/src/lib/server` | AC-3, AC-6, MP-4, SC-13 |
 | `src/routes/api/v1.$.ts` | `/src/routes/api` | AC-17, IA-8, AU-12, SI-10 |

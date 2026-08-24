@@ -15,7 +15,7 @@ Everything here runs **in the sandbox** against `http://127.0.0.1:8080` — it i
 
 ```bash
 mkdir -p /workspace/screenshots
-node scripts/browser-smoke.mjs http://127.0.0.1:8080/ /workspace/screenshots/app-builder-preview.png
+node scripts/browser-smoke.ts http://127.0.0.1:8080/ /workspace/screenshots/app-builder-preview.png
 # Writes app-builder-preview.png (desktop), -mobile.png, and .json (verdict).
 # Then Read BOTH PNGs in one batched read if you have an image tool, and iterate if either looks wrong.
 ```
@@ -33,7 +33,7 @@ dev verdict as a baseline — the JSON reports `divergesFromBaseline`, so you on
 re-read the built screenshots when it flags.
 
 ```bash
-node scripts/browser-smoke.mjs http://127.0.0.1:8081/ /workspace/screenshots/app-builder-built.png --baseline /workspace/screenshots/app-builder-preview.json
+node scripts/browser-smoke.ts http://127.0.0.1:8081/ /workspace/screenshots/app-builder-built.png --baseline /workspace/screenshots/app-builder-preview.json
 ```
 
 ## How deep to go

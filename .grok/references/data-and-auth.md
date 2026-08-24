@@ -63,7 +63,7 @@ and `auth` skills.
 ## Turning sign-in on (at scaffold or later)
 
 `.grok/app-env.json` (`{"VITE_AUTH_ENABLED": "false"}`) is the switch, read by
-`npm run dev` / `build` / `preview` alike through `scripts/with-app-env.mjs` —
+`npm run dev` / `build` / `preview` alike through `scripts/with-app-env.ts` —
 which is why Vite is never started outside those scripts. Follow the `auth`
 skill's **"Turning sign-in on"** (flag, schema, then routes) in that order: the
 routes alone render the disabled branch. `npm run check:auth`, run against a

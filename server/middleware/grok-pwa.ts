@@ -23,7 +23,7 @@ import {
   isInstallQuery,
   renderInstallPageHtml,
   renderWebManifest,
-} from "../../scripts/grok-pwa-shared.mjs";
+} from "../../scripts/grok-pwa-shared.ts";
 
 interface GrokPwaEvent {
   url: URL;

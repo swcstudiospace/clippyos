@@ -23,7 +23,7 @@ user-invocable: false
 
 A deployed app (`https://{name}.grok.me`) unfurls with a 1200×630 card; every app
 (preview included) shows a favicon in the tab. **Share-card `<meta>` tags are not
-authored in `__root.tsx`** — the injector (`scripts/grok-pwa-shared.mjs`) overwrites
+authored in `__root.tsx`** — the injector (`scripts/grok-pwa-shared.ts`) overwrites
 `og:*` and `twitter:card` on every HTML response. You write identity data only:
 
 - `src/lib/og/site.json` — create only if needed: `{ "title", "type"?: "x:game", "card"?: "custom", "color"?: "RRGGBB" }`. Not pre-seeded; title defaults to the host slug.
@@ -58,7 +58,7 @@ X's card pipeline keys off that exact value to present the unfurl as a **game** 
 Keep it: do not "correct" it to `website` during refactors, shorten it to bare
 `game`, or reach for `twitter:card` / invented `x:type` tags — the rejected
 alternatives are in `references/og-type-contract.md`. Non-games omit `og:type`.
-`browser-smoke.mjs` / `brand-check.mjs` emit a **BRAND WARNING** when a canvas app
+`browser-smoke.ts` / `brand-check.ts` emit a **BRAND WARNING** when a canvas app
 lacks `"type": "x:game"` or — once a custom card exists — `public/x-banner.jpg`; treat that as not done.
 
 ## Brand-asset pass: always a subagent
