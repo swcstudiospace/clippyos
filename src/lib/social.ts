@@ -196,6 +196,8 @@ export type SocialMachineStatus = {
   snapshotName: string | null;
   geoWarning: string | null;
   proxyConfigured: boolean;
+  /** Storage bridge: shared bucket mounted as a network drive (null = unknown). */
+  storageBridgeMounted: boolean | null;
 };
 
 export type PublicMachineStatus = {

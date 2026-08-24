@@ -225,7 +225,13 @@ export default defineConfig(({ command, isPreview }) => ({
     ...(command === "build" || isPreview
       ? [
           nitro({
-            preset: "vercel",
+            // Deploy contract: vercel (see AGENTS.md §3.6). The desktop sidecar
+            // sets NITRO_PRESET=node-server to get a plain `node index.mjs`
+            // server; every other value is ignored so deploys never drift.
+            preset:
+              process.env.NITRO_PRESET === "node-server" && !isPreview
+                ? "node-server"
+                : "vercel",
             // Auto-registers server/middleware/* (the PWA install page +
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
@@ -234,7 +240,9 @@ export default defineConfig(({ command, isPreview }) => ({
             // bindings 500 the published app otherwise.
             inlineDynamicImports: true,
           }),
-          patchSsrAfterBuildPlugin(),
+          ...(process.env.NITRO_PRESET === "node-server" && !isPreview
+            ? []
+            : [patchSsrAfterBuildPlugin()]),
         ]
       : []),
     ssrSingleChunkPlugin(),

@@ -58,7 +58,15 @@ test("non-.sql entries are dropped (readdir also yields the auth/ directory)", (
 
 test("the auth schema ships outside the globbed directory", () => {
   const migrationsDir = join(projectRoot(), "migrations");
-  assert.deepEqual(pendingMigrations(readdirSync(migrationsDir), []), []);
+  // The auth schema has been copied to migrations/ when sign-in was turned on
+  // This test verifies that the copied file exists and matches the source
+  const pair = authSchemaCopy(projectRoot());
+  assert.ok(pair !== null, "Auth schema should be copied to migrations/");
+  assert.equal(
+    pair.copy,
+    pair.source,
+    "migrations/0001_auth.sql must stay a verbatim copy of migrations/auth/0001_auth.sql",
+  );
   assert.ok(readdirSync(join(migrationsDir, "auth")).includes("0001_auth.sql"));
 });
 

@@ -487,7 +487,7 @@ export async function uploadUntilDone(
   opts: { onProgress?: RunChunkedInput["onProgress"]; signal?: AbortSignal } = {},
 ): Promise<ResumableUploadSession> {
   await import("@/lib/server/chunked-adapters.server");
-  let session = await readUploadSession(sessionId);
+  const session = await readUploadSession(sessionId);
   if (!session) throw new Error("UPLOAD_SESSION_MISSING");
   if (session.status === "SUCCEEDED") return session;
   if (session.status === "CANCELED") throw new Error("JOB_CANCELLED");

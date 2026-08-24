@@ -15,6 +15,7 @@ import {
   refreshBillingEntitlement,
   startBillingCheckout,
 } from "@/lib/server/billing-fns";
+import { WhopCheckoutEmbed } from "@/components/billing/whop-embed";
 import { formatDate, formatUsd } from "@/lib/format";
 import { userFacingErrorMessage } from "@/lib/errors";
 import { PageHeader } from "@/components/ui/page-header";
@@ -43,6 +44,10 @@ function BillingPage() {
     queryFn: () => getBillingSnapshot(),
   });
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [checkoutSession, setCheckoutSession] = useState<{
+    sessionId: string;
+    hostedUrl: string | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!search.includes("checkout=success")) return;
@@ -57,7 +62,7 @@ function BillingPage() {
   const checkout = useMutation({
     mutationFn: (planKey: SaasPlanKey) => startBillingCheckout({ data: { planKey } }),
     onSuccess: (result) => {
-      window.location.assign(result.url);
+      setCheckoutSession(result);
     },
     onError: (error) => toast.error(userFacingErrorMessage(error)),
   });
@@ -147,11 +152,21 @@ function BillingPage() {
             </Button>
           </div>
         ) : null}
+        {owner && snapshot.whop.communityUrl ? (
+          <div className="relative z-[1] mt-2">
+            <Button size="sm" variant="ghost" asChild>
+              <a href={snapshot.whop.communityUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="size-4" />
+                Open community
+              </a>
+            </Button>
+          </div>
+        ) : null}
       </GlassCard>
 
       <h2 className="mt-8 text-card font-semibold tracking-tight">Plans</h2>
       <p className="mt-1 text-caption text-muted">
-        Subscribe via Airwallex Hosted Checkout. Cards, Apple Pay, and Google Pay. Price IDs
+        Subscribe via Whop Checkout — cards, wallets, and local payment methods. Plan IDs
         come from Settings → Integrations.
       </p>
       <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -187,9 +202,9 @@ function BillingPage() {
         })}
       </div>
 
-      {!snapshot.airwallex.configured ? (
+      {!snapshot.whop.configured ? (
         <p className="mt-4 text-caption text-muted">
-          Connect Airwallex in Settings → Integrations before checkout. Until a price ID is
+          Connect Whop in Settings → Integrations before checkout. Until a plan ID is
           saved, the rest of the product stays open so you can finish setup.
         </p>
       ) : null}
@@ -245,6 +260,48 @@ function BillingPage() {
               Keep plan
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={checkoutSession !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCheckoutSession(null);
+            void queryClient.invalidateQueries({ queryKey: BILLING_QUERY_KEY });
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogTitle>Whop Checkout</DialogTitle>
+          <DialogDescription>
+            Embedded Whop checkout. Access unlocks right after payment — no card data ever
+            reaches ClippyOS.
+          </DialogDescription>
+          {checkoutSession ? (
+            <>
+              <div className="mt-3 min-h-[420px]">
+                <WhopCheckoutEmbed
+                  sessionId={checkoutSession.sessionId}
+                  returnUrl={`${window.location.origin}/billing?checkout=success`}
+                />
+              </div>
+              {checkoutSession.hostedUrl ? (
+                <p className="mt-2 text-caption text-muted">
+                  Trouble loading the embed?{" "}
+                  <a
+                    className="underline"
+                    href={checkoutSession.hostedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open the hosted checkout page
+                  </a>{" "}
+                  instead.
+                </p>
+              ) : null}
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

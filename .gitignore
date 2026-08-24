@@ -15,3 +15,6 @@ screenshots
 artifacts
 tmp
 .cache
+
+# Rust/Tauri build artifacts
+src-tauri/target/

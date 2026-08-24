@@ -270,7 +270,7 @@ export const connectChannel = createServerFn({ method: "POST" })
     }
     const canonical = snapshot.canonicalUrl || parsed.canonical;
     const clients = await readClients();
-    let client: Client | null = data.clientId
+    const client: Client | null = data.clientId
       ? (clients.find((row) => row.id === data.clientId) ?? null)
       : matchClient(clients, snapshot.channelId, canonical);
     if (!client) {

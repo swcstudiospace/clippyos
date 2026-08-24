@@ -41,7 +41,7 @@ export const getLibrarySnapshot = createServerFn({ method: "GET" })
       renders,
       clients: clients
         .filter((row) => !row.deletedAt)
-        .map((row) => ({ id: row.id, name: row.name })),
+        .map((row) => ({ id: row.id, name: row.name, status: row.status, deletedAt: row.deletedAt })),
       role,
       settings,
       rollups,

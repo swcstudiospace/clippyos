@@ -100,7 +100,7 @@ async function themeContext(browser, storageState, theme, dir) {
 }
 
 const inboxWebm = findWebm(join(videoRoot, "inbox-dark"));
-if (false && inboxWebm && !existsSync(join(outDir, "inbox-dark.gif"))) {
+if (inboxWebm && !existsSync(join(outDir, "inbox-dark.gif"))) {
   toGif(inboxWebm, join(outDir, "inbox-dark.gif"), 22, 4.2);
   stillFromWebm(inboxWebm, join(outDir, "inbox-dark.jpg"), 22);
   console.log("converted leftover inbox-dark");

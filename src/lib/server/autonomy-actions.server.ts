@@ -1440,6 +1440,17 @@ async function execute(
           return mapError(code);
         }
       }
+      if (action.startsWith("stream.") || action.startsWith("bridge.")) {
+        const write = action === "stream.create_clip" || action === "stream.update_clip" || action === "bridge.apply_mount" || action === "bridge.ingest_drop";
+        if (write && !need(actor, "write:social")) return deny();
+        if (!write && !need(actor, "read")) return deny();
+        const { handleStreamAction } = await import("@/lib/server/stream-tools.server");
+        const data = await handleStreamAction(action, payload, `agent:${actor.keyId ?? actor.source}`);
+        if (data === undefined) {
+          return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };
+        }
+        return { ok: true, data };
+      }
       if (action.startsWith("library.")) {
         const write =
           action === "library.ingest_url" ||

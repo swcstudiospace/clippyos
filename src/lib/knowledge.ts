@@ -81,8 +81,10 @@ export function knowledgeScopeLabel(scope: KnowledgeScope | TrainingScope): stri
 }
 
 export function cleanTrainingInput(raw: string): string {
+  // Remove control characters (ASCII 0-31, 127, and specific non-printable)
+  // eslint-disable-next-line no-control-regex
   return raw
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, "")
     .replace(/\r\n/g, "\n")
     .trim();
 }

@@ -160,10 +160,17 @@ export type LibraryFilters = {
   search?: string;
 };
 
+export type ClientSummary = {
+  id: string;
+  name: string;
+  status: string;
+  deletedAt: string | null;
+};
+
 export type LibrarySnapshot = {
   assets: LibraryAsset[];
   renders: RenderJob[];
-  clients: Array<{ id: string; name: string }>;
+  clients: ClientSummary[];
   role: "admin" | "member";
   settings: MediaPipelineSettings;
   rollups?: AssetPerformanceRollup[];

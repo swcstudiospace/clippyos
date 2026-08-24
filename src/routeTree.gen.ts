@@ -37,6 +37,7 @@ import { Route as AppMoneyRouteImport } from './routes/_app/money'
 import { Route as AppOnboardingRouteImport } from './routes/_app/onboarding'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppSocialRouteImport } from './routes/_app/social'
+import { Route as AppStudioRouteImport } from './routes/_app/studio'
 import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as AppThumbnailsRouteImport } from './routes/_app/thumbnails'
 import { Route as ApiAgencySchemaRouteImport } from './routes/api/agency-schema'
@@ -62,10 +63,10 @@ import { Route as ApiLibraryUploadRouteImport } from './routes/api/library.uploa
 import { Route as ApiOauthLinearRouteImport } from './routes/api/oauth/linear'
 import { Route as ApiOauthSocialRouteImport } from './routes/api/oauth/social'
 import { Route as ApiV1SplatRouteImport } from './routes/api/v1.$'
-import { Route as ApiWebhooksAirwallexRouteImport } from './routes/api/webhooks/airwallex'
 import { Route as ApiWebhooksInboundRouteImport } from './routes/api/webhooks/inbound'
 import { Route as ApiWebhooksTelegramRouteImport } from './routes/api/webhooks/telegram'
 import { Route as ApiWebhooksWhatsappRouteImport } from './routes/api/webhooks/whatsapp'
+import { Route as ApiWebhooksWhopRouteImport } from './routes/api/webhooks/whop'
 import { Route as DotwellKnownOauthProtectedResourceApiMcpRouteImport } from './routes/[.]well-known/oauth-protected-resource.api.mcp'
 import { Route as ApiMcpDotwellKnownOauthProtectedResourceRouteImport } from './routes/api/mcp.[.]well-known.oauth-protected-resource'
 
@@ -211,6 +212,11 @@ const AppSocialRoute = AppSocialRouteImport.update({
   path: '/social',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStudioRoute = AppStudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTeamRoute = AppTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -336,11 +342,6 @@ const ApiV1SplatRoute = ApiV1SplatRouteImport.update({
   path: '/api/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiWebhooksAirwallexRoute = ApiWebhooksAirwallexRouteImport.update({
-  id: '/api/webhooks/airwallex',
-  path: '/api/webhooks/airwallex',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiWebhooksInboundRoute = ApiWebhooksInboundRouteImport.update({
   id: '/api/webhooks/inbound',
   path: '/api/webhooks/inbound',
@@ -354,6 +355,11 @@ const ApiWebhooksTelegramRoute = ApiWebhooksTelegramRouteImport.update({
 const ApiWebhooksWhatsappRoute = ApiWebhooksWhatsappRouteImport.update({
   id: '/api/webhooks/whatsapp',
   path: '/api/webhooks/whatsapp',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWebhooksWhopRoute = ApiWebhooksWhopRouteImport.update({
+  id: '/api/webhooks/whop',
+  path: '/api/webhooks/whop',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DotwellKnownOauthProtectedResourceApiMcpRoute =
@@ -397,6 +403,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof AppOnboardingRoute
   '/settings': typeof AppSettingsRoute
   '/social': typeof AppSocialRoute
+  '/studio': typeof AppStudioRoute
   '/team': typeof AppTeamRoute
   '/thumbnails': typeof AppThumbnailsRoute
   '/api/agency-schema': typeof ApiAgencySchemaRoute
@@ -421,10 +428,10 @@ export interface FileRoutesByFullPath {
   '/api/oauth/linear': typeof ApiOauthLinearRoute
   '/api/oauth/social': typeof ApiOauthSocialRoute
   '/api/v1/$': typeof ApiV1SplatRoute
-  '/api/webhooks/airwallex': typeof ApiWebhooksAirwallexRoute
   '/api/webhooks/inbound': typeof ApiWebhooksInboundRoute
   '/api/webhooks/telegram': typeof ApiWebhooksTelegramRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
+  '/api/webhooks/whop': typeof ApiWebhooksWhopRoute
   '/clients/': typeof AppClientsIndexRoute
   '/.well-known/oauth-protected-resource/api/mcp': typeof DotwellKnownOauthProtectedResourceApiMcpRoute
   '/api/mcp/.well-known/oauth-protected-resource': typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
@@ -455,6 +462,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof AppOnboardingRoute
   '/settings': typeof AppSettingsRoute
   '/social': typeof AppSocialRoute
+  '/studio': typeof AppStudioRoute
   '/team': typeof AppTeamRoute
   '/thumbnails': typeof AppThumbnailsRoute
   '/api/agency-schema': typeof ApiAgencySchemaRoute
@@ -479,10 +487,10 @@ export interface FileRoutesByTo {
   '/api/oauth/linear': typeof ApiOauthLinearRoute
   '/api/oauth/social': typeof ApiOauthSocialRoute
   '/api/v1/$': typeof ApiV1SplatRoute
-  '/api/webhooks/airwallex': typeof ApiWebhooksAirwallexRoute
   '/api/webhooks/inbound': typeof ApiWebhooksInboundRoute
   '/api/webhooks/telegram': typeof ApiWebhooksTelegramRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
+  '/api/webhooks/whop': typeof ApiWebhooksWhopRoute
   '/clients': typeof AppClientsIndexRoute
   '/.well-known/oauth-protected-resource/api/mcp': typeof DotwellKnownOauthProtectedResourceApiMcpRoute
   '/api/mcp/.well-known/oauth-protected-resource': typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
@@ -517,6 +525,7 @@ export interface FileRoutesById {
   '/_app/onboarding': typeof AppOnboardingRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/social': typeof AppSocialRoute
+  '/_app/studio': typeof AppStudioRoute
   '/_app/team': typeof AppTeamRoute
   '/_app/thumbnails': typeof AppThumbnailsRoute
   '/api/agency-schema': typeof ApiAgencySchemaRoute
@@ -541,10 +550,10 @@ export interface FileRoutesById {
   '/api/oauth/linear': typeof ApiOauthLinearRoute
   '/api/oauth/social': typeof ApiOauthSocialRoute
   '/api/v1/$': typeof ApiV1SplatRoute
-  '/api/webhooks/airwallex': typeof ApiWebhooksAirwallexRoute
   '/api/webhooks/inbound': typeof ApiWebhooksInboundRoute
   '/api/webhooks/telegram': typeof ApiWebhooksTelegramRoute
   '/api/webhooks/whatsapp': typeof ApiWebhooksWhatsappRoute
+  '/api/webhooks/whop': typeof ApiWebhooksWhopRoute
   '/_app/clients/': typeof AppClientsIndexRoute
   '/.well-known/oauth-protected-resource/api/mcp': typeof DotwellKnownOauthProtectedResourceApiMcpRoute
   '/api/mcp/.well-known/oauth-protected-resource': typeof ApiMcpDotwellKnownOauthProtectedResourceRoute
@@ -579,6 +588,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/settings'
     | '/social'
+    | '/studio'
     | '/team'
     | '/thumbnails'
     | '/api/agency-schema'
@@ -603,10 +613,10 @@ export interface FileRouteTypes {
     | '/api/oauth/linear'
     | '/api/oauth/social'
     | '/api/v1/$'
-    | '/api/webhooks/airwallex'
     | '/api/webhooks/inbound'
     | '/api/webhooks/telegram'
     | '/api/webhooks/whatsapp'
+    | '/api/webhooks/whop'
     | '/clients/'
     | '/.well-known/oauth-protected-resource/api/mcp'
     | '/api/mcp/.well-known/oauth-protected-resource'
@@ -637,6 +647,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/settings'
     | '/social'
+    | '/studio'
     | '/team'
     | '/thumbnails'
     | '/api/agency-schema'
@@ -661,10 +672,10 @@ export interface FileRouteTypes {
     | '/api/oauth/linear'
     | '/api/oauth/social'
     | '/api/v1/$'
-    | '/api/webhooks/airwallex'
     | '/api/webhooks/inbound'
     | '/api/webhooks/telegram'
     | '/api/webhooks/whatsapp'
+    | '/api/webhooks/whop'
     | '/clients'
     | '/.well-known/oauth-protected-resource/api/mcp'
     | '/api/mcp/.well-known/oauth-protected-resource'
@@ -698,6 +709,7 @@ export interface FileRouteTypes {
     | '/_app/onboarding'
     | '/_app/settings'
     | '/_app/social'
+    | '/_app/studio'
     | '/_app/team'
     | '/_app/thumbnails'
     | '/api/agency-schema'
@@ -722,10 +734,10 @@ export interface FileRouteTypes {
     | '/api/oauth/linear'
     | '/api/oauth/social'
     | '/api/v1/$'
-    | '/api/webhooks/airwallex'
     | '/api/webhooks/inbound'
     | '/api/webhooks/telegram'
     | '/api/webhooks/whatsapp'
+    | '/api/webhooks/whop'
     | '/_app/clients/'
     | '/.well-known/oauth-protected-resource/api/mcp'
     | '/api/mcp/.well-known/oauth-protected-resource'
@@ -758,10 +770,10 @@ export interface RootRouteChildren {
   ApiOauthLinearRoute: typeof ApiOauthLinearRoute
   ApiOauthSocialRoute: typeof ApiOauthSocialRoute
   ApiV1SplatRoute: typeof ApiV1SplatRoute
-  ApiWebhooksAirwallexRoute: typeof ApiWebhooksAirwallexRoute
   ApiWebhooksInboundRoute: typeof ApiWebhooksInboundRoute
   ApiWebhooksTelegramRoute: typeof ApiWebhooksTelegramRoute
   ApiWebhooksWhatsappRoute: typeof ApiWebhooksWhatsappRoute
+  ApiWebhooksWhopRoute: typeof ApiWebhooksWhopRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -962,6 +974,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSocialRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/studio': {
+      id: '/_app/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof AppStudioRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/team': {
       id: '/_app/team'
       path: '/team'
@@ -1137,13 +1156,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/webhooks/airwallex': {
-      id: '/api/webhooks/airwallex'
-      path: '/api/webhooks/airwallex'
-      fullPath: '/api/webhooks/airwallex'
-      preLoaderRoute: typeof ApiWebhooksAirwallexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/api/webhooks/inbound': {
       id: '/api/webhooks/inbound'
       path: '/api/webhooks/inbound'
@@ -1163,6 +1175,13 @@ declare module '@tanstack/react-router' {
       path: '/api/webhooks/whatsapp'
       fullPath: '/api/webhooks/whatsapp'
       preLoaderRoute: typeof ApiWebhooksWhatsappRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/webhooks/whop': {
+      id: '/api/webhooks/whop'
+      path: '/api/webhooks/whop'
+      fullPath: '/api/webhooks/whop'
+      preLoaderRoute: typeof ApiWebhooksWhopRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/.well-known/oauth-protected-resource/api/mcp': {
@@ -1213,6 +1232,7 @@ interface AppRouteChildren {
   AppOnboardingRoute: typeof AppOnboardingRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppSocialRoute: typeof AppSocialRoute
+  AppStudioRoute: typeof AppStudioRoute
   AppTeamRoute: typeof AppTeamRoute
   AppThumbnailsRoute: typeof AppThumbnailsRoute
 }
@@ -1234,6 +1254,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppOnboardingRoute: AppOnboardingRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppSocialRoute: AppSocialRoute,
+  AppStudioRoute: AppStudioRoute,
   AppTeamRoute: AppTeamRoute,
   AppThumbnailsRoute: AppThumbnailsRoute,
 }
@@ -1319,10 +1340,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiOauthLinearRoute: ApiOauthLinearRoute,
   ApiOauthSocialRoute: ApiOauthSocialRoute,
   ApiV1SplatRoute: ApiV1SplatRoute,
-  ApiWebhooksAirwallexRoute: ApiWebhooksAirwallexRoute,
   ApiWebhooksInboundRoute: ApiWebhooksInboundRoute,
   ApiWebhooksTelegramRoute: ApiWebhooksTelegramRoute,
   ApiWebhooksWhatsappRoute: ApiWebhooksWhatsappRoute,
+  ApiWebhooksWhopRoute: ApiWebhooksWhopRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

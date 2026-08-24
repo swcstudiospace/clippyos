@@ -539,4 +539,107 @@ Inputs: \`agentRunId\` (optional — defaults to last succeeded run)
 Only when the operator runs this preset or policy skills.propose_on_agent_success fires.
 `,
   },
+  {
+    slug: "stream-vod-clip-run",
+    skillMd: `---
+name: Stream VOD clip run
+description: Plan VOD clips, drive the Social Machine browser to record them, drop files into the shared bucket, ingest into the Library.
+version: 1.0.0
+tags: [clipping, stream, twitch, computer-use]
+category: clipping
+provenance: builtin
+permissions: [clients:read, social:read, social:write, stream:read, stream:write_clips]
+tools: [stream.list_vods, stream.plan_clips, stream.create_clip, stream.update_clip, bridge.status, bridge.apply_mount, bridge.list_drops, bridge.ingest_drop, social.get_machine_status, computer.screenshot, vision.analyze, library.search_assets]
+runtime: { timeoutSec: 300, network: false }
+---
+
+# Stream VOD clip run
+
+Turn one Twitch VOD into N vertical clips without a human in the loop.
+
+<workflow>
+1. <plan>
+   - \`stream.list_vods\` with the clientId (pass twitchLogin if the client has no stored source).
+   - Pick the target VOD; \`stream.plan_clips\` with clipCount and durationSec to get deterministic start/end offsets.
+   - For each planned segment call \`stream.create_clip\` — this records PROCESSING clips with ids you will close out later.
+2. <machine>
+   - \`social.get_machine_status\`. If stopped: check policy social.auto_start_for_upload. Off → finish honestly with waiting_resource. On → start via the operator-approved path only.
+   - \`bridge.status\`; if configured but not mounted, \`bridge.apply_mount\` once the machine is running.
+3. <record>
+   - Open the VOD URL in the machine's browser via Computer Use.
+   - For each clip: seek to startSec, start recording (OBS or the browser recorder per operator setup), let it run durationSec seconds, stop, save the file to Y:\\machine-drops\\<clipId>.mp4.
+   - After each recording take \`computer.screenshot\` + \`vision.analyze\` to confirm the recorder state before moving on. Never trust one ambiguous frame.
+4. <ingest>
+   - \`bridge.list_drops\` to confirm each file landed.
+   - \`bridge.ingest_drop\` per file with clientId and title → returns assetId.
+   - \`stream.update_clip\` status=READY for successes (FAILED + error text for misses).
+5. <finish>
+   - Summarize: clips recorded, assetIds, failures with reasons, and any human follow-up (login walls, CAPTCHAs).
+</workflow>
+
+<rules>
+- The Social Machine disk is never the archive. Files must reach machine-drops/ (the shared bucket) before you claim success.
+- Never type passwords or solve CAPTCHAs — stop and report needs_login.
+- If the mount fails twice, finish honestly instead of retrying through the whole budget.
+- One clip failing is data, not disaster: mark FAILED with the reason and continue the run.
+</rules>
+`,
+    scripts: {
+      "plan-summary.py": `#!/usr/bin/env python3
+"""Summarize a clip plan JSON on stdin. No network. No secrets."""
+import json, sys
+
+raw = sys.stdin.read().strip() or "{}"
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    print("invalid json", file=sys.stderr)
+    sys.exit(2)
+
+vod = data.get("vodTitle") or data.get("vodId") or "VOD"
+plan = data.get("plan") or []
+for step in plan:
+    start = int(step.get("startSec", 0))
+    end = int(step.get("endSec", 0))
+    dur = end - start
+    hh, rem = divmod(start, 3600)
+    mm, ss = divmod(rem, 60)
+    stamp = f"{hh}:{mm:02d}:{ss:02d}" if hh else f"{mm}:{ss:02d}"
+    print(f"{step.get('index', '?')}. @{stamp} {dur}s — {step.get('suggestedTitle', '')}")
+if not plan:
+    print("empty plan")
+`,
+    },
+  },
+  {
+    slug: "stream-harvest-drops",
+    skillMd: `---
+name: Stream harvest drops
+description: Sweep the shared bucket's machine-drops/ prefix into the Library after any Computer Use session.
+version: 1.0.0
+tags: [clipping, storage, bridge, housekeeping]
+category: clipping
+provenance: builtin
+permissions: [clients:read, social:write, stream:write_clips]
+tools: [bridge.status, bridge.list_drops, bridge.ingest_drop, library.search_assets]
+runtime: { timeoutSec: 120, network: false }
+---
+
+# Stream harvest drops
+
+Post-session housekeeping: everything the machine dropped gets ingested or reported.
+
+<workflow>
+1. <check> \`bridge.status\`. Not configured → finish with setup instructions (Settings → Library Storage).
+2. <list> \`bridge.list_drops\`. Empty → nothing to do; report clean sweep.
+3. <ingest> For each drop, \`bridge.ingest_drop\` with the client it belongs to (match by drop filename prefix when possible; otherwise ask via notes). Duplicates return duplicate=true — that is success, not an error.
+4. <report> List ingested assetIds and anything skipped with reasons.
+</workflow>
+
+<rules>
+- Never delete bucket objects from this skill; harvesting copies into the Library, cleanup is an operator decision.
+- A file you cannot attribute to a client still gets ingested unassigned — flag it in the summary rather than dropping it.
+</rules>
+`,
+  },
 ];

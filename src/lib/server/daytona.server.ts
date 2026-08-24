@@ -140,7 +140,8 @@ export async function loadDaytonaConfig(): Promise<DaytonaConfig | null> {
   };
 }
 
-function createClient(config: DaytonaConfig): Daytona {
+/** Shared client factory — also used by the storage bridge for fs access. */
+export function createClient(config: DaytonaConfig): Daytona {
   return new Daytona({
     apiKey: config.apiKey,
     apiUrl: config.apiUrl,
@@ -371,6 +372,7 @@ function emptyStatus(partial: Partial<SocialMachineStatus>): SocialMachineStatus
     snapshotName: null,
     geoWarning: instagramGeoWarning("us"),
     proxyConfigured: false,
+    storageBridgeMounted: null,
     ...partial,
   };
 }
@@ -521,6 +523,9 @@ export async function getSocialMachineStatus(): Promise<SocialMachineStatus> {
   const startedAt = (await readAppSetting(STARTED_AT_KEY))?.trim() || null;
   const stoppedAt = (await readAppSetting(STOPPED_AT_KEY))?.trim() || null;
   const snapshotName = (await readAppSetting(SNAPSHOT_KEY))?.trim() || null;
+  const bridgeRaw = (await readAppSetting("LIBRARY_BRIDGE_MOUNTED"))?.trim();
+  const storageBridgeMounted: boolean | null =
+    bridgeRaw === "true" ? true : bridgeRaw === "false" ? false : null;
   const extras = {
     os: parseSocialMachineOs(await readAppSetting(OS_KEY)),
     size: parseSocialMachineSize(await readAppSetting(SIZE_KEY)),
@@ -528,6 +533,7 @@ export async function getSocialMachineStatus(): Promise<SocialMachineStatus> {
     snapshotName,
     geoWarning: instagramGeoWarning(parseSocialMachineRegion(config?.target)),
     proxyConfigured: Boolean(config?.proxyUrl),
+    storageBridgeMounted,
   };
   if (!config) {
     return emptyStatus({
@@ -747,6 +753,18 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
       await applyWindowsProxy(sandbox, config.proxyUrl);
     }
 
+    // Storage bridge: mount the shared bucket as a network drive (best-effort,
+    // never blocks machine start). Status is surfaced via storageBridgeMounted.
+    let storageBridgeMounted: boolean | null = null;
+    try {
+      const { applyStorageBridge } = await import("@/lib/server/storage-bridge.server");
+      const bridge = await applyStorageBridge();
+      storageBridgeMounted = bridge.applied ? true : false;
+      if (bridge.error === "STORAGE_UNCONFIGURED") storageBridgeMounted = null;
+    } catch {
+      /* bridge is never the start path */
+    }
+
     let computerUse = false;
     try {
       await sandbox.computerUse.start();
@@ -799,6 +817,7 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
       snapshotName: sandbox.snapshot ?? (await readAppSetting(SNAPSHOT_KEY)),
       geoWarning: instagramGeoWarning(parseSocialMachineRegion(config.target)),
       proxyConfigured: Boolean(config.proxyUrl),
+      storageBridgeMounted,
     });
   } catch (error) {
     const message = sanitizeDaytonaError(

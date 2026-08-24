@@ -422,6 +422,12 @@ export async function executeAgentTool(input: {
         const { handleLibraryAction } = await import("@/lib/server/library-tools.server");
         return { data: await handleLibraryAction(name, payload, actorId) };
       }
+      if (name.startsWith("stream.") || name.startsWith("bridge.")) {
+        const { handleStreamAction } = await import("@/lib/server/stream-tools.server");
+        const data = await handleStreamAction(name, payload, actorId);
+        if (data === undefined) throw new Error("UNKNOWN_ACTION");
+        return { data };
+      }
       throw new Error("UNKNOWN_ACTION");
     }
   }

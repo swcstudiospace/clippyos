@@ -349,6 +349,146 @@ export function pickLibraryBackend(input: { hasSupabase: boolean; hasS3?: boolea
 }
 
 export const LIBRARY_BUCKET = "clippy-library";
+/** Windows drive letter for the bucket-backed network drive on the Social Machine. */
+export const WINDOWS_LIBRARY_DRIVE = "Y:";
+/** POSIX mountpoint for the bucket on a Linux Social Machine. */
+export const LINUX_LIBRARY_MOUNT = "/home/daytona/library";
+/** Bucket prefix the Social Machine writes finished clips/thumbnails into. */
+export const MACHINE_DROP_PREFIX = "machine-drops";
+export const DASHBOARD_WRITE_PREFIX = "library";
+/** rclone remote name inside the generated config. */
+export const BRIDGE_REMOTE_NAME = "clippy-bridge";
+
+const RCLONE_WINDOWS_DIR = "C:\\Users\\Public\\ClippyOS\\rclone";
+const RCLONE_URL = "https://downloads.rclone.org/rclone-current-windows-amd64.zip";
+
+export function machineLibraryRoot(os: SocialMachineOs): string {
+  return os === "windows" ? WINDOWS_LIBRARY_DRIVE : LINUX_LIBRARY_MOUNT;
+}
+
+/** Path on the machine's network drive for a dropped artifact (clip mp4, thumbnail png, …). */
+export function machineDropPath(os: SocialMachineOs, name: string): string {
+  const safe = name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+  return os === "windows"
+    ? `${WINDOWS_LIBRARY_DRIVE}\\${MACHINE_DROP_PREFIX}\\${safe}`
+    : `${LINUX_LIBRARY_MOUNT}/${MACHINE_DROP_PREFIX}/${safe}`;
+}
+
+/** Bucket-relative key matching machineDropPath — what the dashboard reads back. */
+export function machineDropKey(name: string): string {
+  const safe = name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+  return `${MACHINE_DROP_PREFIX}/${safe}`;
+}
+
+/**
+ * Idempotent PowerShell that mounts the S3 bridge bucket as a network drive.
+ * Installs rclone on first boot, writes a scoped config, mounts, verifies.
+ * Never echoes the secret; prints only machine-readable status tokens.
+ */
+export function windowsBucketMountScript(input: {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKey: string;
+  secret: string;
+}): string {
+  const q = escapePowerShellSingleQuoted;
+  const conf = `${RCLONE_WINDOWS_DIR}\\rclone.conf`;
+  const exe = `${RCLONE_WINDOWS_DIR}\\rclone.exe`;
+  const confText = [
+    `[${BRIDGE_REMOTE_NAME}]`,
+    "type = s3",
+    "provider = Other",
+    `access_key_id = ${q(input.accessKey)}`,
+    `secret_access_key = ${q(input.secret)}`,
+    `endpoint = ${q(input.endpoint)}`,
+    `region = ${q(input.region)}`,
+    "acl = private",
+    "",
+  ].join("\n");
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `if (Test-Path '${q(WINDOWS_LIBRARY_DRIVE)}\\') { Write-Output 'mount-present'; exit 0 }`,
+    `New-Item -ItemType Directory -Force -Path '${q(RCLONE_WINDOWS_DIR)}' | Out-Null`,
+    `if (-not (Test-Path '${q(exe)}')) {`,
+    `  Invoke-WebRequest -Uri '${RCLONE_URL}' -OutFile '${q(RCLONE_WINDOWS_DIR)}\\rclone.zip' -UseBasicParsing`,
+    `  Expand-Archive -Force -Path '${q(RCLONE_WINDOWS_DIR)}\\rclone.zip' -DestinationPath '${q(RCLONE_WINDOWS_DIR)}\\unzip'`,
+    `  $exe2 = Get-ChildItem -Recurse -Filter rclone.exe '${q(RCLONE_WINDOWS_DIR)}\\unzip' | Select-Object -First 1`,
+    `  Copy-Item $exe2.FullName '${q(exe)}'`,
+    "}",
+    `[IO.File]::WriteAllText('${q(conf)}', @'\n${confText}\n'@)`,
+    `$p = Start-Process -FilePath '${q(exe)}' -ArgumentList 'mount','${BRIDGE_REMOTE_NAME}:','${q(WINDOWS_LIBRARY_DRIVE)}','--config','${q(conf)}','--vfs-cache-mode','writes','--network-mode','--log-file','${q(RCLONE_WINDOWS_DIR)}\\rclone.log','--daemon' -PassThru -WindowStyle Hidden`,
+    "Start-Sleep -Seconds 6",
+    `if (Test-Path '${q(WINDOWS_LIBRARY_DRIVE)}\\') { Write-Output 'mount-ok' } else { Write-Output 'mount-failed'; exit 1 }`,
+  ].join("\n");
+}
+
+/** Linux twin of the Windows mount script (systemd-free, --daemon mode). */
+export function linuxBucketMountScript(input: {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  accessKey: string;
+  secret: string;
+}): string {
+  const confDir = "/home/daytona/.config/rclone";
+  const conf = `${confDir}/rclone.conf`;
+  const confText = [
+    `[${BRIDGE_REMOTE_NAME}]`,
+    "type = s3",
+    "provider = Other",
+    `access_key_id = ${input.accessKey.replace(/'/g, "'\\''")}`,
+    `secret_access_key = ${input.secret.replace(/'/g, "'\\''")}`,
+    `endpoint = ${input.endpoint.replace(/'/g, "'\\''")}`,
+    `region = ${input.region.replace(/'/g, "'\\''")}`,
+    "acl = private",
+    "",
+  ].join("\n");
+  return [
+    "set -e",
+    `if mountpoint -q ${LINUX_LIBRARY_MOUNT} 2>/dev/null; then echo mount-present; exit 0; fi`,
+    "mkdir -p /home/daytona/.config/rclone " + LINUX_LIBRARY_MOUNT,
+    "command -v rclone >/dev/null 2>&1 || (curl -fsSL https://rclone.org/install.sh | bash) >/dev/null 2>&1",
+    `cat > ${conf} <<'BRIDGE_EOF'\n${confText}BRIDGE_EOF`,
+    "chmod 600 " + conf,
+    `(rclone mount ${BRIDGE_REMOTE_NAME}: ${LINUX_LIBRARY_MOUNT} --config ${conf} --vfs-cache-mode writes --daemon >/dev/null 2>&1 || true)`,
+    "sleep 4",
+    `if mountpoint -q ${LINUX_LIBRARY_MOUNT} 2>/dev/null; then echo mount-ok; else echo mount-failed; exit 1; fi`,
+  ].join("\n");
+}
+
+export function bucketMountScript(
+  os: SocialMachineOs,
+  input: { endpoint: string; region: string; bucket: string; accessKey: string; secret: string },
+): string {
+  return os === "windows" ? windowsBucketMountScript(input) : linuxBucketMountScript(input);
+}
+
+/** Cheap probe executed on the machine to confirm the bridge drive is live. */
+export function verifyMachineMountCommand(os: SocialMachineOs): string {
+  if (os === "windows") {
+    return `powershell -NoProfile -Command "if (Test-Path '${escapePowerShellSingleQuoted(`${WINDOWS_LIBRARY_DRIVE}\\${MACHINE_DROP_PREFIX}`)}') { Write-Output 'bridge-ok' } else { Write-Output 'bridge-missing'; exit 1 }"`;
+  }
+  return `test -d ${LINUX_LIBRARY_MOUNT}/${MACHINE_DROP_PREFIX} && echo bridge-ok || { echo bridge-missing; exit 1; }`;
+}
+
+/** One-time bootstrap: create the drop prefix so verification has something to stat. */
+export function ensureBridgeDirsCommand(os: SocialMachineOs): string {
+  if (os === "windows") {
+    return `powershell -NoProfile -Command "New-Item -ItemType Directory -Force -Path '${escapePowerShellSingleQuoted(`${WINDOWS_LIBRARY_DRIVE}\\${MACHINE_DROP_PREFIX}`)}' | Out-Null; Write-Output 'dirs-ok'"`;
+  }
+  return `mkdir -p ${LINUX_LIBRARY_MOUNT}/${MACHINE_DROP_PREFIX} && echo dirs-ok`;
+}
+
+export function bridgeStatusNote(configured: boolean, mounted: boolean | null): string {
+  if (!configured) {
+    return "Bridge not configured. Set LIBRARY_S3_* settings so the Social Machine can mount the shared bucket.";
+  }
+  if (mounted === true) return "Shared bucket mounted on the Social Machine. Drop files in machine-drops/ and ingest them from Studio.";
+  if (mounted === false) return "Shared bucket configured but not mounted on the machine yet. It attaches on next Start; or verify while running.";
+  return "Shared bucket configured. Mount state unknown until the machine is running.";
+}
+
 export const FILEBASE_ENDPOINT = "https://s3.filebase.com";
 export const DEFAULT_IPFS_GATEWAY = "https://ipfs.filebase.io/ipfs/";
 export const PINATA_AUTH_URL = "https://api.pinata.cloud/data/testAuthentication";

@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { DesktopRuntimeBridge } from "@/components/desktop-runtime-bridge";
 import { ThemeProvider, THEME_BOOTSTRAP } from "@/lib/theme";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -85,6 +86,7 @@ function RootDocument() {
       </head>
       <body className="bg-bg text-fg antialiased">
         <PreviewHostBridge />
+        <DesktopRuntimeBridge />
         <AuthProvider>
           <ThemeProvider>
             <QueryClientProvider client={queryClient}>

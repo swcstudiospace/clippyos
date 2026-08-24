@@ -12,6 +12,9 @@
     "db:migrate": "node scripts/migrate.mjs",
     "build:dev": "node scripts/with-app-env.mjs vite build --mode development",
     "preview": "node scripts/with-app-env.mjs vite preview",
+    "desktop:server": "node scripts/build-desktop-server.mjs",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
     "test": "node --test --experimental-strip-types --test-reporter=spec 'scripts/**/*.test.mjs' 'src/**/*.test.ts'",
@@ -77,6 +80,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^22.16.5",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.2.0",

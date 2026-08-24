@@ -117,3 +117,59 @@ export async function s3Delete(config: S3Config, key: string): Promise<void> {
   if (response.status === 404 || response.ok) return;
   throw new Error(`S3_DELETE_${response.status}`);
 }
+
+export type S3ObjectRow = { key: string; sizeBytes: number; modifiedAt: string | null };
+
+/** ListObjectsV2 under a prefix. Best-effort; callers treat failure as an empty list. */
+export async function s3List(config: S3Config, prefix: string, limit = 40): Promise<S3ObjectRow[]> {
+  const url = new URL(`${config.endpoint.replace(/\/$/, "")}/${config.bucket}`);
+  url.searchParams.set("list-type", "2");
+  url.searchParams.set("prefix", prefix);
+  url.searchParams.set("max-keys", String(Math.min(200, Math.max(1, limit))));
+  const payloadHash = sha256Hex("");
+  const { amz, date } = amzDate();
+  const path = `${url.pathname}${url.search}`;
+  const headers: Record<string, string> = {
+    host: url.host,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amz,
+  };
+  const canonical = canonicalRequest({ method: "GET", path, headers, payloadHash });
+  const scope = `${date}/${config.region}/s3/aws4_request`;
+  const stringToSign = ["AWS4-HMAC-SHA256", amz, scope, sha256Hex(canonical)].join("\n");
+  const signature = createHmac("sha256", signingKey(config.secret, date, config.region))
+    .update(stringToSign)
+    .digest("hex");
+  const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKey}/${scope}, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=${signature}`;
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: authorization, "x-amz-content-sha256": payloadHash, "x-amz-date": amz },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`S3_LIST_${response.status}`);
+  const xml = await response.text();
+  const rows: S3ObjectRow[] = [];
+  const entryRe = /<Contents>([\s\S]*?)<\/Contents>/g;
+  let match: RegExpExecArray | null;
+  while ((match = entryRe.exec(xml)) !== null && rows.length < limit) {
+    const block = match[1] ?? "";
+    const keyMatch = /<Key>([\s\S]*?)<\/Key>/.exec(block);
+    const sizeMatch = /<Size>(\d+)<\/Size>/.exec(block);
+    const modifiedMatch = /<LastModified>([\s\S]*?)<\/LastModified>/.exec(block);
+    if (!keyMatch) continue;
+    // XML-unescape minimal entity set used by S3 responses.
+    const key = keyMatch[1]
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&");
+    if (key.endsWith("/")) continue;
+    rows.push({
+      key,
+      sizeBytes: sizeMatch ? Number(sizeMatch[1]) : 0,
+      modifiedAt: modifiedMatch ? modifiedMatch[1] : null,
+    });
+  }
+  return rows;
+}

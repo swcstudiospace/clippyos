@@ -579,6 +579,68 @@ const TOOL_INPUTS: Record<string, Record<string, unknown>> = {
     },
   },
   "library.get_pipeline_status": { type: "object", properties: {} },
+  "stream.list_sources": {
+    type: "object",
+    properties: { clientId: { type: "string" } },
+  },
+  "stream.list_vods": {
+    type: "object",
+    required: ["clientId"],
+    properties: {
+      clientId: { type: "string" },
+      twitchLogin: { type: "string", description: "Channel login when the client has no stored source yet" },
+    },
+  },
+  "stream.list_clips": {
+    type: "object",
+    properties: { clientId: { type: "string" }, vodId: { type: "string" } },
+  },
+  "stream.plan_clips": {
+    type: "object",
+    required: ["vodId"],
+    properties: {
+      vodId: { type: "string" },
+      clipCount: { type: "number", description: "1–15, default 5" },
+      durationSec: { type: "number", description: "5–60, default 30" },
+    },
+  },
+  "stream.create_clip": {
+    type: "object",
+    required: ["vodId", "vodOffsetSec"],
+    properties: {
+      vodId: { type: "string" },
+      vodOffsetSec: { type: "number", description: "END of the clip within the VOD; must be >= durationSec" },
+      durationSec: { type: "number", description: "5–60, default 30" },
+      title: { type: "string" },
+    },
+  },
+  "stream.update_clip": {
+    type: "object",
+    required: ["clipId"],
+    properties: {
+      clipId: { type: "string" },
+      status: { type: "string", enum: ["PROCESSING", "READY", "FAILED"] },
+      url: { type: "string" },
+      editUrl: { type: "string" },
+      thumbnailUrl: { type: "string" },
+      title: { type: "string" },
+      caption: { type: "string" },
+      notes: { type: "string" },
+      error: { type: "string" },
+    },
+  },
+  "bridge.status": { type: "object", properties: {} },
+  "bridge.apply_mount": { type: "object", properties: {} },
+  "bridge.list_drops": { type: "object", properties: {} },
+  "bridge.ingest_drop": {
+    type: "object",
+    required: ["dropName"],
+    properties: {
+      dropName: { type: "string", description: "File name inside machine-drops/ (no path separators)" },
+      clientId: { type: "string" },
+      title: { type: "string" },
+    },
+  },
   "clipping.run_skill": {
     type: "object",
     required: ["skillId"],

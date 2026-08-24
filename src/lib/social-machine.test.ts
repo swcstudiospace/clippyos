@@ -11,6 +11,9 @@ import {
   WINDOWS_GEO_ID,
   WINDOWS_TIMEZONE_ID,
   composeProxyUrl,
+  ensureBridgeDirsCommand,
+  bridgeStatusNote,
+  bucketMountScript,
   ensureUploadDirCommand,
   hibernatePlan,
   idlePolicy,
@@ -21,6 +24,10 @@ import {
   isWindowsSnapshot,
   libraryBackendNote,
   listWindowsCommand,
+  linuxBucketMountScript,
+  machineDropKey,
+  machineDropPath,
+  machineLibraryRoot,
   mapProviderState,
   openUrlCommand,
   parseCid,
@@ -41,6 +48,8 @@ import {
   snapshotForSize,
   stopActionForOs,
   uploadPath,
+  verifyMachineMountCommand,
+  windowsBucketMountScript,
   windowsLocaleScript,
   windowsProxyScript,
 } from "./social-machine.ts";
@@ -232,4 +241,48 @@ test("location proxy list is country-scoped and parses ProxyScrape lines", () =>
   assert.match(proxyscrapeListUrl("AU"), /country=AU/);
   assert.match(parseProxyListLine("http://203.0.113.10:8080") ?? "", /203\.0\.113\.10:8080/);
   assert.equal(parseProxyListLine("socks5://nope"), null);
+});
+
+test("storage bridge paths map Windows drives and POSIX mounts to machine-drops keys", () => {
+  assert.equal(machineLibraryRoot("windows"), "Y:");
+  assert.equal(machineLibraryRoot("linux"), "/home/daytona/library");
+  assert.equal(
+    machineDropPath("windows", "clip-1.mp4"),
+    "Y:\\machine-drops\\clip-1.mp4",
+  );
+  assert.equal(machineDropPath("linux", "clip-1.mp4"), "/home/daytona/library/machine-drops/clip-1.mp4");
+  // Path traversal and separators never survive into bucket keys.
+  assert.equal(machineDropKey("../../etc/passwd"), "machine-drops/.._.._etc_passwd");
+  assert.equal(machineDropKey("sub/dir/clip.mp4"), "machine-drops/sub_dir_clip.mp4");
+});
+
+test("bucket mount scripts embed config but short-circuit when mounted", () => {
+  const input = {
+    endpoint: "https://s3.filebase.com",
+    region: "us-east-1",
+    bucket: "clippy-library",
+    accessKey: "keykeykeykey",
+    secret: "secretsecretsecret",
+  };
+  const win = windowsBucketMountScript(input);
+  assert.match(win, /mount-present/);
+  assert.match(win, /clippy-bridge/);
+  assert.match(win, /rclone\.exe/);
+  assert.match(win, /vfs-cache-mode/);
+  assert.doesNotMatch(win.replace(/access_key_id = .*$/m, ""), /^keykeykeykey$/m);
+  const linux = linuxBucketMountScript(input);
+  assert.match(linux, /mountpoint -q/);
+  assert.match(linux, /chmod 600/);
+  assert.equal(bucketMountScript("linux", input), linux);
+});
+
+test("bridge verify + bootstrap commands are os-native and idempotent", () => {
+  assert.match(verifyMachineMountCommand("windows"), /machine-drops/);
+  assert.match(verifyMachineMountCommand("linux"), /^test -d/);
+  assert.match(ensureBridgeDirsCommand("windows"), /New-Item/);
+  assert.match(ensureBridgeDirsCommand("linux"), /mkdir -p/);
+  assert.match(bridgeStatusNote(false, null), /not configured/i);
+  assert.match(bridgeStatusNote(true, true), /mounted/i);
+  assert.match(bridgeStatusNote(true, false), /not mounted/i);
+  assert.match(bridgeStatusNote(true, null), /unknown/i);
 });
