@@ -175,3 +175,18 @@ export function exitCodeFor(viewports?: Record<string, ViewportResult> | null): 
   }
   return 0;
 }
+
+// Platform chrome mandates the grok.com extensions.js tag in every page head
+// (scripts/grok-pwa-shared.ts, GROK_EXTENSIONS_SCRIPT_SRC), and grok.com serves
+// it with `Cross-Origin-Resource-Policy: same-origin` plus `COEP: require-corp`,
+// so Chromium deterministically refuses to run it cross-origin. That block is
+// expected chrome behavior, not an app defect — the smoke gate ignores exactly
+// this error and still fails on every other console/page error.
+export const GROK_EXTENSIONS_SCRIPT_URL =
+  "https://grok.com/grok-app-builder/extensions.js";
+
+export function isExpectedPlatformChromeBlock(errorText: string, sourceUrl: string): boolean {
+  return (
+    errorText.includes("ERR_BLOCKED_BY_RESPONSE") && sourceUrl === GROK_EXTENSIONS_SCRIPT_URL
+  );
+}

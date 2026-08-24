@@ -15,6 +15,7 @@ import {
   bodyTextPrefix,
   derivedPaths,
   exitCodeFor,
+  isExpectedPlatformChromeBlock,
   normalizeBodyText,
   normalizedBodyTextHash,
   parseSmokeArgs,
@@ -130,7 +131,9 @@ try {
       viewport: { width: vp.width, height: vp.height },
     });
     page.on("console", (msg) => {
-      if (msg.type() === "error") errors.consoleErrors.push(msg.text());
+      if (msg.type() !== "error") return;
+      if (isExpectedPlatformChromeBlock(msg.text(), msg.location()?.url ?? "")) return;
+      errors.consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => errors.pageErrors.push(String(err?.message || err)));
     // `domcontentloaded`, not `networkidle`: Vite keeps an HMR websocket open, so

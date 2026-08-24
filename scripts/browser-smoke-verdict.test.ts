@@ -9,6 +9,7 @@ import {
   compareToBaseline,
   derivedPaths,
   exitCodeFor,
+  isExpectedPlatformChromeBlock,
   normalizeBodyText,
   normalizedBodyTextHash,
   parseSmokeArgs,
@@ -413,4 +414,28 @@ test("browser-smoke file I/O only touches guarded paths", () => {
   assert.deepEqual(reads, ["baselinePath"]);
   const stats = [...src.matchAll(/statSync\(\s*([A-Za-z_$][\w$.]*)/g)].map((m) => m[1]);
   assert.deepEqual(stats, ["baselinePath"]);
+});
+
+test("expected platform-chrome block matches only the mandated grok extensions script", () => {
+  assert.equal(
+    isExpectedPlatformChromeBlock(
+      "Failed to load resource: net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin",
+      "https://grok.com/grok-app-builder/extensions.js",
+    ),
+    true,
+  );
+});
+
+test("platform-chrome filter ignores other blocked resources and URLs", () => {
+  assert.equal(
+    isExpectedPlatformChromeBlock(
+      "Failed to load resource: net::ERR_BLOCKED_BY_RESPONSE.NotSameOrigin",
+      "https://evil.example/track.js",
+    ),
+    false,
+  );
+  assert.equal(
+    isExpectedPlatformChromeBlock("TypeError: boom", "https://grok.com/grok-app-builder/extensions.js"),
+    false,
+  );
 });
