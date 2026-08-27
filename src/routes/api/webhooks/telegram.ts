@@ -1,4 +1,11 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { createFileRoute } from "@tanstack/react-router";
+
+function tokenMatches(secret: string, header: string): boolean {
+  const left = createHash("sha256").update(secret).digest();
+  const right = createHash("sha256").update(header).digest();
+  return timingSafeEqual(left, right);
+}
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -18,10 +25,9 @@ export const Route = createFileRoute("/api/webhooks/telegram")({
           "@/lib/server/channels.server"
         );
         const secret = await loadTelegramWebhookSecret();
-        if (secret) {
-          const header = request.headers.get("x-telegram-bot-api-secret-token")?.trim() || "";
-          if (header !== secret) return json(401, { ok: false });
-        }
+        if (!secret) return json(503, { ok: false });
+        const header = request.headers.get("x-telegram-bot-api-secret-token")?.trim() || "";
+        if (!tokenMatches(secret, header)) return json(401, { ok: false });
         let payload: {
           message?: {
             message_id?: number;

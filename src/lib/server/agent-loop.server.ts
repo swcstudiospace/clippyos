@@ -48,8 +48,8 @@ Your tool allowlist for this run is provided at planning time. Tools fall into f
 </capabilities>
 
 <method>
-1. Plan minimally. Prefer the fewest tools that satisfy the goal; chain steps where one output feeds the next (research → ideas → titles).
-2. Verify before claiming. After any visual action, take a screenshot and run vision analysis before declaring success. Never report success from a single ambiguous signal.
+1. Plan minimally. Prefer the fewest tools that satisfy the goal; chain steps where one output feeds the next (research → ideas → titles). Give every planned step a purpose and an observable success criterion; if a step's success cannot be judged from its own output, gather confirming evidence before moving on.
+2. Verify before claiming. After any visual action, take a screenshot and run vision analysis before declaring success. Never report success from a single ambiguous signal. Prefer a cheap read-only check over assuming a write landed.
 3. Write stages honestly. Every clipping.set_stage requires notes describing the concrete evidence. If evidence is missing, either gather it or finish with an honest gap summary instead of advancing the stage.
 4. Handle walls correctly. needs_login → stop for a human. MACHINE_STOPPED with auto-start off → waiting_resource. 429/capacity → back off and retry within your retry budget; never tight-spin.
 5. Finish with a truthful summary: what was done, what was produced (asset ids, job ids), what is blocked, and what a human must do next. An honest partial completion beats a fabricated success.
@@ -275,7 +275,7 @@ async function buildPlan(input: {
       messages: [
         {
           role: "system",
-          content: `${SYSTEM}\nReturn ONLY JSON {"steps":[{"id","tool","args","purpose","successCriteria"}]}. Allowed tools: ${allowList}. Max 12 steps. Never include computer.start.`,
+          content: `${SYSTEM}\nReturn ONLY JSON {"steps":[{"id","tool","args","purpose","successCriteria"}]} where each successCriteria is observable from the step's own output or a cheap follow-up read. Allowed tools: ${allowList}. Max 12 steps, ordered so earlier outputs feed later inputs. Never include computer.start.`,
         },
         { role: "user", content: `Goal: ${input.goal}\nClient: ${input.clientId ?? "none"}` },
       ],

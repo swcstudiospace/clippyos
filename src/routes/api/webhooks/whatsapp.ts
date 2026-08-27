@@ -37,13 +37,11 @@ export const Route = createFileRoute("/api/webhooks/whatsapp")({
       POST: async ({ request }) => {
         const { loadWhatsAppConfig, upsertInbound } = await import("@/lib/server/channels.server");
         const config = await loadWhatsAppConfig();
-        if (!config) return json(503, { ok: false });
+        if (!config?.appSecret) return json(503, { ok: false });
         const raw = await request.text();
-        if (config?.appSecret) {
-          const header = request.headers.get("x-hub-signature-256")?.trim() || "";
-          if (!header || !validSignature(config.appSecret, raw, header)) {
-            return json(401, { ok: false });
-          }
+        const header = request.headers.get("x-hub-signature-256")?.trim() || "";
+        if (!header || !validSignature(config.appSecret, raw, header)) {
+          return json(401, { ok: false });
         }
         let payload: {
           entry?: Array<{
