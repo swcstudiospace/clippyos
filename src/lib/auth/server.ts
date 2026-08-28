@@ -148,7 +148,7 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
-const grokOAuthPlugin = Boolean(grokClientId && grokClientSecret)
+const grokOAuthPlugin = (!authDisabled && grokClientId && grokClientSecret)
   ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
         providerId,
@@ -190,7 +190,7 @@ export const auth = betterAuth({
   // Native Google on the canonical studio origin. Missing creds omit the
   // provider (same degrade as `authConfigured`) so boot still succeeds.
   socialProviders: {
-    google: googleSocial
+    google: (!authDisabled && googleSocial)
       ? {
           clientId: googleSocial.clientId,
           clientSecret: googleSocial.clientSecret,
@@ -226,7 +226,7 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  ...(!authDisabled && emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a

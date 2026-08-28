@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
-import { publishedBrokerConfigured, resolveGoogleSocial } from "@/lib/auth/google-social";
+import { loadSignInFlags } from "@/lib/auth/sign-in-flags";
 import { isReservedOwnerEmail } from "@/lib/auth/email-password";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
@@ -30,10 +30,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
-  loader: () => ({
-    googleConfigured: Boolean(resolveGoogleSocial()),
-    brokerConfigured: publishedBrokerConfigured(),
-  }),
+  loader: () => loadSignInFlags(),
   component: LoginPage,
 });
 
