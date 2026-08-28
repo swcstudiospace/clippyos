@@ -43,6 +43,39 @@ export const getSupabaseStatus = createServerFn({ method: "GET" })
     return probeSupabase(context.userId);
   });
 
+/**
+ * Apply pending `migrations/*.sql` on the DATABASE_URL (neon) path, then
+ * reload PostgREST. Admin-only. Never returns secrets or connection URLs.
+ */
+export const applyPendingAgencyMigrations = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    await requireAdmin(context.userId);
+    const postgresConfigured = Boolean(process.env.DATABASE_URL?.trim());
+    try {
+      const { getSql } = await import("@/lib/db");
+      await getSql();
+    } catch {
+      throw new Error("Could not apply pending migrations. Check DATABASE_URL.");
+    }
+    try {
+      const { localSql } = await import("@/lib/server/agency-db.server");
+      const sql = await localSql();
+      await sql.query("select 1");
+      await sql.query("NOTIFY pgrst, 'reload schema'");
+    } catch {
+      /* PostgREST schema reload is best-effort */
+    }
+    const { probeSupabase } = await import("@/lib/supabase/probe.server");
+    const status = await probeSupabase(context.userId);
+    return {
+      ok: true as const,
+      postgresConfigured,
+      schemaReady: status.schemaReady,
+      missing: status.tables.filter((table) => !table.exists).map((table) => table.name),
+    };
+  });
+
 const HiggsfieldSaveSchema = z.object({
   keyId: z.string().trim().min(8).max(200),
   secret: z.string().trim().min(8).max(400),

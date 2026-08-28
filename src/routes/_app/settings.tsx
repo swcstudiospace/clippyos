@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   Check,
@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Unplug,
 } from "lucide-react";
-import { getSupabaseStatus } from "@/lib/server/settings";
+import { applyPendingAgencyMigrations, getSupabaseStatus } from "@/lib/server/settings";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { GlassCard } from "@/components/ui/glass-card";
 import { Badge, statusTone } from "@/components/ui/badge";
@@ -39,7 +39,7 @@ import { SkillsPanel } from "@/components/settings/skills-panel";
 import { LlmProvidersPanel } from "@/components/settings/llm-providers";
 import { MediaPipelinePanel } from "@/components/settings/media-pipeline";
 import { PortalPanel } from "@/components/settings/portal-panel";
-import { captureClientError } from "@/lib/errors";
+import { captureClientError, userFacingErrorMessage } from "@/lib/errors";
 import { copyTextToClipboard, downloadTextFile } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
@@ -54,6 +54,22 @@ function SettingsPage() {
   const statusQuery = useQuery({
     queryKey: ["supabase-status"],
     queryFn: () => getSupabaseStatus(),
+  });
+  const applyMigrations = useMutation({
+    mutationFn: () => applyPendingAgencyMigrations(),
+    onSuccess: async (result) => {
+      await statusQuery.refetch();
+      if (result.schemaReady) {
+        toast.success("Agency tables are ready");
+        return;
+      }
+      toast.message(
+        result.missing.length > 0
+          ? `Still missing: ${result.missing.join(", ")}`
+          : "Migrations applied. Re-check tables.",
+      );
+    },
+    onError: (error) => toast.error(userFacingErrorMessage(error)),
   });
 
   useEffect(() => {
@@ -185,7 +201,7 @@ function SettingsPage() {
             <p className="mt-4 text-body text-muted">
               {status.schemaReady
                 ? "Agency tables are live in your project. Row-level security keeps the public key from reading fees or payments."
-                : "Tables are not created yet. Copy the schema and run it in the Supabase SQL editor (SQL → New query)."}
+                : "Tables are not created yet. Apply pending migrations against DATABASE_URL, or copy the schema and run it in the Supabase SQL editor as a fallback."}
             </p>
             <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {status.tables.map((table) => (
@@ -205,6 +221,23 @@ function SettingsPage() {
                 </li>
               ))}
             </ul>
+            {!status.schemaReady ? (
+              <div className="mt-5 flex flex-col gap-2">
+                <Button
+                  onClick={() => applyMigrations.mutate()}
+                  className="min-h-11 w-fit"
+                  disabled={!status.postgresConfigured || applyMigrations.isPending}
+                >
+                  {applyMigrations.isPending ? "Applying…" : "Apply pending migrations"}
+                </Button>
+                {!status.postgresConfigured ? (
+                  <p className="text-caption text-muted">
+                    Set DATABASE_URL to the Supabase Postgres URI (not the REST URL) to apply
+                    migrations from this screen.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             <SchemaCopy sql={status.schemaSql} />
           </GlassCard>
 
