@@ -36,6 +36,7 @@ import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
+import { isAuthConfigured } from "./auth-configured";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
@@ -87,9 +88,13 @@ const grokClientId = brokerClient.clientId;
 const grokClientSecret = brokerClient.clientSecret;
 const googleSocial = resolveGoogleSocial();
 
-/** True when federated sign-in is active (real auth is enforced). */
-export const authConfigured =
-  !authDisabled && Boolean(grokClientId && grokClientSecret);
+/** True when any sign-in method is active (real auth is enforced). */
+export const authConfigured = isAuthConfigured({
+  authDisabled,
+  grokBroker: Boolean(grokClientId && grokClientSecret),
+  googleSocial: Boolean(googleSocial),
+  emailPassword: emailAndPasswordEnabled,
+});
 
 // This app's own Better Auth origin. Per-request Host still wins when it is in
 // allowedHosts (studio domain, grok.me alias, live preview). The Grok deployer
@@ -143,7 +148,7 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
-const grokOAuthPlugin = authConfigured
+const grokOAuthPlugin = Boolean(grokClientId && grokClientSecret)
   ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
         providerId,
