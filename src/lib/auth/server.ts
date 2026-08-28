@@ -46,8 +46,10 @@ import {
   PREVIEW_CLIENT_SECRET,
 } from "./preview";
 import {
+  authFallbackBaseURL,
   collectAppOrigins,
   dynamicBaseAllowedHosts,
+  oauthCallbackURL,
 } from "@/lib/app-hosts";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
@@ -88,13 +90,15 @@ const grokClientSecret = env("GROK_AUTH_CLIENT_SECRET") ?? PREVIEW_CLIENT_SECRET
 export const authConfigured =
   !authDisabled && Boolean(grokClientId && grokClientSecret);
 
-// This app's own Better Auth origin. When deployed the deployer injects the
-// public URL. In the sandbox live preview there's no fixed URL (each preview gets
-// a dynamic `*.grok-sandbox.com` host), so we hand Better Auth a dynamic baseURL:
-// it derives the origin per-request from the (proxied) host, validated against the
-// preview allowlist, which makes the OAuth `redirect_uri` the concrete preview URL
-// the broker's preview client accepts.
+// This app's own Better Auth origin. Per-request Host still wins when it is in
+// allowedHosts (studio domain, grok.me alias, live preview). The Grok deployer
+// injects BETTER_AUTH_URL as https://clippyos.grok.me — that must not become
+// the OAuth redirect_uri fallback, or Google/X sign-in on os.swcstudio.space
+// emits an invalid grok.me callback. Live preview keeps the shared preview
+// client and a dynamic sandbox redirect_uri.
 const explicitBaseURL = env("BETTER_AUTH_URL");
+const fallbackBaseURL = authFallbackBaseURL();
+const usingPreviewClient = grokClientId === PREVIEW_CLIENT_ID;
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
 const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
@@ -105,7 +109,9 @@ const allowedAuthHosts: string[] = [
 const baseURL = {
   allowedHosts: allowedAuthHosts,
   protocol: "auto" as const,
-  fallback: explicitBaseURL ?? "http://localhost:8080",
+  fallback: usingPreviewClient
+    ? (explicitBaseURL ?? "http://localhost:8080")
+    : fallbackBaseURL,
 };
 
 const trustedOrigins = (request?: Request) =>
@@ -154,6 +160,11 @@ const grokOAuthPlugin = authConfigured
         // `prompt=select_account`, the user always gets the account chooser
         // and can pick (or switch) which account to sign in with.
         authorizationUrlParams: { idp, prompt: "login" },
+        // Pin deployed callbacks to the canonical studio origin. Preview keeps
+        // Better Auth's dynamic redirect_uri (*.grok-sandbox.com).
+        ...(!usingPreviewClient
+          ? { redirectURI: oauthCallbackURL(providerId, fallbackBaseURL) }
+          : {}),
       })),
     })
   : null;

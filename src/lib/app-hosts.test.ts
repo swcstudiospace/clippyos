@@ -4,12 +4,15 @@ import {
   CANONICAL_APP_ORIGIN,
   GROK_APP_ORIGIN,
   authorizationServersFor,
+  authFallbackBaseURL,
   collectAppOrigins,
   dynamicBaseAllowedHosts,
   isAllowedAppHost,
+  isGrokMeHost,
   isPublishedMcpHost,
   mcpResourcesEquivalent,
   mcpUrlFor,
+  oauthCallbackURL,
   originFromRequest,
   publishedMcpEndpoints,
 } from "./app-hosts.ts";
@@ -133,3 +136,32 @@ test("authorization servers list the host that was hit first, then the sibling p
   ]);
 });
 
+
+test("auth fallback never prefers clippyos.grok.me even when the deployer injected it", () => {
+  assert.equal(
+    authFallbackBaseURL({ BETTER_AUTH_URL: "https://clippyos.grok.me" }),
+    CANONICAL_APP_ORIGIN,
+  );
+  assert.equal(
+    authFallbackBaseURL({
+      BETTER_AUTH_URL: "https://clippyos.grok.me",
+      APP_URL: "https://clippyos.grok.me",
+    }),
+    CANONICAL_APP_ORIGIN,
+  );
+  assert.equal(
+    authFallbackBaseURL({ BETTER_AUTH_URL: "https://os.swcstudio.space" }),
+    "https://os.swcstudio.space",
+  );
+  assert.equal(authFallbackBaseURL({}), CANONICAL_APP_ORIGIN);
+  assert.equal(isGrokMeHost("clippyos.grok.me"), true);
+  assert.equal(isGrokMeHost("os.swcstudio.space"), false);
+  assert.equal(
+    oauthCallbackURL("grok-google"),
+    "https://os.swcstudio.space/api/auth/oauth2/callback/grok-google",
+  );
+  assert.equal(
+    oauthCallbackURL("grok-x"),
+    "https://os.swcstudio.space/api/auth/oauth2/callback/grok-x",
+  );
+});
