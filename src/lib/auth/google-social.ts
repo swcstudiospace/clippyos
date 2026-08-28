@@ -22,3 +22,16 @@ export function resolveGoogleSocial(
   if (!clientId || !clientSecret) return null;
   return { clientId, clientSecret };
 }
+
+/**
+ * True when a published deploy has a real Grok broker client (not grok_preview).
+ * Used by the login page to offer grok-google / grok-x without importing
+ * preview.ts or broker-client.ts into the client bundle.
+ */
+export function publishedBrokerConfigured(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const id = env.GROK_AUTH_CLIENT_ID?.trim() || "";
+  const secret = env.GROK_AUTH_CLIENT_SECRET?.trim() || "";
+  return Boolean(id && secret && id !== "grok_preview");
+}

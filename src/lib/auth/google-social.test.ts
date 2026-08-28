@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { resolveGoogleSocial } from "./google-social.ts";
+import { publishedBrokerConfigured, resolveGoogleSocial } from "./google-social.ts";
 
 test("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET configure native Google", () => {
   const resolved = resolveGoogleSocial({
@@ -30,4 +30,45 @@ test("AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET aliases configure native Google", ()
     AUTH_GOOGLE_SECRET: "alias-secret",
   });
   assert.deepEqual(resolved, { clientId: "alias-id", clientSecret: "alias-secret" });
+});
+
+test("missing or blank broker credentials are not published-configured", () => {
+  assert.equal(publishedBrokerConfigured({}), false);
+  assert.equal(publishedBrokerConfigured({ GROK_AUTH_CLIENT_ID: "app_id" }), false);
+  assert.equal(publishedBrokerConfigured({ GROK_AUTH_CLIENT_SECRET: "secret" }), false);
+  assert.equal(
+    publishedBrokerConfigured({ GROK_AUTH_CLIENT_ID: "  ", GROK_AUTH_CLIENT_SECRET: "secret" }),
+    false,
+  );
+  assert.equal(
+    publishedBrokerConfigured({ GROK_AUTH_CLIENT_ID: "app_id", GROK_AUTH_CLIENT_SECRET: "" }),
+    false,
+  );
+});
+
+test("grok_preview client is not published-configured", () => {
+  assert.equal(
+    publishedBrokerConfigured({
+      GROK_AUTH_CLIENT_ID: "grok_preview",
+      GROK_AUTH_CLIENT_SECRET: "preview-secret",
+    }),
+    false,
+  );
+  assert.equal(
+    publishedBrokerConfigured({
+      GROK_AUTH_CLIENT_ID: "  grok_preview  ",
+      GROK_AUTH_CLIENT_SECRET: "preview-secret",
+    }),
+    false,
+  );
+});
+
+test("real GROK_AUTH_CLIENT_ID and SECRET are published-configured", () => {
+  assert.equal(
+    publishedBrokerConfigured({
+      GROK_AUTH_CLIENT_ID: "app_clippyos_prod",
+      GROK_AUTH_CLIENT_SECRET: "secret",
+    }),
+    true,
+  );
 });
