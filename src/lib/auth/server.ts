@@ -39,12 +39,8 @@ import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
-import {
-  GROK_ISSUER_DEFAULT,
-  PREVIEW_ALLOWED_HOSTS,
-  PREVIEW_CLIENT_ID,
-  PREVIEW_CLIENT_SECRET,
-} from "./preview";
+import { GROK_ISSUER_DEFAULT, PREVIEW_ALLOWED_HOSTS } from "./preview";
+import { resolveGrokBrokerClient } from "./broker-client";
 import {
   authFallbackBaseURL,
   collectAppOrigins,
@@ -79,12 +75,13 @@ const env = (key: string): string | undefined => {
 // provisions auth; set it to "false" to force auth off everywhere (dev user).
 const authDisabled = env("VITE_AUTH_ENABLED") === "false";
 
-// Broker federation creds: the deployer injects a per-app client when deployed;
-// otherwise fall back to the shared live-preview client, which the broker accepts
-// for any `*.grok-sandbox.com` callback (see `./preview`).
+// Broker federation creds. Grok Build injects a per-app client on publish.
+// GitHub/Vercel exports must NOT fall back to grok_preview once DATABASE_URL
+// is set — that client only allows *.grok-sandbox.com callbacks.
 const grokIssuer = env("GROK_AUTH_ISSUER") ?? GROK_ISSUER_DEFAULT;
-const grokClientId = env("GROK_AUTH_CLIENT_ID") ?? PREVIEW_CLIENT_ID;
-const grokClientSecret = env("GROK_AUTH_CLIENT_SECRET") ?? PREVIEW_CLIENT_SECRET;
+const brokerClient = resolveGrokBrokerClient();
+const grokClientId = brokerClient.clientId;
+const grokClientSecret = brokerClient.clientSecret;
 
 /** True when federated sign-in is active (real auth is enforced). */
 export const authConfigured =
@@ -98,7 +95,7 @@ export const authConfigured =
 // client and a dynamic sandbox redirect_uri.
 const explicitBaseURL = env("BETTER_AUTH_URL");
 const fallbackBaseURL = authFallbackBaseURL();
-const usingPreviewClient = grokClientId === PREVIEW_CLIENT_ID;
+const usingPreviewClient = brokerClient.usingPreviewClient;
 // Explicit `string[]` (not a readonly tuple) — Better Auth's DynamicBaseURLConfig
 // requires a mutable `allowedHosts: string[]`.
 const previewAllowedHosts: string[] = [...PREVIEW_ALLOWED_HOSTS];
