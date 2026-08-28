@@ -43,6 +43,7 @@ import {
   clippingProposeSkill,
   clippingDashboardSnapshot,
 } from "@/lib/server/clipping-tools.server";
+import { checkCrayoLogin, runClippingProcedureSkill } from "@/lib/server/clipping.server";
 
 export type ToolResult = {
   data: unknown;
@@ -254,6 +255,16 @@ export async function executeAgentTool(input: {
           actorId,
         }),
       };
+    case "clipping.check_crayo_login": {
+      const data = await checkCrayoLogin();
+      return { data, needsLogin: data.state === "login_wall", pause: data.state === "login_wall" };
+    }
+    case "clipping.run_browser_procedure": {
+      // Leash: only stored skill procedures replay — never inline steps.
+      const skillSlug = str(payload, "skillSlug", "slug");
+      if (!skillSlug) throw new Error("VALIDATION");
+      return { data: await runClippingProcedureSkill({ slug: skillSlug, actorId }) };
+    }
     case "get_dashboard_snapshot":
     case "list_at_risk_clients":
       return { data: await clippingDashboardSnapshot() };
@@ -533,6 +544,28 @@ export const AGENT_LLM_TOOLS = [
       name: "clipping.observe_desktop",
       description: "Screenshot the Social Machine and describe what’s on screen.",
       parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "clipping.check_crayo_login",
+      description:
+        "Open crayo.io on the already-running Social Machine and classify the session (logged_in | login_wall | unknown). Never starts the VM. Pause for a human if login_wall.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "clipping.run_browser_procedure",
+      description:
+        "Replay an approved browser-procedure skill's recorded steps on the Social Machine. Pass skillSlug only — inline steps are never accepted.",
+      parameters: {
+        type: "object",
+        required: ["skillSlug"],
+        properties: { skillSlug: { type: "string" } },
+      },
     },
   },
   {

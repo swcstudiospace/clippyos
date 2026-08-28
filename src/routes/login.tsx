@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { isReservedOwnerEmail } from "@/lib/auth/email-password";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { mcpOAuthLoginRedirect } from "@/lib/mcp-oauth";
@@ -113,6 +114,10 @@ function LoginForm() {
     }
     if (!email.trim() || password.length < 8) {
       setFormError("Enter a valid email and a password of at least 8 characters.");
+      return;
+    }
+    if (mode === "signup" && isReservedOwnerEmail(email)) {
+      setFormError("Owner accounts cannot self-register.");
       return;
     }
     setBusy(true);

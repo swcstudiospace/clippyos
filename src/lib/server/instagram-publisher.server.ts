@@ -107,7 +107,14 @@ function graphToken(token: { accessToken: string; pageToken: string | null }): s
 
 function isTrustedIgMedia(url: string): boolean {
   if (!url) return false;
+  if (url.startsWith("/api/library/file")) return true;
   if (url.startsWith("data:")) return /^data:video\//i.test(url) || isTrustedImageUrl(url);
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/api/library/file") return true;
+  } catch {
+    /* */
+  }
   return isTrustedImageUrl(url);
 }
 

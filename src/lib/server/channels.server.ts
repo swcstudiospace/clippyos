@@ -86,7 +86,9 @@ export async function loadTelegramToken(): Promise<string | null> {
 
 export async function loadTelegramWebhookSecret(): Promise<string | null> {
   const stored = (await readAppSetting(TELEGRAM_SECRET_KEY))?.trim() || "";
-  return stored && !looksRedacted(stored) ? stored : null;
+  if (stored && !looksRedacted(stored)) return stored;
+  const env = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || "";
+  return env && !looksRedacted(env) ? env : null;
 }
 
 export async function loadWhatsAppConfig(): Promise<{
@@ -105,7 +107,14 @@ export async function loadWhatsAppConfig(): Promise<{
     "";
   if (!token || looksRedacted(token) || !/^[0-9]{6,20}$/.test(phoneNumberId)) return null;
   const verifyToken = (await readAppSetting(WHATSAPP_VERIFY_KEY))?.trim() || null;
-  const appSecret = (await readAppSetting(WHATSAPP_APP_SECRET_KEY))?.trim() || null;
+  const storedSecret = (await readAppSetting(WHATSAPP_APP_SECRET_KEY))?.trim() || "";
+  const envSecret = process.env.WHATSAPP_APP_SECRET?.trim() || "";
+  const appSecret =
+    storedSecret && !looksRedacted(storedSecret)
+      ? storedSecret
+      : envSecret && !looksRedacted(envSecret)
+        ? envSecret
+        : null;
   return { token, phoneNumberId, verifyToken, appSecret };
 }
 
@@ -362,6 +371,29 @@ async function findThread(provider: ChannelProvider, externalId: string): Promis
   return rows[0] ? mapThread(rows[0]) : null;
 }
 
+async function findMessageByExternalId(
+  threadId: string,
+  externalId: string,
+): Promise<ChannelMessage | null> {
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    const { data, error } = await admin
+      .from("channel_messages")
+      .select("*")
+      .eq("thread_id", threadId)
+      .eq("external_id", externalId)
+      .limit(1);
+    if (!error) return data?.[0] ? mapMessage(data[0] as Record<string, unknown>) : null;
+    if (!isMissingTable(error)) throw new Error("DATA_UNAVAILABLE");
+  }
+  const sql = await localSql();
+  const rows = await sql.query<Record<string, unknown>>(
+    "select * from channel_messages where thread_id = $1 and external_id = $2 limit 1",
+    [threadId, externalId],
+  );
+  return rows[0] ? mapMessage(rows[0]) : null;
+}
+
 export async function upsertInbound(input: {
   provider: ChannelProvider;
   externalId: string;
@@ -375,6 +407,11 @@ export async function upsertInbound(input: {
   if (!body) throw new Error("EMPTY_MESSAGE");
   const stamp = new Date().toISOString();
   let thread = await findThread(input.provider, input.externalId);
+  const externalMessageId = input.externalMessageId?.trim() || "";
+  if (thread && externalMessageId) {
+    const existing = await findMessageByExternalId(thread.id, externalMessageId);
+    if (existing) return thread;
+  }
   if (!thread) {
     const id = crypto.randomUUID();
     const payload = {
@@ -406,7 +443,7 @@ export async function upsertInbound(input: {
     direction: "in",
     body,
     status: "delivered",
-    external_id: input.externalMessageId ?? null,
+    external_id: externalMessageId || null,
     created_at: stamp,
     created_by: null,
   });

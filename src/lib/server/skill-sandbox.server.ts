@@ -36,6 +36,14 @@ function safeRelPath(path: string): string | null {
   return cleaned.replace(/[^a-zA-Z0-9._/-]/g, "_");
 }
 
+function safeSkillEntrypoint(raw: string | undefined): string | null {
+  if (!raw) return null;
+  if (!/^[a-zA-Z0-9._/-]+$/.test(raw) || !raw.endsWith(".py")) return null;
+  const rel = safeRelPath(raw);
+  if (!rel || !/^[a-zA-Z0-9._/-]+$/.test(rel) || !rel.endsWith(".py")) return null;
+  return rel;
+}
+
 export async function runPythonInSkillSandbox(input: {
   slug: string;
   skillId: string;
@@ -55,6 +63,14 @@ export async function runPythonInSkillSandbox(input: {
   const scripts = Object.entries(input.scripts);
   if (scripts.some(([, code]) => code.length > MAX_SCRIPT)) throw new Error("SKILL_TOO_LARGE");
 
+  const firstPy = scripts.find(([name]) => name.endsWith(".py"))?.[0];
+  const rawEntry =
+    input.entrypoint ||
+    (input.scripts["scripts/main.py"] || input.scripts["main.py"] ? "scripts/main.py" : null) ||
+    (firstPy ? `scripts/${firstPy.split("/").pop()}` : "scripts/main.py");
+  const entry = safeSkillEntrypoint(rawEntry);
+  if (!entry) throw new Error("SKILL_INVALID_ENTRYPOINT");
+
   const daytona = new Daytona({
     apiKey: config.apiKey,
     apiUrl: config.apiUrl,
@@ -73,6 +89,7 @@ export async function runPythonInSkillSandbox(input: {
       autoStopInterval: SKILL_SANDBOX_AUTOSTOP_MINUTES,
       labels: { ...SKILL_LABELS, skill: sanitizeText(input.slug).slice(0, 40) },
       public: false,
+      networkBlockAll: !input.network,
     } as never);
 
     const root = "/home/daytona/skill";
@@ -118,16 +135,6 @@ export async function runPythonInSkillSandbox(input: {
       if (rel) await writeFile(rel, String(body).slice(0, 80_000));
     }
 
-    const entry =
-      input.entrypoint?.replace(/\.\./g, "") ||
-      (input.scripts["scripts/main.py"] || input.scripts["main.py"] ? "scripts/main.py" : null) ||
-      (scripts.find(([name]) => name.endsWith(".py"))?.[0]
-        ? `scripts/${(scripts.find(([name]) => name.endsWith(".py"))![0]).split("/").pop()}`
-        : "scripts/main.py");
-
-    const netGuard = input.network
-      ? ""
-      : "export http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= NO_PROXY=* ALL_PROXY=; ";
     const envMap = buildSkillSandboxEnv({
       skillId: input.skillId,
       version: input.version,
@@ -135,7 +142,7 @@ export async function runPythonInSkillSandbox(input: {
       outputDir: `${root}/output`,
     });
     const env = formatEnvExports(envMap);
-    const cmd = `${netGuard}cd ${root} && ${env} python3 ${entry} < inputs.json`;
+    const cmd = `cd ${root} && ${env} python3 '${entry}' < inputs.json`;
     const result = await exec(cmd, timeoutSec);
     const stdout = clip(String(result?.result ?? result?.stdout ?? result?.output ?? ""));
     const stderr = clip(String(result?.stderr ?? result?.error ?? ""));

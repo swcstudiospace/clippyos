@@ -3,6 +3,7 @@ import { rateLimitOrThrow, readWebhookSecret } from "@/lib/server/autonomy-auth.
 import { verifyInboundSignature } from "@/lib/server/autonomy-events.server";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import { readIdempotency, writeAuditLog, writeIdempotency } from "@/lib/server/autonomy-audit.server";
+import { AGENT_MUTATIONS } from "@/lib/server/autonomy-policy.server";
 import { INBOUND_COMMANDS } from "@/lib/autonomy";
 
 function json(status: number, body: unknown) {
@@ -71,6 +72,9 @@ export const Route = createFileRoute("/api/webhooks/inbound")({
           return json(400, { error: { code: "UNKNOWN_COMMAND", message: "Unsupported command." }, requestId: rid });
         }
         const cmdId = envelope.id?.trim();
+        if (AGENT_MUTATIONS.has(command) && !cmdId) {
+          return json(400, { error: { code: "VALIDATION", message: "id required." }, requestId: rid });
+        }
         if (cmdId) {
           const cached = await readIdempotency(`wh:${cmdId}`);
           if (cached) {

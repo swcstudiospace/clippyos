@@ -393,15 +393,16 @@ export function mapWhopEvent(
     asPlanKey(nestedString(metadata, "planKey") ?? nestedString(data.plan, "planKey")) ??
     planKeyFromPlanId(planId, planIds);
 
+  const membershipId = nestedString(data.membership, "id");
   const memberId = pickString(
-    data.id && typeof data.id === "string" && data.id.startsWith("mem_") ? data.id : null,
-    nestedString(data.member, "id"),
+    membershipId?.startsWith("mem_") ? membershipId : null,
+    typeof data.id === "string" && data.id.startsWith("mem_") ? data.id : null,
   );
   const checkoutId = pickString(data.checkout_configuration_id, data.checkout_id);
   const customerId = pickString(nestedString(data.user, "id"), nestedString(data.member, "id"));
   const periodEnd = pickTime(data.renewal_period_end, data.current_period_end);
 
-  if (status) patch.status = status;
+  if (status && !(status === "active" && planId && !planKey)) patch.status = status;
   if (planKey) {
     patch.planKey = planKey;
     patch.mrr = MRR_BY_PLAN[planKey];
@@ -420,7 +421,8 @@ export function mapWhopEvent(
   const isPaidPayment = name.includes("payment.succeeded");
   if (isInvoiceEvent || isPaidPayment) {
     const invoiceId = pickString(data.id, data.invoice_id) ?? crypto.randomUUID();
-    const amountRaw = data.amount ?? data.renewal_price ?? data.total_amount ?? data.amount_due ?? 0;
+    const amountRaw =
+      data.settlement_amount ?? data.total ?? data.usd_total ?? data.subtotal ?? data.amount_after_fees ?? 0;
     const amount = typeof amountRaw === "number" ? amountRaw : Number(amountRaw) || 0;
     const paid = isPaidPayment || name.includes("paid");
     const invoiceStatus = paid

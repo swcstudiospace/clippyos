@@ -43,14 +43,10 @@ export const authMiddleware = createMiddleware({ type: "function" })
     // Reject scripted cross-site/sibling requests before touching per-user data.
     assertSameSiteRequest();
     const userId = await requireUserId(context.bearerToken);
-    try {
-      const { isOperatorRevoked } = await import("@/lib/server/access");
-      if (await isOperatorRevoked(userId)) {
-        const { ForbiddenError } = await import("@/lib/server/access");
-        throw new ForbiddenError();
-      }
-    } catch (error) {
-      if (error instanceof Error && error.name === "ForbiddenError") throw error;
+    const { isOperatorRevoked } = await import("@/lib/server/access");
+    if (await isOperatorRevoked(userId)) {
+      const { ForbiddenError } = await import("@/lib/server/access");
+      throw new ForbiddenError();
     }
     const { getOperatorAccess } = await import("@/lib/server/access");
     const { runWithSecretScope } = await import("@/lib/server/secret-scope.server");

@@ -555,6 +555,13 @@ export const getSkillFn = createServerFn({ method: "GET" })
     return publicSkill(skill);
   });
 
+function isAutonomyCreatedBy(createdBy: string): boolean {
+  const value = createdBy.trim().toLowerCase();
+  if (!value) return false;
+  if (value.startsWith("mcp:") || value.startsWith("agent:") || value.startsWith("webhook:")) return true;
+  return value === "mcp" || value === "agent" || value === "webhook" || value === "hermes";
+}
+
 const CreateSchema = z.object({
   skillMd: z.string().min(10).max(200_000),
   scripts: z.record(z.string(), z.string()).optional(),
@@ -587,9 +594,15 @@ export async function createSkillInternal(input: {
       .replace(/^-|-$/g, "")
       .slice(0, 48) || "skill";
   const slug = `${slugBase}-${newId().slice(0, 8)}`;
-  const provenance = input.provenance === "agent" || input.provenance === "builtin" ? input.provenance : "human";
+  let provenance: SkillProvenance =
+    input.provenance === "agent" || input.provenance === "builtin" ? input.provenance : "human";
+  let autoPublish = input.autoPublish === true;
+  if (provenance === "human" && isAutonomyCreatedBy(input.createdBy)) {
+    provenance = "agent";
+    autoPublish = false;
+  }
   const permissions = input.permissions ?? (Array.isArray(meta.permissions) ? (meta.permissions as string[]) : []);
-  const agentPending = provenance === "agent" && input.autoPublish !== true;
+  const agentPending = provenance === "agent" && !autoPublish;
   const runtimeMeta = (meta.runtime && typeof meta.runtime === "object" ? meta.runtime : {}) as SkillRuntime;
   const skill = await insertSkillRow({
     slug,
@@ -640,6 +653,9 @@ export const setSkillEnabledFn = createServerFn({ method: "POST" })
     await requireAdmin(context.userId);
     const skill = await getSkillById(data.id);
     if (!skill) throw new Error("SKILL_MISSING");
+    if (skill.status === "pending_review" && data.enabled) {
+      return { ok: true as const };
+    }
     await patchSkillRow(skill.id, {
       enabled: data.enabled,
       status: data.enabled ? "active" : "disabled",
@@ -778,8 +794,11 @@ export async function patchSkillInternal(input: {
   if (input.references) patch.refs_json = JSON.stringify(input.references);
   if (input.templates) patch.templates_json = JSON.stringify(input.templates);
   if (typeof input.enabled === "boolean") {
-    patch.enabled = input.enabled;
-    if (!input.status) patch.status = input.enabled ? "active" : "disabled";
+    const approvePending = skill.status === "pending_review" && input.status === "active";
+    if (skill.status !== "pending_review" || !input.enabled || approvePending) {
+      patch.enabled = input.enabled;
+      if (!input.status) patch.status = input.enabled ? "active" : "disabled";
+    }
   }
   if (input.status) patch.status = input.status;
   await patchSkillRow(skill.id, patch);
@@ -979,9 +998,9 @@ export async function skillManageCreate(input: {
     scripts,
     references: scriptsFromPayload(payload.references),
     templates: scriptsFromPayload(payload.templates),
-    provenance: payload.provenance === "human" ? "human" : "agent",
+    provenance: "agent",
     createdBy: input.actor,
-    autoPublish: input.autoPublish,
+    autoPublish: payload.provenance === "human" ? false : input.autoPublish,
     name: typeof payload.name === "string" ? payload.name : undefined,
     description: typeof payload.description === "string" ? payload.description : undefined,
     category: typeof payload.category === "string" ? payload.category : undefined,

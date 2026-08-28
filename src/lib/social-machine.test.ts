@@ -129,6 +129,9 @@ test("provider state maps pause/archive to paused so Resume works", () => {
   assert.equal(mapProviderState("archived"), "paused");
   assert.equal(mapProviderState("pausing"), "stopping");
   assert.equal(mapProviderState("pulling_snapshot"), "starting");
+  assert.equal(mapProviderState("snapshotting"), "stopping");
+  assert.notEqual(mapProviderState("snapshotting"), "starting");
+  assert.notEqual(mapProviderState("snapshotting"), "running");
 });
 
 test("Windows open-url never uses xdg-open", () => {

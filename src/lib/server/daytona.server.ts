@@ -26,9 +26,10 @@ import type { SocialPlatform } from "@/lib/entities";
 import {
   DEFAULT_SOCIAL_LOCALE,
   DEFAULT_SOCIAL_TIMEZONE,
+  escapePowerShellSingleQuoted,
   HOT_SNAPSHOT_NAME,
   DEFAULT_SOCIAL_MACHINE_SIZE,
-  ensureUploadDirCommand,
+  ensureBridgeDirsCommand,
   hibernatePlan,
   idlePolicy,
   instagramGeoWarning,
@@ -50,7 +51,7 @@ import {
   snapshotCandidates,
   stopActionForOs,
   TARGET_WINDOWS_RESOURCES,
-  uploadPath,
+  machineDropPath,
   windowsLocaleScript,
   windowsProxyScript,
   type SocialMachineOs,
@@ -835,24 +836,40 @@ export async function stopSocialMachine(): Promise<SocialMachineStatus> {
   const storedId = (await readAppSetting(SANDBOX_KEY))?.trim() || null;
   const sandbox = await findSocialSandbox(daytona, storedId).catch(() => null);
   if (sandbox) {
-    const os = await resolveOs(sandbox);
-    try {
-      await sandbox.computerUse.stop().catch(() => undefined);
-    } catch {
-      /* still hibernate */
-    }
-    if (stopActionForOs(os) === "pause") {
-      const plan = hibernatePlan();
-      if (plan.snapshotWhileRunning && mapSandboxState(sandbox.state) === "running") {
-        await captureHotSnapshot(sandbox);
-      }
+    const rawState = (sandbox.state ?? "").toLowerCase();
+    const mapped = mapSandboxState(sandbox.state);
+    const alreadyHibernating =
+      rawState === "pausing" ||
+      rawState === "paused" ||
+      rawState === "archived" ||
+      rawState === "snapshotting" ||
+      mapped === "paused";
+    if (!alreadyHibernating) {
+      const os = await resolveOs(sandbox);
       try {
-        await sandbox.pause(120);
+        await sandbox.computerUse.stop().catch(() => undefined);
       } catch {
+        /* still hibernate */
+      }
+      if (stopActionForOs(os) === "pause") {
+        const plan = hibernatePlan();
+        if (plan.snapshotWhileRunning && mapSandboxState(sandbox.state) === "running") {
+          await captureHotSnapshot(sandbox);
+        }
+        try {
+          await sandbox.pause(120);
+        } catch (error) {
+          // Never cold-stop on pause failure — stop() drops the RAM session,
+          // including when the machine is already snapshotting/pausing.
+          const message = sanitizeDaytonaError(
+            error instanceof Error ? error.message : "Couldn’t pause the Social Machine.",
+          );
+          await writeAppSetting(LAST_ERROR_KEY, message);
+          throw new Error(message);
+        }
+      } else {
         await sandbox.stop(120);
       }
-    } else {
-      await sandbox.stop(120);
     }
   }
   await writeAppSetting(STOPPED_AT_KEY, new Date().toISOString());
@@ -908,7 +925,46 @@ export async function openPlatformInMachine(platform: SocialPlatform): Promise<v
   const sandbox = await daytona.get(status.sandboxId);
   const os = await resolveOs(sandbox);
   const url = PLATFORM_HOME_URL[platform];
-  await sandbox.process.executeCommand(openUrlCommand(os, url), undefined, undefined, 20);
+  await sandbox.process.executeCommand(await machineOpenUrlCommand(os, url), undefined, undefined, 20);
+}
+/**
+ * Open-url command builder used everywhere the Social Machine browser is
+ * pointed at a page. When a residential proxy is configured, launch a real
+ * Chromium-family executable with --proxy-server=<proxyUrl> instead of relying
+ * on Start-Process default-browser association (which ignores per-launch
+ * flags). Windows falls back chrome.exe -> chromium.exe -> msedge.exe, then to
+ * the plain default-browser open; Linux pins google-chrome/chromium directly.
+ *
+ * The returned command string carries the configured proxy URL — never log it,
+ * echo it into tool results, or store it.
+ */
+export async function machineOpenUrlCommand(os: SocialMachineOs, url: string): Promise<string> {
+  const config = await loadDaytonaConfig();
+  const proxyUrl = config?.proxyUrl ? parseHttpsProxy(config.proxyUrl) : null;
+  if (!proxyUrl) return openUrlCommand(os, url);
+  if (!/^https:\/\//i.test(url)) throw new Error("VALIDATION");
+  if (os === "windows") {
+    const safeProxy = escapePowerShellSingleQuoted(proxyUrl);
+    const safeUrl = escapePowerShellSingleQuoted(url);
+    const candidates = [
+      "(Join-Path $env:ProgramFiles 'Google\\Chrome\\Application\\chrome.exe')",
+      "(Join-Path ${env:ProgramFiles(x86)} 'Google\\Chrome\\Application\\chrome.exe')",
+      "(Join-Path $env:LOCALAPPDATA 'Google\\Chrome\\Application\\chrome.exe')",
+      "(Join-Path $env:ProgramFiles 'Chromium\\Application\\chromium.exe')",
+      "(Join-Path $env:ProgramFiles 'Microsoft\\Edge\\Application\\msedge.exe')",
+      "(Join-Path ${env:ProgramFiles(x86)} 'Microsoft\\Edge\\Application\\msedge.exe')",
+    ];
+    const launch = candidates
+      .map(
+        (path) =>
+          `$b = ${path}; if (Test-Path $b) { Start-Process $b -ArgumentList '--proxy-server=${safeProxy}','${safeUrl}'; exit };`,
+      )
+      .join(" ");
+    return `powershell -NoProfile -Command "${launch.replace(/;$/, "")} Start-Process '${safeUrl}'"`;
+  }
+  const quoted = url.replace(/'/g, `'\\''`);
+  const quotedProxy = proxyUrl.replace(/'/g, `'\\''`);
+  return `google-chrome --no-sandbox --proxy-server='${quotedProxy}' '${quoted}' >/dev/null 2>&1 || chromium --no-sandbox --proxy-server='${quotedProxy}' '${quoted}' >/dev/null 2>&1 || true`;
 }
 
 export async function transferAndOpenUpload(input: {
@@ -939,8 +995,9 @@ export async function transferAndOpenUpload(input: {
       const buffer = await fetchMediaBuffer(input.mediaUrl);
       if (buffer) {
         const ext = guessExt(input.mediaUrl);
-        const remote = uploadPath(os, input.postId, ext);
-        await sandbox.process.executeCommand(ensureUploadDirCommand(os), undefined, undefined, 15);
+        const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
+        const remote = machineDropPath(os, `${input.postId}${safeExt}`);
+        await sandbox.process.executeCommand(ensureBridgeDirsCommand(os), undefined, undefined, 15);
         await sandbox.fs.uploadFile(buffer, remote);
         transferred = true;
       }
@@ -950,7 +1007,7 @@ export async function transferAndOpenUpload(input: {
   }
 
   const url = PLATFORM_UPLOAD_URL[input.platform];
-  await sandbox.process.executeCommand(openUrlCommand(os, url), undefined, undefined, 20);
+  await sandbox.process.executeCommand(await machineOpenUrlCommand(os, url), undefined, undefined, 20);
 
   if (input.caption) {
     try {
@@ -971,7 +1028,7 @@ export async function transferAndOpenUpload(input: {
   }
 
   const reason = transferred
-    ? "Media is in the Social Machine. Finish login, CAPTCHA, or publish in the desktop view."
+    ? "Media is staged on the library drive. Finish login, CAPTCHA, or publish in the desktop view."
     : "Opened the platform upload page. Confirm login and attach the file in the desktop view.";
   return { screenshot, reason };
 }

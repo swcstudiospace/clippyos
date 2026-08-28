@@ -437,32 +437,34 @@ type CodeRow = {
   used_at: string | null;
 };
 
-async function lookupCode(digest: string): Promise<CodeRow | null> {
+async function claimAuthorizationCode(digest: string): Promise<CodeRow | null> {
   await ensureMcpOAuthSchema();
+  const stamp = nowIso();
   const admin = await getAgencyAdmin();
   if (admin) {
-    const { data, error } = await admin.from("mcp_oauth_codes").select("*").eq("code_hash", digest).maybeSingle();
-    if (!error) return (data as CodeRow | null) ?? null;
+    const { data, error } = await admin
+      .from("mcp_oauth_codes")
+      .update({ used_at: stamp })
+      .eq("code_hash", digest)
+      .is("used_at", null)
+      .gt("expires_at", stamp)
+      .select("*");
+    if (!error) {
+      const rows = (data ?? []) as CodeRow[];
+      return rows[0] ?? null;
+    }
     if (!isMissingTable(error)) throw new Error("DATA_UNAVAILABLE");
   }
   try {
     const sql = await localSql();
-    const rows = await sql.query<CodeRow>("select * from mcp_oauth_codes where code_hash = $1 limit 1", [digest]);
+    const rows = await sql.query<CodeRow>(
+      "update mcp_oauth_codes set used_at = $2 where code_hash = $1 and used_at is null and expires_at > now() returning *",
+      [digest, stamp],
+    );
     return rows[0] ?? null;
   } catch {
     return null;
   }
-}
-
-async function markCodeUsed(digest: string): Promise<void> {
-  const stamp = nowIso();
-  const admin = await getAgencyAdmin();
-  if (admin) {
-    await admin.from("mcp_oauth_codes").update({ used_at: stamp }).eq("code_hash", digest).is("used_at", null);
-    return;
-  }
-  const sql = await localSql();
-  await sql.query("update mcp_oauth_codes set used_at = $2 where code_hash = $1 and used_at is null", [digest, stamp]);
 }
 
 type TokenRow = Record<string, unknown> & { id: string };
@@ -510,15 +512,33 @@ async function insertTokenRow(row: Record<string, unknown>): Promise<void> {
   );
 }
 
-async function revokeTokenRow(id: string): Promise<void> {
+async function claimRefreshToken(digest: string): Promise<TokenRow | null> {
+  await ensureMcpOAuthSchema();
   const stamp = nowIso();
   const admin = await getAgencyAdmin();
   if (admin) {
-    await admin.from("mcp_oauth_tokens").update({ revoked_at: stamp }).eq("id", id).is("revoked_at", null);
-    return;
+    const { data, error } = await admin
+      .from("mcp_oauth_tokens")
+      .update({ revoked_at: stamp })
+      .eq("refresh_token_hash", digest)
+      .is("revoked_at", null)
+      .select("*");
+    if (!error) {
+      const rows = (data ?? []) as TokenRow[];
+      return rows[0] ?? null;
+    }
+    if (!isMissingTable(error)) throw new Error("DATA_UNAVAILABLE");
   }
-  const sql = await localSql();
-  await sql.query("update mcp_oauth_tokens set revoked_at = $2 where id = $1 and revoked_at is null", [id, stamp]);
+  try {
+    const sql = await localSql();
+    const rows = await sql.query<TokenRow>(
+      "update mcp_oauth_tokens set revoked_at = $2 where refresh_token_hash = $1 and revoked_at is null returning *",
+      [digest, stamp],
+    );
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function mintTokenPair(input: {
@@ -574,10 +594,8 @@ export async function exchangeMcpAuthorizationCode(input: {
   scope: string;
 }> {
   if (!input.code.startsWith(MCP_OAUTH_CODE_PREFIX)) throw new Error("invalid_grant");
-  const row = await lookupCode(hashToken(input.code));
+  const row = await claimAuthorizationCode(hashToken(input.code));
   if (!row) throw new Error("invalid_grant");
-  if (row.used_at) throw new Error("invalid_grant");
-  if (Date.parse(row.expires_at) < Date.now()) throw new Error("invalid_grant");
   if (row.client_id !== input.clientId) throw new Error("invalid_grant");
   if (row.redirect_uri !== input.redirectUri) throw new Error("invalid_grant");
   if (row.code_challenge_method !== "S256" || !verifyPkceS256(input.codeVerifier, row.code_challenge)) {
@@ -585,7 +603,6 @@ export async function exchangeMcpAuthorizationCode(input: {
   }
   const expectedResource = row.resource || canonicalMcpResource(input.origin);
   if (input.resource && !resourcesMatch(input.resource, expectedResource)) throw new Error("invalid_target");
-  await markCodeUsed(row.code_hash);
   return mintTokenPair({
     clientId: row.client_id,
     userId: row.user_id,
@@ -607,15 +624,18 @@ export async function refreshMcpOAuthToken(input: {
   scope: string;
 }> {
   if (!input.refreshToken.startsWith(MCP_OAUTH_REFRESH_PREFIX)) throw new Error("invalid_grant");
-  const row = await lookupTokenByHash("refresh_token_hash", hashToken(input.refreshToken));
+  const row = await claimRefreshToken(hashToken(input.refreshToken));
   if (!row) throw new Error("invalid_grant");
-  if (row.revoked_at) throw new Error("invalid_grant");
   const refreshExp = row.refresh_expires_at ? Date.parse(String(row.refresh_expires_at)) : NaN;
   if (Number.isFinite(refreshExp) && refreshExp < Date.now()) throw new Error("invalid_grant");
-  if (input.clientId && String(row.client_id) !== input.clientId) throw new Error("invalid_grant");
+  const tokenClientId = String(row.client_id ?? "");
+  if (input.clientId) {
+    if (input.clientId !== tokenClientId) throw new Error("invalid_grant");
+  } else if (tokenClientId) {
+    throw new Error("invalid_grant");
+  }
   const expectedResource = String(row.resource ?? canonicalMcpResource(input.origin));
   if (input.resource && !resourcesMatch(input.resource, expectedResource)) throw new Error("invalid_target");
-  await revokeTokenRow(String(row.id));
   return mintTokenPair({
     clientId: String(row.client_id),
     userId: String(row.user_id),

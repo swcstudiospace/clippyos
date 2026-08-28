@@ -95,13 +95,16 @@ test("payment success flips entitlement, records an invoice, and stores the card
       currency: "usd",
       card_brand: "visa",
       card_last4: "4242",
-      member: { id: "mem_77" },
+      membership: { id: "mem_77" },
+      member: { id: "mem_wrong" },
       metadata: { planKey: "starter" },
     },
     PLAN_IDS,
   );
   assert.equal(patch.status, "active");
+  assert.equal(patch.externalSubscriptionId, "mem_77");
   assert.equal(invoice?.externalId, "pay_9");
+  assert.equal(invoice?.amount, 9.71);
   assert.equal(invoice?.status, "paid");
   assert.equal(invoice?.currency, "USD");
   assert.deepEqual(card, { brand: "visa", last4: "4242" });
@@ -134,7 +137,7 @@ test("unknown events and unmapped plans produce no state change", () => {
     PLAN_IDS,
   );
   assert.equal(unmapped.patch.planKey, undefined);
-  assert.equal(unmapped.patch.status, "active");
+  assert.equal(unmapped.patch.status, undefined);
 });
 
 test("late payment events cannot resurrect a canceled workspace", () => {

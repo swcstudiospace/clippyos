@@ -8,3 +8,17 @@
  * Do NOT edit `server.ts` for this — that file is frozen pre-wired config.
  */
 export const emailAndPasswordEnabled = true;
+
+const DEFAULT_OWNER_EMAIL = "oveshen.govender@gmail.com";
+
+/** Client-safe check: owner addresses must not self-register via public signup. */
+export function isReservedOwnerEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === DEFAULT_OWNER_EMAIL) return true;
+  const extra = String(import.meta.env.VITE_OWNER_EMAIL ?? "")
+    .trim()
+    .toLowerCase();
+  return extra.length > 0 && extra === normalized;
+}

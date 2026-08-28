@@ -77,25 +77,20 @@ async function ensureProfile(
 ): Promise<void> {
   const now = new Date().toISOString();
   const inherit = role === "admin" ? true : inheritWorkspaceApis;
+  const payload = {
+    user_id: userId,
+    role,
+    status,
+    inherit_workspace_apis: inherit,
+    updated_at: now,
+  };
   const admin = await (await load_agency_db()).getAgencyAdmin();
   if (admin) {
-    const { error } = await admin.from("app_profiles").upsert(
-      {
-        user_id: userId,
-        role,
-        status,
-        inherit_workspace_apis: inherit,
-        updated_at: now,
-      },
-      { onConflict: "user_id" },
-    );
-    if (!error || !isMissingTable(error)) {
-      if (error && !isMissingTable(error)) {
-        await admin
-          .from("app_profiles")
-          .upsert({ user_id: userId, role, updated_at: now }, { onConflict: "user_id" });
-      }
-      return;
+    const { error } = await admin.from("app_profiles").upsert(payload, { onConflict: "user_id" });
+    if (!error) return;
+    if (!isMissingTable(error)) {
+      const fallback = await admin.from("app_profiles").upsert(payload, { onConflict: "user_id" });
+      if (!fallback.error) return;
     }
   }
   try {
@@ -107,6 +102,7 @@ async function ensureProfile(
          inherit_workspace_apis = excluded.inherit_workspace_apis, updated_at = excluded.updated_at`,
       [userId, role, status, inherit, now],
     );
+    return;
   } catch {
     try {
       const sql = await (await load_agency_db()).localSql();
@@ -116,6 +112,7 @@ async function ensureProfile(
          on conflict (user_id) do update set role = excluded.role, status = excluded.status, updated_at = excluded.updated_at`,
         [userId, role, status, now],
       );
+      return;
     } catch {
       try {
         const sql = await (await load_agency_db()).localSql();
@@ -130,6 +127,7 @@ async function ensureProfile(
       }
     }
   }
+  if (status === "REVOKED") throw new Error("Could not persist profile");
 }
 
 async function readAuthUsers(): Promise<Array<{ id: string; name: string; email: string; createdAt: string }>> {
@@ -327,12 +325,7 @@ export const revokeTeamLogin = createServerFn({ method: "POST" })
     await requireAdmin(context.userId);
     if (userId === context.userId) throw new Error("Forbidden");
     await ensureProfile(userId, "member", "REVOKED");
-    try {
-      const ctx = await auth.$context;
-      await ctx.internalAdapter.deleteUserSessions(userId);
-    } catch {
-      /* best-effort session drop */
-    }
+    await dropUserSessions(userId);
     return { ok: true as const };
   });
 
@@ -402,6 +395,15 @@ async function setCredentialPassword(userId: string, password: string): Promise<
   }
 }
 
+async function dropUserSessions(userId: string): Promise<void> {
+  try {
+    const ctx = await auth.$context;
+    await ctx.internalAdapter.deleteUserSessions(userId);
+  } catch {
+    /* best-effort session drop */
+  }
+}
+
 export const requestPasswordReset = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ email: z.string().trim().email() }).parse(input))
   .handler(async () => {
@@ -417,6 +419,10 @@ export const createMemberResetLink = createServerFn({ method: "POST" })
     const token = randomBytes(24).toString("hex");
     const hash = await hashSecret(token);
     const rows = await readResetRows();
+    const usedAt = new Date().toISOString();
+    for (const row of rows) {
+      if (row.userId === userId && !row.usedAt) row.usedAt = usedAt;
+    }
     rows.unshift({
       id: token.slice(0, 8),
       userId,
@@ -449,6 +455,7 @@ export const completePasswordReset = createServerFn({ method: "POST" })
     await setCredentialPassword(matched.userId, data.password);
     matched.usedAt = new Date().toISOString();
     await writeResetRows(rows);
+    await dropUserSessions(matched.userId);
     return { ok: true as const };
   });
 
@@ -460,6 +467,7 @@ export const setMemberPassword = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await requireAdmin(context.userId);
     await setCredentialPassword(data.userId, data.password);
+    await dropUserSessions(data.userId);
     return { ok: true as const };
   });
 

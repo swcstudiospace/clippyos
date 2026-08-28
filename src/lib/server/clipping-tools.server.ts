@@ -134,7 +134,7 @@ export async function clippingMarkPublished(input: { clientId: string; notes?: s
   return clippingSetStage({
     clientId: input.clientId,
     stage: "PUBLISHED",
-    notes: input.notes ?? "Marked published by clipping agent.",
+    notes: input.notes,
     actorId: input.actorId,
   });
 }

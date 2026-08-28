@@ -2,6 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { authenticateApiKey } from "@/lib/server/autonomy-auth.server";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import { readIdempotency, writeIdempotency, writeAuditLog } from "@/lib/server/autonomy-audit.server";
+import { hasScope, type ApiKeyScope } from "@/lib/autonomy";
+import {
+  checkCrayoLogin,
+  clippingSnapshot,
+  runClippingProcedureSkill,
+} from "@/lib/server/clipping.server";
 
 function json(status: number, body: unknown, extra?: HeadersInit) {
   return new Response(JSON.stringify(body), {
@@ -32,8 +38,127 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   }
 }
 
+type ClippingRoute =
+  | { kind: "session" }
+  | { kind: "check-login" }
+  | { kind: "run-procedure"; slug: string };
+
+const CLIPPING_SCOPES: Record<ClippingRoute["kind"], ApiKeyScope> = {
+  session: "read",
+  "check-login": "write:clipping",
+  "run-procedure": "write:clipping",
+};
+
+function matchClippingRoute(method: string, parts: string[]): ClippingRoute | null {
+  const [a, b, c, d] = parts;
+  if (method === "GET" && a === "clipping" && b === "session" && !c) return { kind: "session" };
+  if (method === "POST" && a === "clipping" && b === "crayo" && c === "check-login" && !d) {
+    return { kind: "check-login" };
+  }
+  if (method === "POST" && a === "clipping" && b === "skills" && c && d === "run") {
+    return { kind: "run-procedure", slug: c };
+  }
+  return null;
+}
+function clippingErrorStatus(code: string): number {
+  if (code === "MACHINE_STOPPED") return 409;
+  if (code === "DAYTONA_UNAVAILABLE") return 503;
+  if (code === "SKILL_MISSING" || code === "NOT_A_BROWSER_PROCEDURE") return 404;
+  return 400;
+}
+
+/**
+ * Scoped direct handling for the clipping v1 surface. The write paths are
+ * gated by the `write:clipping` scope and audited here (the procedure run is
+ * additionally audited per-run by the executor).
+ */
+async function handleClippingRoute(
+  route: ClippingRoute,
+  input: { actor: { source: "api" | "mcp" | "webhook"; keyId: string | null; label: string; scopes: ApiKeyScope[] }; requestId: string },
+): Promise<{ ok: true; data: unknown } | { ok: false; status: number; code: string; message: string }> {
+  const { actor, requestId } = input;
+  if (!hasScope(actor.scopes, CLIPPING_SCOPES[route.kind])) {
+    if (route.kind !== "session") {
+      await writeAuditLog({
+        requestId,
+        actor,
+        action: route.kind === "check-login" ? "clipping.check_crayo_login" : "clipping.run_browser_procedure",
+        result: "denied",
+        errorCode: "FORBIDDEN",
+      });
+    }
+    return {
+      ok: false,
+      status: 403,
+      code: "FORBIDDEN",
+      message: `This endpoint requires the ${CLIPPING_SCOPES[route.kind]} scope.`,
+    };
+  }
+  try {
+    if (route.kind === "session") return { ok: true, data: await clippingSnapshot("") };
+    if (route.kind === "check-login") {
+      const data = await checkCrayoLogin();
+      await writeAuditLog({
+        requestId,
+        actor,
+        action: "clipping.check_crayo_login",
+        entityType: "platform",
+        entityId: "crayo.io",
+        result: "ok",
+      });
+      return { ok: true, data };
+    }
+    const data = await runClippingProcedureSkill({ slug: route.slug, actorId: actor.keyId ?? actor.label });
+    return { ok: true, data };
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "CLIPPING_FAILED";
+    if (route.kind === "check-login") {
+      await writeAuditLog({
+        requestId,
+        actor,
+        action: "clipping.check_crayo_login",
+        entityType: "platform",
+        entityId: "crayo.io",
+        result: "error",
+        errorCode: code,
+      });
+    }
+    return {
+      ok: false,
+      status: clippingErrorStatus(code),
+      code,
+      message: "Clipping request failed.",
+    };
+  }
+}
+
 function parsePath(url: URL): string[] {
   return url.pathname.replace(/^\/api\/v1\/?/, "").split("/").filter(Boolean);
+}
+
+function idempotencyCacheKey(keyId: string | null, method: string, path: string, idem: string): string {
+  return `api:${keyId}:${method}:${path}:${idem}`;
+}
+
+function encodeIdempotencyRecord(status: number, body: string): string {
+  return JSON.stringify({ status, body });
+}
+
+function decodeIdempotencyRecord(cached: string): { status: number; body: string } {
+  try {
+    const parsed = JSON.parse(cached) as { status?: unknown; body?: unknown };
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.status === "number" &&
+      typeof parsed.body === "string"
+    ) {
+      return { status: parsed.status, body: parsed.body };
+    }
+  } catch {
+    /* body-only cache from before status was persisted */
+  }
+  return { status: 200, body: cached };
 }
 
 function routeAction(
@@ -329,12 +454,25 @@ async function handle(request: Request): Promise<Response> {
     return json(401, { error: { code: "UNAUTHORIZED", message: "Invalid or revoked API key." }, requestId: rid });
   }
 
-  const idem = request.headers.get("idempotency-key")?.trim();
-  if (idem) {
-    const cached = await readIdempotency(`api:${actor.keyId}:${idem}`);
+  const url = new URL(request.url);
+  const parts = parsePath(url);
+  // The clipping procedure-run endpoint accepts both header spellings — the
+  // Deno driver sends X-Idempotency-Key while sibling endpoints use
+  // idempotency-key.
+  const idempotencyHeaders = ["idempotency-key", "x-idempotency-key"];
+  if (matchClippingRoute(request.method, parts)?.kind === "run-procedure") {
+    idempotencyHeaders.reverse();
+  }
+  const idem = idempotencyHeaders
+    .map((header) => request.headers.get(header)?.trim())
+    .find(Boolean);
+  const cacheKey = idem ? idempotencyCacheKey(actor.keyId, request.method, url.pathname, idem) : null;
+  if (cacheKey) {
+    const cached = await readIdempotency(cacheKey);
     if (cached) {
-      return new Response(cached, {
-        status: 200,
+      const replay = decodeIdempotencyRecord(cached);
+      return new Response(replay.body, {
+        status: replay.status,
         headers: { "Content-Type": "application/json; charset=utf-8", "X-Request-Id": rid },
       });
     }
@@ -347,8 +485,22 @@ async function handle(request: Request): Promise<Response> {
     return json(400, { error: { code: "VALIDATION", message: "JSON body required." }, requestId: rid });
   }
 
-  const url = new URL(request.url);
-  const mapped = routeAction(request.method, parsePath(url), body, url.searchParams);
+  const clipRoute = matchClippingRoute(request.method, parts);
+  if (clipRoute) {
+    const clipResult = await handleClippingRoute(clipRoute, { actor, requestId: rid });
+    const headers: HeadersInit = {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Request-Id": rid,
+    };
+    if (!clipResult.ok) {
+      return json(clipResult.status, { error: { code: clipResult.code, message: clipResult.message }, requestId: rid }, headers);
+    }
+    const encoded = JSON.stringify({ data: clipResult.data, requestId: rid });
+    if (cacheKey) await writeIdempotency(cacheKey, encodeIdempotencyRecord(200, encoded));
+    return new Response(encoded, { status: 200, headers });
+  }
+  const mapped = routeAction(request.method, parts, body, url.searchParams);
   if (!mapped) {
     return json(404, { error: { code: "NOT_FOUND", message: "Unknown endpoint." }, requestId: rid });
   }
@@ -370,9 +522,10 @@ async function handle(request: Request): Promise<Response> {
     return json(result.status, { error: { code: result.code, message: result.message }, requestId: rid }, headers);
   }
   const encoded = JSON.stringify({ data: result.data, requestId: rid });
-  if (idem) await writeIdempotency(`api:${actor.keyId}:${idem}`, encoded);
+  const status = mapped.action.startsWith("create") && request.method === "POST" ? 201 : 200;
+  if (cacheKey) await writeIdempotency(cacheKey, encodeIdempotencyRecord(status, encoded));
   return new Response(encoded, {
-    status: mapped.action.startsWith("create") && request.method === "POST" ? 201 : 200,
+    status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",

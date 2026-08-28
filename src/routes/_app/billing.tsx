@@ -52,11 +52,15 @@ function BillingPage() {
   useEffect(() => {
     if (!search.includes("checkout=success")) return;
     void refreshBillingEntitlement()
-      .then(async () => {
+      .then(() => {
         toast.success("Subscription updated");
-        await queryClient.invalidateQueries({ queryKey: BILLING_QUERY_KEY });
       })
-      .catch(() => undefined);
+      .catch((error) => {
+        toast.error(userFacingErrorMessage(error));
+      })
+      .finally(() => {
+        void queryClient.invalidateQueries({ queryKey: BILLING_QUERY_KEY });
+      });
   }, [search, queryClient]);
 
   const checkout = useMutation({

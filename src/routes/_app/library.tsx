@@ -566,7 +566,7 @@ function LibraryPage() {
         onPublishYoutube={() => {
           if (!openId) return;
           void navigate({
-            href: `/social?mediaAssetId=${encodeURIComponent(openId)}&platform=youtube`,
+            href: `/social?mediaAssetId=${encodeURIComponent(openId)}&platform=youtube&mode=publish`,
           });
         }}
         onArchive={() => openId && archive.mutate(openId)}

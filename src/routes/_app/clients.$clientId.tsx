@@ -130,8 +130,14 @@ function ClientDetailPage() {
   const stageMut = useMutation({
     mutationFn: (stage: ProgressStage) =>
       setClientStage({ data: { clientId, stage, notes: null } }),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setPendingStage(null);
+      if (result.awaitingApproval) {
+        toast.message("Waiting for approval");
+        await queryClient.invalidateQueries({ queryKey: APPROVALS_QUERY_KEY });
+        await queryClient.invalidateQueries({ queryKey: SAFETY_INBOX_QUERY_KEY });
+        return;
+      }
       toast.success("Pipeline updated");
       await queryClient.invalidateQueries({ queryKey: ["client", clientId] });
       await queryClient.invalidateQueries({ queryKey: ["clients"] });
@@ -144,7 +150,10 @@ function ClientDetailPage() {
 
   const notesMut = useMutation({
     mutationFn: (value: string) => updateClientNotes({ data: { id: clientId, notes: value } }),
-    onSuccess: () => toast.success("Notes saved"),
+    onSuccess: async () => {
+      toast.success("Notes saved");
+      await queryClient.invalidateQueries({ queryKey: ["client", clientId] });
+    },
     onError: (error) => {
       captureClientError(error, { source: "save-notes" });
       toast.error(userFacingErrorMessage(error));
@@ -157,6 +166,7 @@ function ClientDetailPage() {
       toast.success("Marked paid");
       await queryClient.invalidateQueries({ queryKey: ["client", clientId] });
       await queryClient.invalidateQueries({ queryKey: ["money"] });
+      await queryClient.invalidateQueries({ queryKey: [...AUDIT_QUERY_KEY, clientId] });
     },
     onError: (error) => {
       captureClientError(error, { source: "mark-paid" });
@@ -675,6 +685,7 @@ function ClientDetailPage() {
         onSaved={() => {
           void queryClient.invalidateQueries({ queryKey: ["client", clientId] });
           void queryClient.invalidateQueries({ queryKey: ["clients"] });
+          void queryClient.invalidateQueries({ queryKey: MONEY_QUERY_KEY });
         }}
       />
 
