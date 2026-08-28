@@ -65,9 +65,45 @@ export function isAllowedAppHost(
   return extra.some((item) => stripPort(item) === host);
 }
 
+export function isGrokMeHost(hostname: string): boolean {
+  const host = stripPort(hostname);
+  return host === "grok.me" || host.endsWith(".grok.me");
+}
+
 export function isPublishedMcpHost(hostname: string): boolean {
   const host = stripPort(hostname);
   return (PUBLISHED_MCP_HOSTS as readonly string[]).includes(host);
+}
+
+/**
+ * Better Auth fallback origin. The Grok deployer injects BETTER_AUTH_URL as
+ * https://clippyos.grok.me; that must never win the OAuth redirect_uri for
+ * visitors on os.swcstudio.space. Both hosts stay allowed; grok.me is just
+ * not the fallback.
+ */
+export function authFallbackBaseURL(
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
+): string {
+  for (const key of ["BETTER_AUTH_URL", "APP_URL"] as const) {
+    const raw = env[key]?.trim().replace(/\/+$/, "") ?? "";
+    if (!raw) continue;
+    const host = hostnameOf(raw);
+    if (!host) continue;
+    if (host === "vercel.app" || host.endsWith(".vercel.app")) continue;
+    if (isGrokMeHost(host)) continue;
+    if (LOOPBACK_HOSTS.has(host)) {
+      return raw.includes("://") ? raw : `http://${raw}`;
+    }
+    return raw.includes("://") ? raw : `https://${raw}`;
+  }
+  return CANONICAL_APP_ORIGIN;
+}
+
+export function oauthCallbackURL(
+  providerId: string,
+  origin: string = CANONICAL_APP_ORIGIN,
+): string {
+  return `${origin.trim().replace(/\/+$/, "")}/api/auth/oauth2/callback/${providerId}`;
 }
 
 export function mcpUrlFor(origin: string): string {
