@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
 import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { resolveGoogleSocial } from "@/lib/auth/google-social";
 import { isReservedOwnerEmail } from "@/lib/auth/email-password";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
@@ -29,6 +30,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
+  loader: () => ({ googleConfigured: Boolean(resolveGoogleSocial()) }),
   component: LoginPage,
 });
 
@@ -63,6 +65,12 @@ function LoginForm() {
   const wantsAccess = searchStr.includes("intent=access");
   const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
   const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
+  const { googleConfigured } = Route.useLoaderData();
+  const oauthProviders = isLivePreviewHost()
+    ? GROK_PROVIDERS
+    : googleConfigured
+      ? [{ providerId: "google", label: "Google" }]
+      : [];
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(wantsAccess ? "signup" : "signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -195,8 +203,9 @@ function LoginForm() {
         </p>
 
         {authEnabled ? (
+          oauthProviders.length > 0 ? (
           <div className="relative z-[1] flex flex-col gap-2">
-            {GROK_PROVIDERS.map((provider) => (
+            {oauthProviders.map((provider) => (
               <Button
                 key={provider.providerId}
                 variant="secondary"
@@ -211,6 +220,7 @@ function LoginForm() {
               </Button>
             ))}
           </div>
+          ) : null
         ) : (
           <p className="relative z-[1] text-body text-muted">Sign-in is disabled.</p>
         )}

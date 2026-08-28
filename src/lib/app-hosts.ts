@@ -106,6 +106,13 @@ export function oauthCallbackURL(
   return `${origin.trim().replace(/\/+$/, "")}/api/auth/oauth2/callback/${providerId}`;
 }
 
+export function socialCallbackURL(
+  providerId: string,
+  origin: string = CANONICAL_APP_ORIGIN,
+): string {
+  return `${origin.trim().replace(/\/+$/, "")}/api/auth/callback/${providerId}`;
+}
+
 export function mcpUrlFor(origin: string): string {
   const base = origin.trim().replace(/\/+$/, "");
   return base ? `${base}/api/mcp` : "/api/mcp";

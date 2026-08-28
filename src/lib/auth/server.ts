@@ -41,11 +41,14 @@ import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
 import { GROK_ISSUER_DEFAULT, PREVIEW_ALLOWED_HOSTS } from "./preview";
 import { resolveGrokBrokerClient } from "./broker-client";
+import { resolveGoogleSocial } from "./google-social";
 import {
+  CANONICAL_APP_ORIGIN,
   authFallbackBaseURL,
   collectAppOrigins,
   dynamicBaseAllowedHosts,
   oauthCallbackURL,
+  socialCallbackURL,
 } from "@/lib/app-hosts";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
@@ -82,6 +85,7 @@ const grokIssuer = env("GROK_AUTH_ISSUER") ?? GROK_ISSUER_DEFAULT;
 const brokerClient = resolveGrokBrokerClient();
 const grokClientId = brokerClient.clientId;
 const grokClientSecret = brokerClient.clientSecret;
+const googleSocial = resolveGoogleSocial();
 
 /** True when federated sign-in is active (real auth is enforced). */
 export const authConfigured =
@@ -178,6 +182,18 @@ export const auth = betterAuth({
   // local loopback variants, or clients get "Invalid origin".
   trustedOrigins,
 
+  // Native Google on the canonical studio origin. Missing creds omit the
+  // provider (same degrade as `authConfigured`) so boot still succeeds.
+  socialProviders: {
+    google: googleSocial
+      ? {
+          clientId: googleSocial.clientId,
+          clientSecret: googleSocial.clientSecret,
+          redirectURI: socialCallbackURL("google", CANONICAL_APP_ORIGIN),
+        }
+      : undefined,
+  },
+
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
   // as trusted first-party identities. The broker owns identity and X emails are
   // synthetic/unverified, so WITHOUT this a login can fail with
@@ -188,7 +204,10 @@ export const auth = betterAuth({
     encryptOAuthTokens: true,
     accountLinking: {
       enabled: true,
-      trustedProviders: GROK_PROVIDERS.map((p) => p.providerId),
+      trustedProviders: [
+        ...GROK_PROVIDERS.map((p) => p.providerId),
+        ...(googleSocial ? ["google"] : []),
+      ],
       // X's synthetic email is never "verified", so don't gate linking on the
       // local user's email-verified state.
       requireLocalEmailVerified: false,

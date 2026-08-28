@@ -1,7 +1,7 @@
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.ts";
-import { GROK_PROVIDERS } from "./providers";
+import { GROK_PROVIDERS } from "./providers.ts";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -35,7 +35,8 @@ export const authClient = createAuthClient({
  * with the key removed, sign-in is real in preview (baked preview client) and
  * when deployed (injected per-app client).
  */
-export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
+export const authEnabled =
+  typeof import.meta.env === "undefined" || import.meta.env.VITE_AUTH_ENABLED !== "false";
 
 /** The upstream providers to render sign-in buttons for. */
 export { GROK_PROVIDERS };
@@ -89,6 +90,26 @@ function inLivePreview(): boolean {
 
 /** Message the popup posts back to the opener once sign-in completes. */
 type PopupMessage = { source: "grok-auth-popup"; token: string | null; error?: string };
+
+/**
+ * Better Auth social/oauth2 calls can resolve with neither `error` nor `data.url`
+ * (empty 404 on an unconfigured provider). Returning then looks like a dead form.
+ */
+export function requireOAuthRedirectUrl(
+  providerId: string,
+  data: { url?: string | null } | null | undefined,
+  error?: { message?: string | null } | null,
+): string {
+  if (error) throw new Error(error.message ?? "Sign-in failed");
+  if (!data?.url) {
+    throw new Error(
+      providerId === "google"
+        ? "Google sign-in is not configured on this host."
+        : "Sign-in failed",
+    );
+  }
+  return data.url;
+}
 
 /**
  * Start sign-in with one upstream provider (`providerId` from `GROK_PROVIDERS`),
@@ -151,13 +172,22 @@ export async function signIn(
     return;
   }
 
+  if (providerId === "google") {
+    const { data, error } = await authClient.signIn.social({
+      provider: "google",
+      callbackURL,
+      errorCallbackURL,
+    });
+    window.location.href = requireOAuthRedirectUrl("google", data, error);
+    return;
+  }
+
   const { data, error } = await authClient.signIn.oauth2({
     providerId,
     callbackURL,
     errorCallbackURL,
   });
-  if (error) throw new Error(error.message ?? "Sign-in failed");
-  if (data?.url) window.location.href = data.url;
+  window.location.href = requireOAuthRedirectUrl(providerId, data, error);
 }
 
 /**

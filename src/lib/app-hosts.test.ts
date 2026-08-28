@@ -13,6 +13,7 @@ import {
   mcpResourcesEquivalent,
   mcpUrlFor,
   oauthCallbackURL,
+  socialCallbackURL,
   originFromRequest,
   publishedMcpEndpoints,
 } from "./app-hosts.ts";
@@ -163,5 +164,9 @@ test("auth fallback never prefers clippyos.grok.me even when the deployer inject
   assert.equal(
     oauthCallbackURL("grok-x"),
     "https://os.swcstudio.space/api/auth/oauth2/callback/grok-x",
+  );
+  assert.equal(
+    socialCallbackURL("google"),
+    "https://os.swcstudio.space/api/auth/callback/google",
   );
 });
