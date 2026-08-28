@@ -76,7 +76,6 @@ export const applyPendingAgencyMigrations = createServerFn({ method: "POST" })
     };
   });
 
-
 const HiggsfieldSaveSchema = z.object({
   keyId: z.string().trim().min(8).max(200),
   secret: z.string().trim().min(8).max(400),
