@@ -1,4 +1,5 @@
 import type { AppRole } from "@/lib/entities";
+import { isMissingTable } from "@/lib/server/mappers";
 import {
   AGENCY_TABLES,
   SUPABASE_JWKS_URL,
@@ -24,6 +25,7 @@ export type SupabaseStatus = {
   authHealth: boolean;
   jwksHealth: boolean;
   adminConfigured: boolean;
+  postgresConfigured: boolean;
   tables: TableProbe[];
   schemaReady: boolean;
   operatorRole: AppRole | null;
@@ -48,7 +50,7 @@ async function probeOneTable(
 ): Promise<TableProbe> {
   try {
     const { error } = await client.from(name).select("*").limit(0);
-    return { name, exists: !error };
+    return { name, exists: !isMissingTable(error) };
   } catch {
     return { name, exists: false };
   }
@@ -85,6 +87,7 @@ export async function probeSupabase(userId: string): Promise<SupabaseStatus> {
     authHealth,
     jwksHealth,
     adminConfigured: hasSupabaseSecret(),
+    postgresConfigured: Boolean(process.env.DATABASE_URL?.trim()),
     tables,
     schemaReady: tables.every((table) => table.exists),
     operatorRole,
