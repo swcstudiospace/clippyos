@@ -5,6 +5,7 @@ import {
   applyStalled,
   computeSlos,
   deriveHealthBanner,
+  grokBotHealthTone,
   filterHealthJobs,
   formatRate,
   isDismissed,
@@ -202,12 +203,32 @@ test("linear exhausted retries map to FAILED; retry scope is write-scoped", () =
     "FAILED",
   );
   assert.equal(
+    mapLinearStatus({ attempts: 2, lastError: "LINEAR_UNAVAILABLE", nextAttemptAt: "2026-08-23T13:00:00.000Z" }, now),
+    "QUEUED",
+  );
+  assert.equal(
+    mapLinearStatus({ attempts: 2, lastError: "LINEAR_UNAVAILABLE", nextAttemptAt: "2026-08-23T11:00:00.000Z" }, now),
+    "RUNNING",
+  );
+  assert.equal(
     mapLinearStatus({ attempts: 0, lastError: null, nextAttemptAt: "2026-08-23T11:00:00.000Z" }, now),
     "QUEUED",
   );
+  assert.equal(isDlqJob({ type: "LINEAR_SYNC", status: "QUEUED", attempts: 2 }), false);
+  assert.equal(isDlqJob({ type: "LINEAR_SYNC", status: "FAILED", attempts: 2 }), false);
+  assert.equal(isDlqJob({ type: "LINEAR_SYNC", status: "FAILED", attempts: 5 }), true);
   assert.equal(retryScopeForType("AGENT"), "actions:ai");
   assert.equal(retryScopeForType("LINEAR_SYNC"), "linear:write");
   assert.equal(retryScopeForType("SOCIAL_UPLOAD"), "write:social");
+});
+
+test("grok oauth_ready maps to degraded, not not_configured", () => {
+  assert.equal(grokBotHealthTone("oauth_ready"), "degraded");
+  assert.equal(grokBotHealthTone("online"), "connected");
+  assert.equal(grokBotHealthTone("working"), "connected");
+  assert.equal(grokBotHealthTone("key_only"), "degraded");
+  assert.equal(grokBotHealthTone("waiting"), "degraded");
+  assert.equal(grokBotHealthTone(null), "not_configured");
 });
 
 test("sanitizeHealthError never leaks bearer or MCP tokens", () => {

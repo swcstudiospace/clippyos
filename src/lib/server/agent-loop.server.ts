@@ -126,6 +126,18 @@ function retryable(code: string): boolean {
   );
 }
 
+/** Write tools that must not pick a client when the run has none pinned. */
+const CLIENT_MUTATING_TOOLS: Record<string, true> = {
+  "clipping.generate_ideas": true,
+  "clipping.generate_titles": true,
+  "clipping.generate_thumbnail": true,
+  "clipping.set_stage": true,
+  "clipping.mark_published": true,
+  "clipping.distribute_social": true,
+  "library.attach_to_social_job": true,
+  "social.create_upload_job": true,
+};
+
 async function emitRunEvent(
   type: "agent.run.succeeded" | "agent.run.failed",
   runId: string,
@@ -307,6 +319,7 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
 
     await patchAgentRun(runId, { status: "planning" });
     const allow = allowlistForPreset(run.preset);
+    if (run.preset === "clipping-full-package") allow.add("clipping.run_skill");
     const plan = await buildPlan({
       runId,
       preset: run.preset,
@@ -360,9 +373,31 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
       }
 
       const args: Record<string, unknown> = { ...step.args };
-      if (run.clientId && !args.clientId) args.clientId = run.clientId;
-      if (run.skillId && (step.tool === "clipping.run_skill" || step.tool === "skills.invoke") && !args.skillId) {
+      if (run.clientId) {
+        args.clientId = run.clientId;
+        if (
+          (step.tool === "clipping.run_skill" || step.tool === "skills.invoke") &&
+          args.arguments &&
+          typeof args.arguments === "object" &&
+          !Array.isArray(args.arguments)
+        ) {
+          args.arguments = { ...(args.arguments as Record<string, unknown>), clientId: run.clientId };
+        }
+      }
+      if (run.skillId && (step.tool === "clipping.run_skill" || step.tool === "skills.invoke")) {
         args.skillId = run.skillId;
+      }
+      if (!run.clientId && CLIENT_MUTATING_TOOLS[step.tool]) {
+        await insertIteration({
+          runId,
+          index: stepIndex + 1,
+          kind: "error",
+          stepId: step.id,
+          toolName: step.tool,
+          resultSummary: "Tool needs a pinned client.",
+          status: "error",
+        });
+        continue;
       }
 
       let attempt = 0;
@@ -517,7 +552,7 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
       await patchAgentRun(runId, { iterationCount: stepIndex });
     }
 
-    if (run.preset === "clipping-full-package" && run.skillId) {
+    if (run.preset === "clipping-full-package" && run.skillId && allow.has("clipping.run_skill")) {
       try {
         const pack = await executeAgentTool({
           name: "clipping.run_skill",

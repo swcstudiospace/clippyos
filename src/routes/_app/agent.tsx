@@ -11,6 +11,7 @@ import {
   agentStatusTone,
   isAgentBusy,
   presetCopy,
+  allowlistForPreset,
   type AgentPreset,
 } from "@/lib/agent";
 import { listClients } from "@/lib/server/clients";
@@ -100,17 +101,23 @@ function AgentPage() {
   });
 
   const start = useMutation({
-    mutationFn: () =>
-      startAgentRunFn({
+    mutationFn: () => {
+      const trimmedGoal = goal.trim();
+      const grokGoal =
+        runner === "grok_bot"
+          ? `${trimmedGoal}\n\nOnly use these tools: ${[...allowlistForPreset(preset)].join(", ")}`
+          : trimmedGoal;
+      return startAgentRunFn({
         data: {
-          goal,
+          goal: grokGoal,
           preset,
           clientId: clientId || null,
           skillId: skillId || null,
           runner,
           triggeredByTeamMemberId: seatId || null,
         },
-      }),
+      });
+    },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: AGENT_QUERY_KEY });
       await navigate({ search: { run: result.id } });
@@ -256,11 +263,13 @@ function AgentPage() {
                 type="button"
                 onClick={() => {
                   setPreset(id);
-                  if (id !== "custom") {
-                    setGoal(AGENT_PRESET_COPY[id].goal);
-                    const match = skills.find((row) => row.slug === id);
-                    if (match) setSkillId(match.id);
+                  if (id === "custom") {
+                    setSkillId("");
+                    return;
                   }
+                  setGoal(AGENT_PRESET_COPY[id].goal);
+                  const match = skills.find((row) => row.slug === id);
+                  setSkillId(match?.id ?? "");
                 }}
                 className={cn(
                   "min-h-11 rounded-full px-3 text-caption",

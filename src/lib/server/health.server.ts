@@ -11,6 +11,7 @@ import {
   computeSlos,
   deriveHealthBanner,
   hrefForType,
+  grokBotHealthTone,
   integrationTone,
   isDismissed,
   isDlqJob,
@@ -92,13 +93,7 @@ export async function buildHealthSnapshot(input: {
     import("@/lib/server/clients").then((mod) => mod.readClients()).catch(() => []),
     import("@/lib/server/social").then((mod) => mod.readSocialJobs()).catch(() => []),
     import("@/lib/server/social").then((mod) => mod.readSocialPosts()).catch(() => []),
-    import("@/lib/server/social").then((mod) => mod.peekSocialHealth()).catch(() => ({
-      state: "not_configured",
-      configured: false,
-      needsLogin: 0,
-      failedJobs: 0,
-      needsAttention: 0,
-    })),
+    import("@/lib/server/social").then((mod) => mod.peekSocialHealth()).catch(() => null),
     import("@/lib/server/library.server").then((mod) => mod.listRenders()).catch(() => []),
     import("@/lib/server/agent.server").then((mod) => mod.listAgentRuns(80)).catch(() => []),
     import("@/lib/server/agent.server").then((mod) => mod.countActiveAgentRuns()).catch(() => 0),
@@ -115,19 +110,13 @@ export async function buildHealthSnapshot(input: {
       .catch(() => ({ lastRunAt: null, lastOk: null, summary: null, matched: 0, skipped: 0 })),
     import("@/lib/server/social-ops.server")
       .then((mod) => mod.socialGetCostGuard())
-      .catch(() => ({
-        running: false,
-        durationMs: null,
-        autoStopMinutes: 20,
-        activeJobs: 0,
-        recommendStop: false,
-      })),
+      .catch(() => null),
     import("@/lib/server/autonomy-policy.server")
       .then((mod) => mod.readPlaybookPolicies())
       .catch(() => null),
     import("@/lib/server/autonomy-policy.server")
       .then((mod) => mod.readAutomationEnabled())
-      .catch(() => true),
+      .catch(() => null),
     import("@/lib/server/integrations")
       .then((mod) => mod.readIntegrationsSnapshot(input.userId))
       .catch(() => null),
@@ -348,7 +337,7 @@ export async function buildHealthSnapshot(input: {
   const slos = computeSlos({
     samples,
     awaitingApproval: approvals.length + jobs.filter((job) => job.status === "AWAITING_APPROVAL").length,
-    needsLogin: socialHealth.needsLogin,
+    needsLogin: socialHealth?.needsLogin ?? null,
     nowMs,
   });
 
@@ -358,7 +347,7 @@ export async function buildHealthSnapshot(input: {
     hermes,
     grok,
     mcpConfigured: Boolean(mcpHash) || mcpTokens.some((row) => !row.revokedAt) || oauthGrantCount > 0,
-    twitchConfigured: Boolean(twitch),
+    twitch,
   });
 
   const activeHermes = keys.filter((row) => !row.revokedAt);
@@ -398,7 +387,7 @@ export async function buildHealthSnapshot(input: {
     integrations: integrationCards,
     mcpConfigured: hermesRuntime.mcpConfigured,
     activeTokenCount: hermesRuntime.activeTokenCount,
-    needsLogin: socialHealth.needsLogin,
+    needsLogin: socialHealth?.needsLogin ?? null,
     stalled: slos.stalled,
   });
 
@@ -409,7 +398,7 @@ export async function buildHealthSnapshot(input: {
       daytona: costGuard,
       agentActive,
       agentMax: AGENT_MAX_CONCURRENT,
-      automationPaused: automationEnabled === false,
+      automationPaused: automationEnabled == null ? null : automationEnabled === false,
       socialAutoStart: policies?.socialAutoStartForUpload === true,
       xai: {
         recent429: xai.recent429,
@@ -452,7 +441,7 @@ function buildIntegrationCards(input: {
   hermes: Awaited<ReturnType<typeof import("@/lib/server/hermes-connect.server").buildConnectStatus>> | null;
   grok: Awaited<ReturnType<typeof import("@/lib/server/grok-bot.server").buildGrokBotSnapshot>> | null;
   mcpConfigured: boolean;
-  twitchConfigured: boolean;
+  twitch: Awaited<ReturnType<typeof import("@/lib/server/twitch.server").loadTwitchConfig>> | null;
 }): HealthIntegrationCard[] {
   const cards: HealthIntegrationCard[] = [];
   for (const pub of input.publishers) {
@@ -511,12 +500,7 @@ function buildIntegrationCards(input: {
     testId: null,
     detail: input.hermes?.playbookPackageVersion ?? null,
   });
-  const grokTone =
-    input.grok?.connection === "online" || input.grok?.connection === "working"
-      ? "connected"
-      : input.grok?.connection === "waiting" || input.grok?.connection === "key_only"
-        ? "degraded"
-        : "not_configured";
+  const grokTone = grokBotHealthTone(input.grok?.connection);
   cards.push({
     id: "grok-bot",
     name: "Grok Bot",
@@ -527,15 +511,16 @@ function buildIntegrationCards(input: {
     testId: null,
     detail: input.grok ? `${input.grok.queued} queued` : null,
   });
+  const twitchConnected = Boolean(input.twitch?.userAccessToken);
   cards.push({
     id: "twitch",
     name: "Twitch",
     group: "ops",
-    tone: input.twitchConfigured ? "connected" : "not_configured",
+    tone: twitchConnected ? "connected" : input.twitch ? "degraded" : "not_configured",
     lastSuccessAt: null,
     lastError: null,
     testId: null,
-    detail: input.twitchConfigured ? "Helix connected" : "Not configured",
+    detail: twitchConnected ? "Helix connected" : input.twitch ? "App credentials only" : "Not configured",
   });
   return cards;
 }

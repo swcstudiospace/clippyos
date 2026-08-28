@@ -19,7 +19,7 @@ import {
   type ExecuteBrowserProcedureResult,
 } from "@/lib/server/browser-procedure.server";
 import { getSkillById, listPublicSkills } from "@/lib/server/skills.server";
-import { classifyCrayoPage, parseBrowserProcedure } from "@/lib/clipping";
+import { classifyCrayoPage, parseBrowserProcedureFromScripts } from "@/lib/clipping";
 import { handleSocialAction } from "@/lib/server/social-ops.server";
 import {
   ingestMachineDrop,
@@ -161,12 +161,12 @@ export type ClippingProcedureSkillSummary = {
   stepCount: number;
 };
 
-/** Active skills whose scripts_json parses to a BrowserProcedure. */
+/** Active skills whose scripts file map contains a parseable BrowserProcedure. */
 export async function listClippingProcedureSkills(): Promise<ClippingProcedureSkillSummary[]> {
   const skills = await listPublicSkills();
   const summaries: ClippingProcedureSkillSummary[] = [];
   for (const skill of skills) {
-    const procedure = parseBrowserProcedure(skill.scripts);
+    const procedure = parseBrowserProcedureFromScripts(skill.scripts);
     if (!procedure) continue;
     summaries.push({
       slug: skill.slug,
@@ -185,7 +185,7 @@ export async function runClippingProcedureSkill(input: {
 }): Promise<ExecuteBrowserProcedureResult> {
   const skill = await getSkillById(input.slug);
   if (!skill || !skill.enabled || skill.status !== "active") throw new Error("SKILL_MISSING");
-  const procedure = parseBrowserProcedure(skill.scripts);
+  const procedure = parseBrowserProcedureFromScripts(skill.scripts);
   if (!procedure) throw new Error("NOT_A_BROWSER_PROCEDURE");
   return executeBrowserProcedure(procedure, {
     requestId: crypto.randomUUID(),

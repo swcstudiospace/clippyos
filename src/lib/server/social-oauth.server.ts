@@ -8,6 +8,8 @@ import {
   readAppSetting,
   writeAppSetting,
 } from "@/lib/server/app-settings.server";
+import { getOperatorAccess } from "@/lib/server/access";
+import { getSecretScope, runWithSecretScope } from "@/lib/server/secret-scope.server";
 import { publicAppOrigin } from "@/lib/server/public-origin.server";
 import { last4 } from "@/lib/server/discord.server";
 import type { SocialPlatform } from "@/lib/entities";
@@ -383,8 +385,24 @@ export async function disconnectPublisherTokens(id: PublisherId): Promise<void> 
   if (id === "youtube") await clearYtFlatToken();
 }
 
+async function withWorkspaceSecrets<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = getSecretScope();
+  try {
+    return await runWithSecretScope(
+      {
+        userId: prev?.userId ?? "workspace",
+        role: "admin",
+        inheritWorkspaceApis: true,
+      },
+      fn,
+    );
+  } finally {
+    if (prev) runWithSecretScope(prev, () => undefined);
+  }
+}
+
 async function readPending(): Promise<Record<string, PendingOauth>> {
-  const raw = await readAppSetting(PENDING_KEY);
+  const raw = await withWorkspaceSecrets(() => readAppSetting(PENDING_KEY));
   if (!raw) return {};
   try {
     const parsed = JSON.parse(raw) as Record<string, PendingOauth>;
@@ -392,6 +410,10 @@ async function readPending(): Promise<Record<string, PendingOauth>> {
   } catch {
     return {};
   }
+}
+
+async function writePending(pending: Record<string, PendingOauth>): Promise<void> {
+  await withWorkspaceSecrets(() => writeAppSetting(PENDING_KEY, JSON.stringify(pending)));
 }
 
 export async function startPublisherOAuth(input: {
@@ -413,7 +435,7 @@ export async function startPublisherOAuth(input: {
     createdAt: new Date().toISOString(),
     userId: input.userId,
   };
-  await writeAppSetting(PENDING_KEY, JSON.stringify(pending));
+  await writePending(pending);
   const redirect = socialOauthCallbackUrl();
   const url = new URL(
     input.provider === "x"
@@ -469,18 +491,21 @@ export async function completePublisherOAuth(input: {
   const pending = pendingAll[input.state];
   if (!pending) throw new Error("OAUTH_STATE");
   delete pendingAll[input.state];
-  await writeAppSetting(PENDING_KEY, JSON.stringify(pendingAll));
+  await writePending(pendingAll);
   const app = await loadPublisherApp(pending.provider);
   if (!app) throw new Error("PUBLISHER_APP_MISSING");
   const redirect = socialOauthCallbackUrl();
-  if (pending.provider === "x") await exchangeX(app, input.code, pending.codeVerifier, redirect);
-  else if (pending.provider === "tiktok") {
-    await exchangeTikTok(app, input.code, pending.codeVerifier, redirect);
-  } else if (pending.provider === "youtube") {
-    await exchangeYouTube(app, input.code, pending.codeVerifier, redirect);
-  } else {
-    await exchangeInstagram(app, input.code, redirect);
-  }
+  const scope = await getOperatorAccess(pending.userId);
+  await runWithSecretScope(scope, async () => {
+    if (pending.provider === "x") await exchangeX(app, input.code, pending.codeVerifier, redirect);
+    else if (pending.provider === "tiktok") {
+      await exchangeTikTok(app, input.code, pending.codeVerifier, redirect);
+    } else if (pending.provider === "youtube") {
+      await exchangeYouTube(app, input.code, pending.codeVerifier, redirect);
+    } else {
+      await exchangeInstagram(app, input.code, redirect);
+    }
+  });
   return { provider: pending.provider };
 }
 
@@ -637,7 +662,11 @@ async function exchangeInstagram(
   const { accounts, pageTokens } = await listInstagramAccounts(userToken);
   await writeAppSetting(IG_ACCOUNTS_KEY, JSON.stringify(accounts));
   await writeAppSetting(IG_PAGE_TOKENS_KEY, JSON.stringify(pageTokens));
-  const first = accounts[0] ?? null;
+  const existing = await readToken("instagram");
+  const selected = existing?.userId
+    ? accounts.find((row) => row.igUserId === existing.userId) ?? null
+    : null;
+  const keepSelected = Boolean(existing?.userId);
   await writeToken("instagram", {
     accessToken: userToken,
     refreshToken: null,
@@ -646,12 +675,16 @@ async function exchangeInstagram(
       : null,
     tokenType: "bearer",
     scopes: IG_SCOPES,
-    userId: first?.igUserId ?? null,
-    handle: first ? `@${first.username}` : null,
+    userId: selected?.igUserId ?? (keepSelected ? existing?.userId ?? null : null),
+    handle: selected ? `@${selected.username}` : keepSelected ? existing?.handle ?? null : null,
     openId: null,
-    pageId: first?.pageId ?? null,
-    pageToken: first ? pageTokens[first.igUserId] ?? null : null,
-    accountType: first?.accountType ?? null,
+    pageId: selected?.pageId ?? (keepSelected ? existing?.pageId ?? null : null),
+    pageToken: selected
+      ? pageTokens[selected.igUserId] ?? existing?.pageToken ?? null
+      : keepSelected
+        ? existing?.pageToken ?? null
+        : null,
+    accountType: selected?.accountType ?? (keepSelected ? existing?.accountType ?? null : null),
   });
 }
 
@@ -838,7 +871,7 @@ export async function setTikTokVerifiedDomain(domain: string): Promise<void> {
 export async function forceRefreshToken(id: PublisherId): Promise<TokenBlob> {
   const token = await readToken(id);
   if (!token) throw new Error("PUBLISHER_NOT_CONNECTED");
-  if (!token.refreshToken) throw new Error("PUBLISHER_TOKEN_EXPIRED");
+  if (id !== "instagram" && !token.refreshToken) throw new Error("PUBLISHER_TOKEN_EXPIRED");
   const app = await loadPublisherApp(id);
   if (!app) throw new Error("PUBLISHER_APP_MISSING");
   if (id === "x") return refreshX(app, token);
@@ -945,12 +978,21 @@ async function refreshInstagram(
   if (!response.ok) throw new Error("PUBLISHER_TOKEN_EXPIRED");
   const json = (await response.json()) as { access_token?: string; expires_in?: number };
   if (!json.access_token) throw new Error("PUBLISHER_TOKEN_EXPIRED");
+  const { accounts, pageTokens } = await listInstagramAccounts(json.access_token);
+  await writeAppSetting(IG_ACCOUNTS_KEY, JSON.stringify(accounts));
+  await writeAppSetting(IG_PAGE_TOKENS_KEY, JSON.stringify(pageTokens));
+  const selectedId = token.userId;
+  const selected = selectedId ? accounts.find((row) => row.igUserId === selectedId) : undefined;
   const next: TokenBlob = {
     ...token,
     accessToken: json.access_token,
     expiresAt: json.expires_in
       ? new Date(Date.now() + json.expires_in * 1000).toISOString()
       : token.expiresAt,
+    pageToken: selectedId ? pageTokens[selectedId] ?? token.pageToken : token.pageToken,
+    pageId: selected?.pageId ?? token.pageId,
+    handle: selected ? `@${selected.username}` : token.handle,
+    accountType: selected?.accountType ?? token.accountType,
   };
   await writeToken("instagram", next);
   return next;

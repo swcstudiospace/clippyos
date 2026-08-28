@@ -29,7 +29,7 @@ import {
   escapePowerShellSingleQuoted,
   HOT_SNAPSHOT_NAME,
   DEFAULT_SOCIAL_MACHINE_SIZE,
-  ensureUploadDirCommand,
+  ensureBridgeDirsCommand,
   hibernatePlan,
   idlePolicy,
   instagramGeoWarning,
@@ -51,7 +51,7 @@ import {
   snapshotCandidates,
   stopActionForOs,
   TARGET_WINDOWS_RESOURCES,
-  uploadPath,
+  machineDropPath,
   windowsLocaleScript,
   windowsProxyScript,
   type SocialMachineOs,
@@ -836,24 +836,40 @@ export async function stopSocialMachine(): Promise<SocialMachineStatus> {
   const storedId = (await readAppSetting(SANDBOX_KEY))?.trim() || null;
   const sandbox = await findSocialSandbox(daytona, storedId).catch(() => null);
   if (sandbox) {
-    const os = await resolveOs(sandbox);
-    try {
-      await sandbox.computerUse.stop().catch(() => undefined);
-    } catch {
-      /* still hibernate */
-    }
-    if (stopActionForOs(os) === "pause") {
-      const plan = hibernatePlan();
-      if (plan.snapshotWhileRunning && mapSandboxState(sandbox.state) === "running") {
-        await captureHotSnapshot(sandbox);
-      }
+    const rawState = (sandbox.state ?? "").toLowerCase();
+    const mapped = mapSandboxState(sandbox.state);
+    const alreadyHibernating =
+      rawState === "pausing" ||
+      rawState === "paused" ||
+      rawState === "archived" ||
+      rawState === "snapshotting" ||
+      mapped === "paused";
+    if (!alreadyHibernating) {
+      const os = await resolveOs(sandbox);
       try {
-        await sandbox.pause(120);
+        await sandbox.computerUse.stop().catch(() => undefined);
       } catch {
+        /* still hibernate */
+      }
+      if (stopActionForOs(os) === "pause") {
+        const plan = hibernatePlan();
+        if (plan.snapshotWhileRunning && mapSandboxState(sandbox.state) === "running") {
+          await captureHotSnapshot(sandbox);
+        }
+        try {
+          await sandbox.pause(120);
+        } catch (error) {
+          // Never cold-stop on pause failure — stop() drops the RAM session,
+          // including when the machine is already snapshotting/pausing.
+          const message = sanitizeDaytonaError(
+            error instanceof Error ? error.message : "Couldn’t pause the Social Machine.",
+          );
+          await writeAppSetting(LAST_ERROR_KEY, message);
+          throw new Error(message);
+        }
+      } else {
         await sandbox.stop(120);
       }
-    } else {
-      await sandbox.stop(120);
     }
   }
   await writeAppSetting(STOPPED_AT_KEY, new Date().toISOString());
@@ -979,8 +995,9 @@ export async function transferAndOpenUpload(input: {
       const buffer = await fetchMediaBuffer(input.mediaUrl);
       if (buffer) {
         const ext = guessExt(input.mediaUrl);
-        const remote = uploadPath(os, input.postId, ext);
-        await sandbox.process.executeCommand(ensureUploadDirCommand(os), undefined, undefined, 15);
+        const safeExt = ext.startsWith(".") ? ext : `.${ext}`;
+        const remote = machineDropPath(os, `${input.postId}${safeExt}`);
+        await sandbox.process.executeCommand(ensureBridgeDirsCommand(os), undefined, undefined, 15);
         await sandbox.fs.uploadFile(buffer, remote);
         transferred = true;
       }
@@ -1011,7 +1028,7 @@ export async function transferAndOpenUpload(input: {
   }
 
   const reason = transferred
-    ? "Media is in the Social Machine. Finish login, CAPTCHA, or publish in the desktop view."
+    ? "Media is staged on the library drive. Finish login, CAPTCHA, or publish in the desktop view."
     : "Opened the platform upload page. Confirm login and attach the file in the desktop view.";
   return { screenshot, reason };
 }

@@ -1,5 +1,4 @@
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
-import { isMissingTable } from "@/lib/server/mappers";
 
 let schemaReady: Promise<void> | null = null;
 
@@ -66,15 +65,14 @@ create table if not exists notification_preferences (
 export async function ensureSafetySchema(): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    try {
-      const sql = await localSql();
-      for (const statement of DDL.split(";").map((part) => part.trim()).filter(Boolean)) {
-        await sql.query(`${statement};`);
-      }
-    } catch {
-      /* supabase-only hosts skip local DDL */
+    const sql = await localSql();
+    for (const statement of DDL.split(";").map((part) => part.trim()).filter(Boolean)) {
+      await sql.query(`${statement};`);
     }
-  })();
+  })().catch((error) => {
+    schemaReady = null;
+    throw error;
+  });
   return schemaReady;
 }
 
@@ -92,9 +90,8 @@ export async function listActiveOperatorIds(opts?: {
         if (opts?.adminsOnly && rec.role !== "admin") continue;
         ids.push(rec.user_id);
       }
-      if (ids.length > 0) return [...new Set(ids)];
+      return [...new Set(ids)];
     }
-    if (error && !isMissingTable(error)) return ids;
   }
   try {
     const sql = await localSql();

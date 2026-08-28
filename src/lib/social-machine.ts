@@ -146,12 +146,14 @@ export function mapProviderState(state: string | undefined):
     value === "creating" ||
     value === "pending" ||
     value === "building" ||
-    value === "pulling_snapshot" ||
-    value === "snapshotting"
+    value === "pulling_snapshot"
   ) {
     return "starting";
   }
-  if (value === "pausing") return "stopping";
+  // Snapshotting is hibernate-in-progress, same class as pausing — never
+  // starting/running, or startSocialMachine would skip start and report hot.
+  if (value === "pausing" || value === "snapshotting") return "stopping";
+
   if (value === "paused" || value === "archived") return "paused";
   if (value === "stopping") return "stopping";
   if (value === "error" || value === "build_failed") return "error";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyCrayoPage, parseBrowserProcedure } from "./clipping.ts";
+import { classifyCrayoPage, parseBrowserProcedure, parseBrowserProcedureFromScripts } from "./clipping.ts";
 
 test("accepts a well-formed browser procedure", () => {
   const procedure = parseBrowserProcedure({
@@ -76,6 +76,38 @@ test("preserves continueOnError flags on parsed steps", () => {
   assert.ok(procedure);
   assert.equal(procedure.steps[0]?.continueOnError, undefined);
   assert.equal(procedure.steps[1]?.continueOnError, true);
+});
+
+test("parses a skill file map with procedure.json", () => {
+  const parsed = parseBrowserProcedureFromScripts({
+    "procedure.json": JSON.stringify({
+      kind: "browser-procedure",
+      steps: [{ action: "open_url", url: "https://crayo.io" }],
+    }),
+  });
+  assert.ok(parsed);
+  assert.equal(parsed.kind, "browser-procedure");
+  assert.equal(parsed.steps.length, 1);
+});
+
+test("does not parse a raw skill file map as a procedure", () => {
+  const files = {
+    "procedure.json": JSON.stringify({
+      kind: "browser-procedure",
+      steps: [{ action: "open_url", url: "https://crayo.io" }],
+    }),
+  };
+  assert.equal(parseBrowserProcedure(files), null);
+});
+
+test("rejects type steps longer than 400 characters", () => {
+  assert.equal(
+    parseBrowserProcedure({
+      kind: "browser-procedure",
+      steps: [{ action: "type", text: "a".repeat(401) }],
+    }),
+    null,
+  );
 });
 
 test("classifies a login wall from a vision summary", () => {

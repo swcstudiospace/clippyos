@@ -986,12 +986,21 @@ export async function handleMcpRpc(
       name = "skills.invoke";
       args = { id: rawName.slice("skill.".length), args: rawArgs };
     }
-    // Leash: the clipping autonomous tools require write:clipping — the generic
-    // clipping.* fallback would otherwise accept a read-scoped key.
-    if (
-      (name === "clipping.check_crayo_login" || name === "clipping.run_browser_procedure") &&
-      !hasScope(actor.scopes, "write:clipping")
-    ) {
+    const catalog = MCP_TOOLS.find((tool) => tool.name === name);
+    if (!catalog) {
+      await writeAuditLog({
+        requestId,
+        actor,
+        action: name,
+        result: "denied",
+        errorCode: "UNKNOWN_ACTION",
+      });
+      return rpcResult(id, {
+        isError: true,
+        content: [{ type: "text", text: "Unknown tool." }],
+      });
+    }
+    if (!catalog.scopes.every((scope) => hasScope(actor.scopes, scope))) {
       await writeAuditLog({
         requestId,
         actor,
@@ -1001,7 +1010,7 @@ export async function handleMcpRpc(
       });
       return rpcResult(id, {
         isError: true,
-        content: [{ type: "text", text: "This tool requires the write:clipping scope." }],
+        content: [{ type: "text", text: "This key cannot perform that action." }],
       });
     }
     const meta = params._meta && typeof params._meta === "object" ? (params._meta as Record<string, unknown>) : {};
@@ -1074,6 +1083,7 @@ async function listVisibleTools(actor?: AutonomyActor): Promise<{
     return { tools, _meta: { toolsGeneration: generation, listChanged: true } };
   }
   const staticTools = MCP_TOOLS.filter((tool) => {
+    if (actor && !tool.scopes.every((scope) => hasScope(actor.scopes, scope))) return false;
     const addon = addonIdForTool(tool.name);
     return !addon || enabled.has(addon);
   }).map((tool) => ({
@@ -1082,7 +1092,10 @@ async function listVisibleTools(actor?: AutonomyActor): Promise<{
     inputSchema: TOOL_INPUTS[tool.name] ?? { type: "object", properties: {} },
   }));
   let skillTools: Array<{ name: string; description: string; inputSchema: Record<string, unknown> }> = [];
-  if (enabled.has("agency.skills-runtime")) {
+  const invoke = MCP_TOOLS.find((tool) => tool.name === "skills.invoke");
+  const mayInvokeSkills =
+    invoke !== undefined && (!actor || invoke.scopes.every((scope) => hasScope(actor.scopes, scope)));
+  if (mayInvokeSkills && enabled.has("agency.skills-runtime")) {
     const { listPublicSkills } = await import("@/lib/server/skills.server");
     const skills = await listPublicSkills();
     skillTools = skills.map((skill) => ({

@@ -113,6 +113,14 @@ function PortalApprovalsPage() {
   );
 }
 
+function approvalMediaIsImage(url: string, payload: ApprovalRequest["payload"]): boolean {
+  const kind = typeof payload.kind === "string" ? payload.kind.toLowerCase() : "";
+  if (kind === "image") return true;
+  if (kind === "video") return false;
+  if (url.includes("/api/library/file")) return true;
+  return /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url);
+}
+
 function ApprovalCard({
   request,
   canApprove,
@@ -156,7 +164,7 @@ function ApprovalCard({
       {caption ? <p className="mt-2 text-body">{caption}</p> : null}
       {mediaUrl ? (
         <div className="mt-3 overflow-hidden rounded-control bg-secondary-surface">
-          {/\.(png|jpe?g|webp|gif)(\?|$)/i.test(mediaUrl) ? (
+          {approvalMediaIsImage(mediaUrl, request.payload) ? (
             <img src={mediaUrl} alt="" className="max-h-72 w-full object-contain" />
           ) : (
             <video src={mediaUrl} className="max-h-72 w-full" controls playsInline />

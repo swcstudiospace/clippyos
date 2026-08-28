@@ -18,10 +18,9 @@ export const Route = createFileRoute("/api/webhooks/telegram")({
           "@/lib/server/channels.server"
         );
         const secret = await loadTelegramWebhookSecret();
-        if (secret) {
-          const header = request.headers.get("x-telegram-bot-api-secret-token")?.trim() || "";
-          if (header !== secret) return json(401, { ok: false });
-        }
+        if (!secret) return json(503, { ok: false });
+        const header = request.headers.get("x-telegram-bot-api-secret-token")?.trim() || "";
+        if (header !== secret) return json(401, { ok: false });
         let payload: {
           message?: {
             message_id?: number;

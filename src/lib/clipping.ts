@@ -28,7 +28,7 @@ export const BrowserStepSchema = z.discriminatedUnion("action", [
   }),
   ContinueOnError.extend({
     action: z.literal("type"),
-    text: z.string().min(1).max(2000),
+    text: z.string().min(1).max(400),
   }),
   ContinueOnError.extend({ action: z.literal("key"), key: z.enum(BROWSER_KEYS) }),
   ContinueOnError.extend({
@@ -57,6 +57,34 @@ export interface BrowserProcedure {
 export function parseBrowserProcedure(value: unknown): BrowserProcedure | null {
   const parsed = BrowserProcedureSchema.safeParse(value);
   return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Skills store scripts as a filename → body map. Parse JSON file bodies and
+ * return the first valid BrowserProcedure, preferring procedure.json then
+ * browser-procedure.json. Never treats the map itself as a procedure.
+ */
+export function parseBrowserProcedureFromScripts(scripts: unknown): BrowserProcedure | null {
+  if (!scripts || typeof scripts !== "object" || Array.isArray(scripts)) return null;
+  const map = scripts as Record<string, unknown>;
+  const names = Object.keys(map).sort((a, b) => {
+    const aFile = a.slice(a.lastIndexOf("/") + 1);
+    const bFile = b.slice(b.lastIndexOf("/") + 1);
+    const aRank = aFile === "procedure.json" ? 0 : aFile === "browser-procedure.json" ? 1 : 2;
+    const bRank = bFile === "procedure.json" ? 0 : bFile === "browser-procedure.json" ? 1 : 2;
+    return aRank - bRank;
+  });
+  for (const name of names) {
+    const body = map[name];
+    if (typeof body !== "string") continue;
+    try {
+      const procedure = parseBrowserProcedure(JSON.parse(body) as unknown);
+      if (procedure) return procedure;
+    } catch {
+      /* skip invalid JSON */
+    }
+  }
+  return null;
 }
 
 const CRAYO_LOGIN_WALL_RE = /sign in|log in|log-in|create account|continue with google/i;

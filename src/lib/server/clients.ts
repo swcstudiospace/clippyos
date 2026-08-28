@@ -404,7 +404,7 @@ export async function internalSetClientStage(input: {
   actorId: string;
   skipApproval?: boolean;
 }): Promise<{ ok: true; id: string; awaitingApproval?: boolean }> {
-  if (!input.skipApproval && input.source === "MANUAL") {
+  if (!input.skipApproval && (input.source === "MANUAL" || input.source === "AGENT")) {
     try {
       const { readApprovalPolicy, createApprovalRequest } = await import("@/lib/server/approvals.server");
       const policy = await readApprovalPolicy();

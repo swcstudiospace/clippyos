@@ -3,10 +3,9 @@
  * Never auto-starts the Social Machine. Job-scoped work stays local unless Daytona render is on.
  */
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isTrustedImageUrl } from "@/lib/thumbnails";
 import { sanitizeText } from "@/lib/sanitize";
 import {
   cuesToSrt,
@@ -114,6 +113,11 @@ function runCmd(
       resolve({ code: code ?? 1, stdout, stderr });
     });
   });
+}
+
+async function assertReadableMedia(path: string): Promise<void> {
+  const fh = await open(path, "r");
+  await fh.close();
 }
 
 type Probe = {
@@ -252,7 +256,14 @@ async function finalizeProbe(
   checksum: string,
 ) {
   const { storagePath } = await import("@/lib/server/library-storage.server");
-  const probe = await probeFile(storagePath(key));
+  const path = storagePath(key);
+  try {
+    await assertReadableMedia(path);
+  } catch {
+    await patchAsset(assetId, { status: "FAILED" });
+    return;
+  }
+  const probe = await probeFile(path);
   await patchAsset(assetId, {
     status: "READY",
     mime_type: mime,
@@ -291,7 +302,6 @@ function hostAllowed(host: string): boolean {
 export function isTrustedLibraryUrl(url: string): boolean {
   if (!url) return false;
   if (url.startsWith("data:")) return /^data:(video|image|audio)\//i.test(url);
-  if (isTrustedImageUrl(url)) return true;
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -311,7 +321,7 @@ export async function ingestFromUrl(input: {
   source?: AssetSource;
   tags?: string[];
 }): Promise<{ asset: LibraryAsset; duplicate: boolean }> {
-  if (!isTrustedLibraryUrl(input.url) && !isTrustedImageUrl(input.url)) throw new Error("UNTRUSTED_URL");
+  if (!isTrustedLibraryUrl(input.url)) throw new Error("UNTRUSTED_URL");
   if (input.url.startsWith("data:")) {
     const match = /^data:([^;]+);base64,(.+)$/i.exec(input.url);
     if (!match) throw new Error("UNTRUSTED_URL");
@@ -339,13 +349,38 @@ export async function ingestFromUrl(input: {
     });
     if (!response.ok) throw new Error("UNTRUSTED_URL");
     const finalUrl = response.url || input.url;
-    if (!isTrustedLibraryUrl(finalUrl) && !isTrustedImageUrl(finalUrl)) throw new Error("UNTRUSTED_URL");
+    let parsed: URL;
+    try {
+      parsed = new URL(finalUrl);
+    } catch {
+      throw new Error("UNTRUSTED_URL");
+    }
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error("UNTRUSTED_URL");
+    if (!hostAllowed(parsed.hostname.replace(/^\[|\]$/g, ""))) throw new Error("UNTRUSTED_URL");
     const len = Number(response.headers.get("content-length") ?? 0);
     if (len > max) throw new Error("MEDIA_TOO_LARGE");
-    const buf = Buffer.from(await response.arrayBuffer());
-    if (buf.length > max) throw new Error("MEDIA_TOO_LARGE");
+    if (!response.body) throw new Error("UNTRUSTED_URL");
+    const chunks: Buffer[] = [];
+    let written = 0;
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value?.byteLength) continue;
+        written += value.byteLength;
+        if (written > max) {
+          controller.abort();
+          throw new Error("MEDIA_TOO_LARGE");
+        }
+        chunks.push(Buffer.from(value));
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const buf = Buffer.concat(chunks, written);
     const mime = response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
-    const name = new URL(finalUrl).pathname.split("/").pop() || "import";
+    const name = parsed.pathname.split("/").pop() || "import";
     return ingestBytes({
       actorId: input.actorId,
       clientId: input.clientId,
@@ -405,7 +440,7 @@ export async function ingestStreamClip(input: {
   const { getClipById } = await import("@/lib/server/stream.server");
   const clip = await getClipById(input.clipId);
   if (!clip) throw new Error("ASSET_MISSING");
-  if (clip.thumbnailUrl && (isTrustedLibraryUrl(clip.thumbnailUrl) || isTrustedImageUrl(clip.thumbnailUrl))) {
+  if (clip.thumbnailUrl && isTrustedLibraryUrl(clip.thumbnailUrl)) {
     try {
       const result = await ingestFromUrl({
         actorId: input.actorId,
@@ -575,6 +610,7 @@ async function runTranscription(input: { trackId: string; storageKey: string; la
   try {
     const { storagePath } = await import("@/lib/server/library-storage.server");
     const source = storagePath(input.storageKey);
+    await assertReadableMedia(source);
     const wav = join(dir, "audio.wav");
     const extract = await runCmd(
       FFMPEG,
@@ -811,6 +847,7 @@ async function runRenderJob(jobId: string): Promise<void> {
     if (!version) throw new Error("ASSET_MISSING");
     const { storagePath } = await import("@/lib/server/library-storage.server");
     const sourcePath = storagePath(version.storageKey);
+    await assertReadableMedia(sourcePath);
     const size = presetSize(job.preset, job.options);
     const outPath = join(dir, "out.mp4");
     const vf: string[] = [];

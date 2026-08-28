@@ -136,6 +136,31 @@ function parsePath(url: URL): string[] {
   return url.pathname.replace(/^\/api\/v1\/?/, "").split("/").filter(Boolean);
 }
 
+function idempotencyCacheKey(keyId: string | null, method: string, path: string, idem: string): string {
+  return `api:${keyId}:${method}:${path}:${idem}`;
+}
+
+function encodeIdempotencyRecord(status: number, body: string): string {
+  return JSON.stringify({ status, body });
+}
+
+function decodeIdempotencyRecord(cached: string): { status: number; body: string } {
+  try {
+    const parsed = JSON.parse(cached) as { status?: unknown; body?: unknown };
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.status === "number" &&
+      typeof parsed.body === "string"
+    ) {
+      return { status: parsed.status, body: parsed.body };
+    }
+  } catch {
+    /* body-only cache from before status was persisted */
+  }
+  return { status: 200, body: cached };
+}
+
 function routeAction(
   method: string,
   parts: string[],
@@ -441,11 +466,13 @@ async function handle(request: Request): Promise<Response> {
   const idem = idempotencyHeaders
     .map((header) => request.headers.get(header)?.trim())
     .find(Boolean);
-  if (idem) {
-    const cached = await readIdempotency(`api:${actor.keyId}:${idem}`);
+  const cacheKey = idem ? idempotencyCacheKey(actor.keyId, request.method, url.pathname, idem) : null;
+  if (cacheKey) {
+    const cached = await readIdempotency(cacheKey);
     if (cached) {
-      return new Response(cached, {
-        status: 200,
+      const replay = decodeIdempotencyRecord(cached);
+      return new Response(replay.body, {
+        status: replay.status,
         headers: { "Content-Type": "application/json; charset=utf-8", "X-Request-Id": rid },
       });
     }
@@ -470,7 +497,7 @@ async function handle(request: Request): Promise<Response> {
       return json(clipResult.status, { error: { code: clipResult.code, message: clipResult.message }, requestId: rid }, headers);
     }
     const encoded = JSON.stringify({ data: clipResult.data, requestId: rid });
-    if (idem) await writeIdempotency(`api:${actor.keyId}:${idem}`, encoded);
+    if (cacheKey) await writeIdempotency(cacheKey, encodeIdempotencyRecord(200, encoded));
     return new Response(encoded, { status: 200, headers });
   }
   const mapped = routeAction(request.method, parts, body, url.searchParams);
@@ -495,9 +522,10 @@ async function handle(request: Request): Promise<Response> {
     return json(result.status, { error: { code: result.code, message: result.message }, requestId: rid }, headers);
   }
   const encoded = JSON.stringify({ data: result.data, requestId: rid });
-  if (idem) await writeIdempotency(`api:${actor.keyId}:${idem}`, encoded);
+  const status = mapped.action.startsWith("create") && request.method === "POST" ? 201 : 200;
+  if (cacheKey) await writeIdempotency(cacheKey, encodeIdempotencyRecord(status, encoded));
   return new Response(encoded, {
-    status: mapped.action.startsWith("create") && request.method === "POST" ? 201 : 200,
+    status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",

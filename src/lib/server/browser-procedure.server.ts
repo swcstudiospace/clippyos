@@ -67,8 +67,8 @@ async function runBrowserStep(step: BrowserStep): Promise<BrowserStepResult> {
         return { action: step.action, ok: true, detail: `clicked ${step.x},${step.y}` };
       }
       case "type": {
-        await computerKeyboardType({ text: step.text });
-        return { action: step.action, ok: true, detail: `typed ${step.text.length} chars` };
+        const typed = await computerKeyboardType({ text: step.text });
+        return { action: step.action, ok: true, detail: `typed ${typed.length} chars` };
       }
       case "key": {
         await computerKeyboardKey({ key: step.key });
@@ -105,12 +105,32 @@ export async function executeBrowserProcedure(
   const results: BrowserStepResult[] = [];
   let ok = true;
   for (const step of parsed.steps) {
-    if (Date.now() > deadline) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
       results.push({ action: step.action, ok: false, detail: "PROCEDURE_TIMEOUT" });
       ok = false;
       break;
     }
-    const result = await runBrowserStep(step);
+    const bounded: BrowserStep =
+      step.action === "wait_for_text"
+        ? { ...step, timeoutMs: Math.min(step.timeoutMs ?? remaining, remaining) }
+        : step;
+    const stepPromise = runBrowserStep(bounded);
+    const timeoutResult: BrowserStepResult = { action: step.action, ok: false, detail: "PROCEDURE_TIMEOUT" };
+    let timer: NodeJS.Timeout | undefined;
+    const result = await Promise.race([
+      stepPromise,
+      new Promise<BrowserStepResult>((resolve) => {
+        timer = setTimeout(() => resolve(timeoutResult), remaining);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (result === timeoutResult) {
+      void stepPromise.catch(() => {});
+      results.push(result);
+      ok = false;
+      break;
+    }
     results.push(result);
     if (!result.ok) {
       ok = false;

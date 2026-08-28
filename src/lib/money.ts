@@ -234,7 +234,9 @@ export function perClientTeamCost(
     if (member.isAutomation) {
       if (!includeAutomationCost) continue;
       if (member.assignedClientIds.length === 0 && member.clientId !== clientId) continue;
-      if (member.assignedClientIds.length > 0 && !member.assignedClientIds.includes(clientId) && member.clientId !== clientId) {
+      if (member.assignedClientIds.length > 0) {
+        if (!member.assignedClientIds.includes(clientId)) continue;
+        total += asMoney(member.cost) / member.assignedClientIds.length;
         continue;
       }
     } else if (member.clientId !== clientId) {

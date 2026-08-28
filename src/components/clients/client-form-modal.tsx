@@ -52,6 +52,8 @@ function emptyValues(): ClientFormValues {
 }
 
 function fromClient(client: Client): ClientFormValues {
+  const setupFee = Number(client.setupFee ?? DEFAULT_SETUP_FEE);
+  const monthlyFee = Number(client.monthlyFee ?? DEFAULT_MONTHLY_FEE[client.planType]);
   return {
     id: client.id,
     name: client.name,
@@ -62,8 +64,8 @@ function fromClient(client: Client): ClientFormValues {
     contentStrategy: client.contentStrategy ?? "",
     planType: client.planType,
     customPlanLabel: client.customPlanLabel ?? "",
-    setupFee: Number(client.setupFee) || DEFAULT_SETUP_FEE,
-    monthlyFee: Number(client.monthlyFee) || DEFAULT_MONTHLY_FEE[client.planType],
+    setupFee: Number.isFinite(setupFee) ? setupFee : DEFAULT_SETUP_FEE,
+    monthlyFee: Number.isFinite(monthlyFee) ? monthlyFee : DEFAULT_MONTHLY_FEE[client.planType],
     startDate: client.startDate ?? todayIsoDate(),
     notes: client.notes ?? "",
   };
