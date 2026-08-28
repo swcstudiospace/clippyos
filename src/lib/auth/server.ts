@@ -36,16 +36,20 @@ import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
+import { isAuthConfigured } from "./auth-configured";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
 import { GROK_ISSUER_DEFAULT, PREVIEW_ALLOWED_HOSTS } from "./preview";
 import { resolveGrokBrokerClient } from "./broker-client";
+import { resolveGoogleSocial } from "./google-social";
 import {
+  CANONICAL_APP_ORIGIN,
   authFallbackBaseURL,
   collectAppOrigins,
   dynamicBaseAllowedHosts,
   oauthCallbackURL,
+  socialCallbackURL,
 } from "@/lib/app-hosts";
 
 // Kick (and share) PGLite bootstrap as soon as the auth server module loads.
@@ -82,10 +86,15 @@ const grokIssuer = env("GROK_AUTH_ISSUER") ?? GROK_ISSUER_DEFAULT;
 const brokerClient = resolveGrokBrokerClient();
 const grokClientId = brokerClient.clientId;
 const grokClientSecret = brokerClient.clientSecret;
+const googleSocial = resolveGoogleSocial();
 
-/** True when federated sign-in is active (real auth is enforced). */
-export const authConfigured =
-  !authDisabled && Boolean(grokClientId && grokClientSecret);
+/** True when any sign-in method is active (real auth is enforced). */
+export const authConfigured = isAuthConfigured({
+  authDisabled,
+  grokBroker: Boolean(grokClientId && grokClientSecret),
+  googleSocial: Boolean(googleSocial),
+  emailPassword: emailAndPasswordEnabled,
+});
 
 // This app's own Better Auth origin. Per-request Host still wins when it is in
 // allowedHosts (studio domain, grok.me alias, live preview). The Grok deployer
@@ -139,7 +148,7 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
-const grokOAuthPlugin = authConfigured
+const grokOAuthPlugin = (!authDisabled && grokClientId && grokClientSecret)
   ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
         providerId,
@@ -178,6 +187,18 @@ export const auth = betterAuth({
   // local loopback variants, or clients get "Invalid origin".
   trustedOrigins,
 
+  // Native Google on the canonical studio origin. Missing creds omit the
+  // provider (same degrade as `authConfigured`) so boot still succeeds.
+  socialProviders: {
+    google: (!authDisabled && googleSocial)
+      ? {
+          clientId: googleSocial.clientId,
+          clientSecret: googleSocial.clientSecret,
+          redirectURI: socialCallbackURL("google", CANONICAL_APP_ORIGIN),
+        }
+      : undefined,
+  },
+
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
   // as trusted first-party identities. The broker owns identity and X emails are
   // synthetic/unverified, so WITHOUT this a login can fail with
@@ -188,7 +209,10 @@ export const auth = betterAuth({
     encryptOAuthTokens: true,
     accountLinking: {
       enabled: true,
-      trustedProviders: GROK_PROVIDERS.map((p) => p.providerId),
+      trustedProviders: [
+        ...GROK_PROVIDERS.map((p) => p.providerId),
+        ...(googleSocial ? ["google"] : []),
+      ],
       // X's synthetic email is never "verified", so don't gate linking on the
       // local user's email-verified state.
       requireLocalEmailVerified: false,
@@ -202,7 +226,7 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  ...(!authDisabled && emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
