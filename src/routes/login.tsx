@@ -1,6 +1,6 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
 import { loadSignInFlags } from "@/lib/auth/sign-in-flags";
 import { isReservedOwnerEmail } from "@/lib/auth/email-password";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -164,7 +164,7 @@ function LoginForm() {
     setSaBusy(true);
     try {
       const result = await unlockSuperAdmin({ data: { password: saPassword } });
-      setPreviewSessionToken(result.token);
+      if (isLivePreviewHost()) setPreviewSessionToken(result.token);
       const session = await authClient.getSession();
       if (!session.data?.user) {
         throw new Error("Could not start session. Try again.");
