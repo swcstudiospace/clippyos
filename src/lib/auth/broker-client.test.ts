@@ -9,10 +9,10 @@ test("live preview without DATABASE_URL uses grok_preview", () => {
   assert.equal(resolved.clientId, PREVIEW_CLIENT_ID);
 });
 
-test("published deploy with DATABASE_URL does not fall back to grok_preview", () => {
-  const resolved = resolveGrokBrokerClient({ DATABASE_URL: "postgres://localhost/clippyos" });
-  assert.equal(resolved.usingPreviewClient, false);
-  assert.equal(resolved.clientId, undefined);
+test("published without GROK_AUTH uses grok_preview", () => {
+  const resolved = resolveGrokBrokerClient({ DATABASE_URL: "postgres://x" });
+  assert.equal(resolved.usingPreviewClient, true);
+  assert.equal(resolved.clientId, PREVIEW_CLIENT_ID);
 });
 
 test("per-app Grok Build client wins on a published deploy", () => {
@@ -25,12 +25,12 @@ test("per-app Grok Build client wins on a published deploy", () => {
   assert.equal(resolved.clientId, "app_clippyos_prod");
 });
 
-test("explicit grok_preview env is ignored once DATABASE_URL is set", () => {
+test("explicit grok_preview + DATABASE_URL uses preview client", () => {
   const resolved = resolveGrokBrokerClient({
     DATABASE_URL: "postgres://localhost/clippyos",
     GROK_AUTH_CLIENT_ID: PREVIEW_CLIENT_ID,
     GROK_AUTH_CLIENT_SECRET: "preview-secret",
   });
-  assert.equal(resolved.usingPreviewClient, false);
-  assert.equal(resolved.clientId, undefined);
+  assert.equal(resolved.usingPreviewClient, true);
+  assert.equal(resolved.clientId, PREVIEW_CLIENT_ID);
 });

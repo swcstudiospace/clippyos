@@ -1,7 +1,6 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
-import { loadSignInFlags } from "@/lib/auth/sign-in-flags";
+import { GROK_PROVIDERS, authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/auth/client";
 import { isReservedOwnerEmail } from "@/lib/auth/email-password";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
@@ -30,7 +29,6 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
-  loader: () => loadSignInFlags(),
   component: LoginPage,
 });
 
@@ -65,14 +63,8 @@ function LoginForm() {
   const wantsAccess = searchStr.includes("intent=access");
   const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
   const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
-  const { googleConfigured, brokerConfigured } = Route.useLoaderData();
-  const oauthProviders = [
-    ...(googleConfigured ? [{ providerId: "google", label: "Google" }] : []),
-    ...(brokerConfigured
-      ? GROK_PROVIDERS.filter((provider) => !googleConfigured || provider.providerId !== "grok-google")
-      : []),
-  ];
-  const [mode, setMode] = useState<"signin" | "signup" | "forgot">(wantsAccess ? "signup" : "signin");
+  const oauthProviders = GROK_PROVIDERS;
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -164,7 +156,7 @@ function LoginForm() {
     setSaBusy(true);
     try {
       const result = await unlockSuperAdmin({ data: { password: saPassword } });
-      if (isLivePreviewHost()) setPreviewSessionToken(result.token);
+      setPreviewSessionToken(result.token);
       const session = await authClient.getSession();
       if (!session.data?.user) {
         throw new Error("Could not start session. Try again.");
@@ -202,7 +194,7 @@ function LoginForm() {
           </div>
         </div>
         <p className="relative z-[1] mb-5 text-body text-muted">
-          {mode === "signup" || wantsAccess
+          {mode === "signup"
             ? "Create your workspace, then choose a plan. ClippyOS is subscription-gated — Request a Demo on the landing if you want a walkthrough first."
             : "Sign in to the private OS. New teams subscribe on the next step."}
         </p>
