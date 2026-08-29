@@ -1,22 +1,16 @@
 /**
  * The upstream identity providers this app offers for sign-in via the Grok
- * auth broker. Live preview (`*.grok-sandbox.com`) is the only surface that
- * should render these buttons.
+ * auth broker. Published studio (os.swcstudio.space) and live preview both
+ * render these broker Google/X buttons (`grok-google`, `grok-x`).
  *
  * Source of truth for BOTH the server (`server.ts`, one `genericOAuth` provider
- * per entry) and the live-preview client (`client.ts` / sign-in buttons). Kept
- * in its own dependency-free module so the client can import it without pulling
- * the server-only Better Auth instance (and `pg`) into the browser bundle.
+ * per entry) and the client (`client.ts` / sign-in buttons). Kept in its own
+ * dependency-free module so the client can import it without pulling the
+ * server-only Better Auth instance (and `pg`) into the browser bundle.
  *
- * Published studio (os.swcstudio.space) uses native Better Auth Google social
- * (`providerId` `"google"`, callback `/api/auth/callback/google`) — not
- * `grok-google`. Grok broker secrets stay on the broker; native Google reads
- * `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` on the server.
- *
- * Each live-preview app federates to the shared **auth broker**
- * (`GROK_AUTH_ISSUER`), which holds the real Google/X secrets. The app never
- * sees them — it only knows its own per-app client id/secret and which
- * upstream to ask the broker for (`idp`).
+ * Each app federates to the shared **auth broker** (`GROK_AUTH_ISSUER`), which
+ * holds the real Google/X secrets. The app never sees them — it only knows its
+ * own per-app client id/secret and which upstream to ask the broker for (`idp`).
  *
  * To add an upstream (e.g. GitHub) once the broker supports it: add one entry
  * here (`{ providerId: "grok-github", idp: "github", label: "GitHub" }`). The

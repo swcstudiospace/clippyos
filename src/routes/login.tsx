@@ -66,16 +66,12 @@ function LoginForm() {
   const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
   const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
   const { googleConfigured, brokerConfigured } = Route.useLoaderData();
-  const oauthProviders = isLivePreviewHost()
-    ? GROK_PROVIDERS
-    : [
-        ...(googleConfigured
-          ? [{ providerId: "google", label: "Google" }]
-          : brokerConfigured
-            ? [{ providerId: "grok-google", label: "Google" }]
-            : []),
-        ...(brokerConfigured ? [{ providerId: "grok-x", label: "X" }] : []),
-      ];
+  const oauthProviders = [
+    ...(googleConfigured ? [{ providerId: "google", label: "Google" }] : []),
+    ...(brokerConfigured
+      ? GROK_PROVIDERS.filter((provider) => !googleConfigured || provider.providerId !== "grok-google")
+      : []),
+  ];
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">(wantsAccess ? "signup" : "signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -169,6 +165,10 @@ function LoginForm() {
     try {
       const result = await unlockSuperAdmin({ data: { password: saPassword } });
       if (isLivePreviewHost()) setPreviewSessionToken(result.token);
+      const session = await authClient.getSession();
+      if (!session.data?.user) {
+        throw new Error("Could not start session. Try again.");
+      }
       window.location.assign("/home");
     } catch (error) {
       captureClientError(error, { source: "super-admin" });
@@ -236,7 +236,11 @@ function LoginForm() {
           <Separator className="flex-1" />
         </div>
 
-        <form onSubmit={(event) => void onSubmit(event)} className="relative z-[1] flex flex-col gap-3">
+        <form
+          onSubmit={(event) => void onSubmit(event)}
+          className="relative z-[1] flex flex-col gap-3"
+          aria-describedby={formError ? "login-error" : undefined}
+        >
           {mode === "signup" ? (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Name</Label>
@@ -283,7 +287,7 @@ function LoginForm() {
             </p>
           )}
           {formError ? (
-            <p className="text-caption text-danger" role="alert">
+            <p id="login-error" className="text-caption text-danger" role="alert">
               {formError}
             </p>
           ) : null}
@@ -362,7 +366,11 @@ function LoginForm() {
             Enter the Super Admin password from Settings → Team access. The
             password is never stored in the browser.
           </DialogDescription>
-          <form className="mt-4 flex flex-col gap-3" onSubmit={(event) => void onSuperAdmin(event)}>
+          <form
+            className="mt-4 flex flex-col gap-3"
+            onSubmit={(event) => void onSuperAdmin(event)}
+            aria-describedby={saError ? "sa-error" : undefined}
+          >
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sa-login-password">Password</Label>
               <Input
@@ -376,7 +384,7 @@ function LoginForm() {
               />
             </div>
             {saError ? (
-              <p className="text-caption text-danger" role="alert">
+              <p id="sa-error" className="text-caption text-danger" role="alert">
                 {saError}
               </p>
             ) : null}
