@@ -532,17 +532,13 @@ async function createSessionToken(userId: string): Promise<{ token: string; maxA
 }
 
 function writeSessionCookie(token: string, maxAge: number): void {
-  try {
-    setCookie(SESSION_TOKEN_COOKIE, token, {
-      path: "/",
-      secure: true,
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge,
-    });
-  } catch {
-    /* no request context */
-  }
+  setCookie(SESSION_TOKEN_COOKIE, token, {
+    path: "/",
+    secure: true,
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge,
+  });
 }
 
 export const unlockSuperAdmin = createServerFn({ method: "POST" })
