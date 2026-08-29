@@ -3,13 +3,12 @@
  *
  * Grok Build injects a per-app client on publish. Live preview has no
  * injection, so it uses the shared grok_preview client (sandbox hosts only).
- * Published Vercel often has DATABASE_URL but no GROK_AUTH_* — without a
- * fallback, grokOAuthPlugin is null and Continue with Google 404s.
  *
  * Rule: a real GROK_AUTH_CLIENT_ID+SECRET (not grok_preview) always wins.
- * Otherwise fall back to grok_preview so genericOAuth can register
- * grok-google/grok-x, including when DATABASE_URL is set or the env
- * explicitly names grok_preview.
+ * grok_preview is used only when DATABASE_URL is unset. A published process
+ * without a real client returns clientId undefined so grokOAuthPlugin stays
+ * off — grok_preview's allowed callbacks are *.grok-sandbox.com, which is
+ * invalid_uri at auth.grok.me for production hosts.
  */
 import { PREVIEW_CLIENT_ID, PREVIEW_CLIENT_SECRET } from "./preview";
 
@@ -28,9 +27,18 @@ export function resolveGrokBrokerClient(
     return { clientId: id, clientSecret: secret, usingPreviewClient: false };
   }
 
+  const published = Boolean(env.DATABASE_URL?.trim());
+  if (!published) {
+    return {
+      clientId: PREVIEW_CLIENT_ID,
+      clientSecret: PREVIEW_CLIENT_SECRET,
+      usingPreviewClient: true,
+    };
+  }
+
   return {
-    clientId: PREVIEW_CLIENT_ID,
-    clientSecret: PREVIEW_CLIENT_SECRET,
-    usingPreviewClient: true,
+    clientId: undefined,
+    clientSecret: undefined,
+    usingPreviewClient: false,
   };
 }

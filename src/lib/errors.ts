@@ -53,7 +53,10 @@ export function userFacingErrorMessage(error: unknown): string {
     return "Grok Bot isn’t online. Open the Bot app so it can pick up ClippyOS work.";
   }
   if (error instanceof Error && /invalid origin/i.test(error.message)) {
-    return "This site isn’t recognized for sign-in. Open ClippyOS from os.swcstudio.space or clippyos.grok.me and try again.";
+    return "This site isn’t recognized for sign-in. Open ClippyOS from os.swcstudio.space and try again.";
+  }
+  if (error instanceof Error && /invalid.?uri|redirect_uri|redirect uri/i.test(error.message)) {
+    return "This site isn’t authorized for Google/X sign-in yet. The auth redirect URI must be https://os.swcstudio.space (not clippyos.grok.me).";
   }
   if (
     error instanceof Error &&
