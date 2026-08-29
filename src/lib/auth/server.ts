@@ -166,10 +166,10 @@ const grokOAuthPlugin = (!authDisabled && grokClientId && grokClientSecret)
         // `prompt=select_account`, the user always gets the account chooser
         // and can pick (or switch) which account to sign in with.
         authorizationUrlParams: { idp, prompt: "login" },
-        // Pin deployed callbacks to the canonical studio origin. Preview keeps
-        // Better Auth's dynamic redirect_uri (*.grok-sandbox.com).
-        ...(!usingPreviewClient
-          ? { redirectURI: oauthCallbackURL(providerId, fallbackBaseURL) }
+        // production redirect_uri is https://os.swcstudio.space/api/auth/oauth2/callback/<provider>;
+        // never clippyos.grok.me. Live preview (no DATABASE_URL) keeps dynamic sandbox URI.
+        ...(databaseUrl
+          ? { redirectURI: oauthCallbackURL(providerId, CANONICAL_APP_ORIGIN) }
           : {}),
       })),
     })
