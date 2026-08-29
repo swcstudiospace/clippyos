@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { publishedBrokerConfigured, resolveGoogleSocial } from "./google-social.ts";
+import { brokerButtonsEnabled, publishedBrokerConfigured, resolveGoogleSocial } from "./google-social.ts";
 
 test("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET configure native Google", () => {
   const resolved = resolveGoogleSocial({
@@ -66,6 +66,32 @@ test("grok_preview client is not published-configured", () => {
 test("real GROK_AUTH_CLIENT_ID and SECRET are published-configured", () => {
   assert.equal(
     publishedBrokerConfigured({
+      GROK_AUTH_CLIENT_ID: "app_clippyos_prod",
+      GROK_AUTH_CLIENT_SECRET: "secret",
+    }),
+    true,
+  );
+});
+
+test("live preview without DATABASE_URL offers broker Google/X buttons", () => {
+  assert.equal(brokerButtonsEnabled({}), true);
+  assert.equal(
+    brokerButtonsEnabled({
+      GROK_AUTH_CLIENT_ID: "grok_preview",
+      GROK_AUTH_CLIENT_SECRET: "preview-secret",
+    }),
+    true,
+  );
+});
+
+test("published deploy without GROK_AUTH hides broker buttons", () => {
+  assert.equal(brokerButtonsEnabled({ DATABASE_URL: "postgres://localhost/clippyos" }), false);
+});
+
+test("published deploy with real GROK_AUTH offers broker buttons", () => {
+  assert.equal(
+    brokerButtonsEnabled({
+      DATABASE_URL: "postgres://localhost/clippyos",
       GROK_AUTH_CLIENT_ID: "app_clippyos_prod",
       GROK_AUTH_CLIENT_SECRET: "secret",
     }),

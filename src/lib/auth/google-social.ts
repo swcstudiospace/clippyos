@@ -35,3 +35,11 @@ export function publishedBrokerConfigured(
   const secret = env.GROK_AUTH_CLIENT_SECRET?.trim() || "";
   return Boolean(id && secret && id !== "grok_preview");
 }
+
+/** True when login should offer grok-google / grok-x (real published client or live preview). */
+export function brokerButtonsEnabled(
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
+): boolean {
+  if (publishedBrokerConfigured(env)) return true;
+  return !Boolean(env.DATABASE_URL?.trim());
+}
