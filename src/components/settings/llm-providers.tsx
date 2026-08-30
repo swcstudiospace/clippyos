@@ -5,10 +5,10 @@ import { toast } from "sonner";
 import {
   LLM_FEATURE_LABELS,
   LLM_FEATURES,
-  LLM_MODELS,
   LLM_PROVIDER_COPY,
   LLM_PROVIDER_IDS,
   LLM_QUERY_KEY,
+  modelsForProvider,
   type LlmFeature,
   type LlmProviderId,
   type LlmRouterConfig,
@@ -141,6 +141,7 @@ export function LlmProvidersPanel() {
           canEdit={canEditKeys}
           last4={snap.providers["openai-compat"].last4}
           health={snap.providers["openai-compat"].health}
+          baseUrl={snap.providers["openai-compat"].baseUrl}
         />
         <GlassCard>
           <div className="flex items-start gap-3">
@@ -159,7 +160,15 @@ export function LlmProvidersPanel() {
               <Label htmlFor="llm-default-provider">System default</Label>
               <Select
                 value={router.defaultProvider}
-                onValueChange={(value) => patchRouter({ defaultProvider: value as LlmProviderId })}
+                onValueChange={(value) => {
+                  const next = value as LlmProviderId;
+                  const allowed = modelsForProvider(next);
+                  const keepModel = allowed.some((row) => row.id === router.defaultModel);
+                  patchRouter({
+                    defaultProvider: next,
+                    defaultModel: keepModel ? router.defaultModel : (allowed[0]?.id ?? router.defaultModel),
+                  });
+                }}
                 disabled={!isAdmin}
               >
                 <SelectTrigger id="llm-default-provider">
@@ -185,7 +194,7 @@ export function LlmProvidersPanel() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {LLM_MODELS.map((row) => (
+                  {modelsForProvider(router.defaultProvider).map((row) => (
                     <SelectItem key={row.id} value={row.id}>
                       {row.label}
                     </SelectItem>
@@ -259,20 +268,30 @@ function KeyProviderCard({
   canEdit,
   last4,
   health,
+  baseUrl,
 }: {
   id: "xai-api" | "openai-compat";
   canEdit: boolean;
   last4: string | null;
   health: string;
+  baseUrl?: string | null;
 }) {
   const queryClient = useQueryClient();
   const [key, setKey] = useState("");
+  const [base, setBase] = useState(baseUrl ?? "");
   const copy = LLM_PROVIDER_COPY[id];
   const save = useMutation({
-    mutationFn: () => saveLlmApiKey({ data: { provider: id, key: key.trim() } }),
+    mutationFn: () =>
+      saveLlmApiKey({
+        data: {
+          provider: id,
+          ...(key.trim().length >= 8 ? { key: key.trim() } : {}),
+          ...(id === "openai-compat" ? { baseUrl: base.trim() } : {}),
+        },
+      }),
     onSuccess: async () => {
       setKey("");
-      toast.success("Key saved");
+      toast.success("Saved");
       await queryClient.invalidateQueries({ queryKey: LLM_QUERY_KEY });
       await queryClient.invalidateQueries({ queryKey: INTEGRATIONS_QUERY_KEY });
     },
@@ -324,11 +343,35 @@ function KeyProviderCard({
             autoComplete="off"
             value={key}
             onChange={(event) => setKey(event.target.value)}
-            placeholder={id === "xai-api" ? "xai-…" : "sk-…"}
+            placeholder={id === "xai-api" ? "xai-…" : "sk-or-…"}
           />
+          {id === "openai-compat" ? (
+            <>
+              <Label htmlFor="openai-compat-base">Base URL</Label>
+              <Input
+                id="openai-compat-base"
+                type="url"
+                autoComplete="off"
+                value={base}
+                onChange={(event) => setBase(event.target.value)}
+                placeholder="https://openrouter.ai/api/v1"
+              />
+              <p className="text-caption text-muted">
+                OpenRouter: https://openrouter.ai/api/v1 — then pick GLM 5.3 Flash as the default model.
+              </p>
+            </>
+          ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={save.isPending || key.trim().length < 8}>
-              {save.isPending ? "Saving…" : "Save key"}
+            <Button
+              type="submit"
+              disabled={
+                save.isPending ||
+                (id === "xai-api"
+                  ? key.trim().length < 8
+                  : key.trim().length < 8 && base.trim() === (baseUrl ?? "").trim())
+              }
+            >
+              {save.isPending ? "Saving…" : id === "openai-compat" ? "Save" : "Save key"}
             </Button>
             <Button
               type="button"

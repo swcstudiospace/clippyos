@@ -8,13 +8,15 @@ export function isAuthConfigured({
   authDisabled,
   grokBroker,
   googleSocial,
+  twitterSocial = false,
   emailPassword,
 }: {
   authDisabled: boolean;
   grokBroker: boolean;
   googleSocial: boolean;
+  twitterSocial?: boolean;
   emailPassword: boolean;
 }): boolean {
   if (authDisabled) return false;
-  return grokBroker || googleSocial || emailPassword;
+  return grokBroker || googleSocial || twitterSocial || emailPassword;
 }

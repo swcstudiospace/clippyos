@@ -5,8 +5,10 @@ import { requireAdmin, requireSecretEditor } from "@/lib/server/access";
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import {
   DEFAULT_LLM_ROUTER,
+  DEFAULT_OPENAI_COMPAT_BASE,
   LLM_MODELS,
   LLM_PROVIDER_IDS,
+  modelsForProvider,
   type LlmFeature,
   type LlmProviderId,
   type LlmProviderStatus,
@@ -69,13 +71,15 @@ function last4(value: string | null): string | null {
 }
 
 export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
-  const [router, status, xaiKey, compatKey] = await Promise.all([
+  const [router, status, xaiKey, compatKey, compatBase] = await Promise.all([
     readLlmRouter(),
     llmStatus(),
     readAppSetting("XAI_API_KEY"),
     readAppSetting("AI_API_KEY"),
+    readAppSetting("OPENAI_COMPAT_BASE"),
   ]);
-  const models = LLM_MODELS.map((row) => row.id);
+  const xaiModels = modelsForProvider("xai-api").map((row) => row.id);
+  const compatModels = modelsForProvider("openai-compat").map((row) => row.id);
   const providers: Record<LlmProviderId, LlmProviderStatus> = {
     "xai-oauth": {
       id: "xai-oauth",
@@ -83,7 +87,7 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
       health: status.source === "oauth" ? "connected" : "not_configured",
       last4: null,
       email: status.email,
-      models,
+      models: xaiModels,
     },
     "xai-api": {
       id: "xai-api",
@@ -96,7 +100,7 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
             : "not_configured",
       last4: last4(xaiKey) ?? (status.source === "platform" ? "plat" : null),
       email: null,
-      models,
+      models: xaiModels,
     },
     "openai-compat": {
       id: "openai-compat",
@@ -104,7 +108,8 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
       health: compatKey?.trim() ? "connected" : "not_configured",
       last4: last4(compatKey),
       email: null,
-      models: [],
+      models: compatModels,
+      baseUrl: compatBase?.trim().replace(/\/+$/, "") || DEFAULT_OPENAI_COMPAT_BASE,
     },
   };
   return { router, providers, catalog: LLM_MODELS, rateLimit: xaiRateLimitSnapshot() };

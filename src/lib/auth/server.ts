@@ -42,7 +42,7 @@ import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
 import { GROK_ISSUER_DEFAULT, PREVIEW_ALLOWED_HOSTS } from "./preview";
 import { resolveGrokBrokerClient } from "./broker-client";
-import { resolveGoogleSocial } from "./google-social";
+import { resolveGoogleSocial, resolveTwitterSocial } from "./google-social";
 import {
   CANONICAL_APP_ORIGIN,
   authFallbackBaseURL,
@@ -87,12 +87,14 @@ const brokerClient = resolveGrokBrokerClient();
 const grokClientId = brokerClient.clientId;
 const grokClientSecret = brokerClient.clientSecret;
 const googleSocial = resolveGoogleSocial();
+const twitterSocial = resolveTwitterSocial();
 
 /** True when any sign-in method is active (real auth is enforced). */
 export const authConfigured = isAuthConfigured({
   authDisabled,
   grokBroker: Boolean(grokClientId && grokClientSecret),
   googleSocial: Boolean(googleSocial),
+  twitterSocial: Boolean(twitterSocial),
   emailPassword: emailAndPasswordEnabled,
 });
 
@@ -197,6 +199,13 @@ export const auth = betterAuth({
           redirectURI: socialCallbackURL("google", CANONICAL_APP_ORIGIN),
         }
       : undefined,
+    twitter: (!authDisabled && twitterSocial)
+      ? {
+          clientId: twitterSocial.clientId,
+          clientSecret: twitterSocial.clientSecret,
+          redirectURI: socialCallbackURL("twitter", CANONICAL_APP_ORIGIN),
+        }
+      : undefined,
   },
 
   // Encrypt broker-issued OAuth tokens at rest, and treat the broker's upstreams
@@ -212,6 +221,7 @@ export const auth = betterAuth({
       trustedProviders: [
         ...GROK_PROVIDERS.map((p) => p.providerId),
         ...(googleSocial ? ["google"] : []),
+        ...(twitterSocial ? ["twitter"] : []),
       ],
       // X's synthetic email is never "verified", so don't gate linking on the
       // local user's email-verified state.

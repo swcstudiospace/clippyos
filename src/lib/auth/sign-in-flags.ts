@@ -7,9 +7,11 @@
  * reads Vercel/process env. Booleans only — never return secrets.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { brokerButtonsEnabled, resolveGoogleSocial } from "./google-social";
+import { brokerButtonsEnabled, resolveGoogleSocial, resolveTwitterSocial } from "./google-social";
+import type { SignInFlags } from "./providers";
 
-export const loadSignInFlags = createServerFn({ method: "GET" }).handler(async () => ({
+export const loadSignInFlags = createServerFn({ method: "GET" }).handler(async (): Promise<SignInFlags> => ({
   googleConfigured: Boolean(resolveGoogleSocial()),
+  twitterConfigured: Boolean(resolveTwitterSocial()),
   brokerConfigured: brokerButtonsEnabled(),
 }));

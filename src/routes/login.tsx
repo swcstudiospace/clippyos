@@ -1,6 +1,8 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { loginSocialProviders } from "@/lib/auth/providers";
+import { loadSignInFlags } from "@/lib/auth/sign-in-flags";
 import { isReservedOwnerEmail } from "@/lib/auth/email-password";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
@@ -29,6 +31,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
+  loader: () => loadSignInFlags(),
   component: LoginPage,
 });
 
@@ -63,7 +66,8 @@ function LoginForm() {
   const wantsAccess = searchStr.includes("intent=access");
   const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
   const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
-  const oauthProviders = GROK_PROVIDERS;
+  const flags = Route.useLoaderData();
+  const oauthProviders = loginSocialProviders(flags);
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

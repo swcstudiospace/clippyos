@@ -14,6 +14,8 @@ import {
   writeAppSetting,
 } from "@/lib/server/app-settings.server";
 import type { LlmProviderId } from "@/lib/llm";
+import { DEFAULT_OPENAI_COMPAT_BASE } from "@/lib/llm";
+import { CANONICAL_APP_ORIGIN } from "@/lib/app-hosts";
 
 export const XAI_MODEL = "grok-4.6";
 export const XAI_MODEL_FALLBACK = "grok-4.5";
@@ -258,12 +260,17 @@ export async function resolveCredsFor(prefer?: LlmProviderId): Promise<ResolvedC
     if (!key) return null;
     const base =
       (await readAppSetting("OPENAI_COMPAT_BASE"))?.trim().replace(/\/+$/, "") ||
-      "https://api.openai.com/v1";
+      DEFAULT_OPENAI_COMPAT_BASE;
+    const extraHeaders: Record<string, string> = {};
+    if (/openrouter\.ai/i.test(base)) {
+      extraHeaders["HTTP-Referer"] = CANONICAL_APP_ORIGIN;
+      extraHeaders["X-Title"] = "ClippyOS";
+    }
     return {
       source: "key",
       bearer: key,
       bases: [base],
-      extraHeaders: {},
+      extraHeaders,
     };
   }
   const oauth = await oauthBearer();
@@ -585,7 +592,7 @@ export async function xaiChat(params: {
   const requested = params.model?.trim();
   const models =
     params.provider === "openai-compat"
-      ? [requested && !requested.startsWith("grok") ? requested : "gpt-4o-mini"]
+      ? [requested && !requested.startsWith("grok") ? requested : "z-ai/glm-5.3-flash"]
       : requested
         ? [requested, XAI_MODEL, XAI_MODEL_FALLBACK].filter(
             (item, index, all) => all.indexOf(item) === index,

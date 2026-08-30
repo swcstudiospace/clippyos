@@ -33,6 +33,8 @@ const WORKSPACE_CONTROL_KEYS = new Set([
   "DISCORD_AGENT_STALE_MS",
   "DASHBOARD_ACTIVITY_LIMIT",
   "BRAND_ACCENT_HEX",
+  "LLM_ROUTER_JSON",
+  "OPENAI_COMPAT_BASE",
 ]);
 
 export function isWorkspaceControlKey(key: string): boolean {

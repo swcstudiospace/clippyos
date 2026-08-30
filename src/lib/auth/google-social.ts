@@ -24,6 +24,29 @@ export function resolveGoogleSocial(
 }
 
 /**
+ * Native Better Auth X/Twitter credentials. Better Auth's provider id is
+ * still `twitter`. Missing or blank values degrade to null.
+ */
+export function resolveTwitterSocial(
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
+): GoogleSocialCredentials | null {
+  const clientId =
+    env.TWITTER_CLIENT_ID?.trim() ||
+    env.X_CLIENT_ID?.trim() ||
+    env.AUTH_TWITTER_ID?.trim() ||
+    env.AUTH_X_ID?.trim() ||
+    "";
+  const clientSecret =
+    env.TWITTER_CLIENT_SECRET?.trim() ||
+    env.X_CLIENT_SECRET?.trim() ||
+    env.AUTH_TWITTER_SECRET?.trim() ||
+    env.AUTH_X_SECRET?.trim() ||
+    "";
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
+}
+
+/**
  * True when a published deploy has a real Grok broker client (not grok_preview).
  * Used by the login page to offer grok-google / grok-x without importing
  * preview.ts or broker-client.ts into the client bundle.
@@ -41,5 +64,5 @@ export function brokerButtonsEnabled(
   env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
 ): boolean {
   if (publishedBrokerConfigured(env)) return true;
-  return !Boolean(env.DATABASE_URL?.trim());
+  return !env.DATABASE_URL?.trim();
 }
