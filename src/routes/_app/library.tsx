@@ -21,6 +21,7 @@ import { UploadDropzone } from "@/components/library/upload-dropzone";
 import { AssetCard } from "@/components/library/asset-card";
 import { AssetDrawer } from "@/components/library/asset-drawer";
 import { RenderQueue } from "@/components/library/render-queue";
+import { LibraryGeneratePanel } from "@/components/library/generate-panel";
 import {
   ASSET_KINDS,
   ASSET_SOURCES,
@@ -58,14 +59,25 @@ import { KNOWLEDGE_PROPOSALS_KEY } from "@/lib/performance";
 import { userFacingErrorMessage } from "@/lib/errors";
 import { downloadTextFile } from "@/lib/clipboard";
 
+type LibrarySearch = { tab?: "library" | "renders" | "generate" };
+
 export const Route = createFileRoute("/_app/library")({
+  validateSearch: (search: Record<string, unknown>): LibrarySearch => ({
+    tab:
+      search.tab === "generate" || search.tab === "renders" || search.tab === "library"
+        ? search.tab
+        : undefined,
+  }),
   component: LibraryPage,
 });
 
 function LibraryPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"library" | "renders">("library");
+  const { tab: tabSearch } = Route.useSearch();
+  const [tab, setTab] = useState<"library" | "renders" | "generate">(
+    tabSearch === "generate" || tabSearch === "renders" ? tabSearch : "library",
+  );
   const [clientId, setClientId] = useState<string>("all");
   const [kind, setKind] = useState<string>("all");
   const [source, setSource] = useState<string>("all");
@@ -305,7 +317,7 @@ function LibraryPage() {
     <div className="mx-auto max-w-6xl pb-16">
       <PageHeader
         title="Library"
-        description="One place for clips, thumbs, captions, and platform-ready renders. Social jobs can publish from a library id."
+        description="Clips, thumbs, captions, platform renders, and generate. Social jobs can publish from a library id."
         actions={
           <div className="flex gap-2">
             <Button
@@ -317,6 +329,13 @@ function LibraryPage() {
             </Button>
             <Button
               type="button"
+              variant={tab === "generate" ? "primary" : "secondary"}
+              onClick={() => setTab("generate")}
+            >
+              Generate
+            </Button>
+            <Button
+              type="button"
               variant={tab === "renders" ? "primary" : "secondary"}
               onClick={() => setTab("renders")}
             >
@@ -325,6 +344,16 @@ function LibraryPage() {
           </div>
         }
       />
+
+      {tab === "generate" ? (
+        <LibraryGeneratePanel
+          clients={data.clients}
+          onSaved={() => {
+            setTab("library");
+            refresh();
+          }}
+        />
+      ) : null}
 
       {tab === "library" ? (
         <>
@@ -520,7 +549,9 @@ function LibraryPage() {
             </div>
           )}
         </>
-      ) : (
+      ) : null}
+
+      {tab === "renders" ? (
         <div className="mt-6">
           <RenderQueue
             jobs={data.renders}
@@ -532,7 +563,7 @@ function LibraryPage() {
             }}
           />
         </div>
-      )}
+      ) : null}
 
       <AssetDrawer
         open={Boolean(openId)}

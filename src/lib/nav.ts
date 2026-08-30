@@ -38,7 +38,6 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/thumbnails", label: "Thumbnails", icon: Image },
   { to: "/clipping", label: "Clipping", icon: Scissors },
   { to: "/library", label: "Library", icon: Clapperboard },
-  { to: "/studio", label: "Studio", icon: Clapperboard },
   { to: "/social", label: "Social", icon: Share2 },
   { to: "/inbox", label: "Inbox", icon: MessageCircle },
   { to: "/approvals", label: "Approvals", icon: ShieldCheck },
