@@ -2,6 +2,7 @@ import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.ts";
 import { GROK_PROVIDERS } from "./providers.ts";
+import { assignOAuthUrl, oauthNavigationMode, readStandaloneDisplay } from "./oauth-navigation.ts";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -144,10 +145,18 @@ export async function signIn(
   const callbackURL = opts.callbackURL ?? "/";
   const errorCallbackURL = opts.errorCallbackURL ?? "/";
 
-  // Open the popup SYNCHRONOUSLY on the user gesture — before any await
-  // (including signOut). Awaiting first drops user-gesture privilege in some
-  // browsers when the opener is a cross-origin live-preview iframe.
-  const popup = inLivePreview() ? openSignInPopup(providerId) : null;
+  // Open any extra window SYNCHRONOUSLY on the user gesture — before any await
+  // (including signOut). Awaiting first drops user-gesture privilege.
+  const navMode =
+    typeof window === "undefined"
+      ? "same-window"
+      : oauthNavigationMode({
+          livePreview: inLivePreview(),
+          standalone: readStandaloneDisplay(window),
+          userAgent: window.navigator.userAgent,
+        });
+  const popup = navMode === "popup-preview" ? openSignInPopup(providerId) : null;
+  const oauthTab = navMode === "browser-tab" ? openBrowserOAuthTab() : null;
 
   // Clear any prior session so switching providers actually switches identity.
   // Bounded because the popup is already open — a request that never settles
@@ -166,9 +175,6 @@ export async function signIn(
     const token = await waitForPopupToken(popup);
     if (!token) throw new Error("Sign-in was cancelled or failed");
     setBearerToken(token);
-    // Refresh the client session store with the bearer attached (onRequest).
-    // Avoid a full iframe reload when we're already on the destination — that
-    // reload was the slow "still loading after the popup closed" feeling.
     try {
       await authClient.getSession();
     } catch {
@@ -184,22 +190,49 @@ export async function signIn(
     return;
   }
 
-  if (providerId === "google" || providerId === "twitter") {
-    const { data, error } = await authClient.signIn.social({
-      provider: providerId,
+  try {
+    if (navMode === "browser-tab" && (!oauthTab || oauthTab.closed)) {
+      throw new Error("Allow pop-ups so Google sign-in can stay in this browser instead of the system Google app.");
+    }
+    if (providerId === "google" || providerId === "twitter") {
+      const { data, error } = await authClient.signIn.social({
+        provider: providerId,
+        callbackURL,
+        errorCallbackURL,
+        disableRedirect: true,
+      });
+      navigateToAuthorizeUrl(requireOAuthRedirectUrl(providerId, data, error), oauthTab);
+      return;
+    }
+
+    const { data, error } = await authClient.signIn.oauth2({
+      providerId,
       callbackURL,
       errorCallbackURL,
+      disableRedirect: true,
     });
-    window.location.href = requireOAuthRedirectUrl(providerId, data, error);
+    navigateToAuthorizeUrl(requireOAuthRedirectUrl(providerId, data, error), oauthTab);
+  } catch (error) {
+    if (oauthTab && !oauthTab.closed) oauthTab.close();
+    throw error;
+  }
+}
+
+function openBrowserOAuthTab(): Window | null {
+  return window.open("about:blank", `clippy-oauth-${Date.now()}`);
+}
+
+function navigateToAuthorizeUrl(url: string, tab: Window | null): void {
+  if (tab && !tab.closed) {
+    assignOAuthUrl(tab, url);
+    try {
+      tab.focus();
+    } catch {
+      /* ignore */
+    }
     return;
   }
-
-  const { data, error } = await authClient.signIn.oauth2({
-    providerId,
-    callbackURL,
-    errorCallbackURL,
-  });
-  window.location.href = requireOAuthRedirectUrl(providerId, data, error);
+  window.location.assign(url);
 }
 
 /**
