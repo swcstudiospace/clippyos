@@ -27,6 +27,7 @@ import {
 import { getLlmSnapshot } from "@/lib/server/llm-fns";
 import { LLM_QUERY_KEY } from "@/lib/llm";
 import { AgentTimeline } from "@/components/agent/timeline";
+import { AgentChatComposer } from "@/components/agent/composer";
 import { HermesCrayoRail } from "@/components/agent/hermes-rail";
 import { AIFallbackPanel } from "@/components/ui/ai-fallback-panel";
 import { Badge } from "@/components/ui/badge";
@@ -231,10 +232,10 @@ function AgentPage() {
       <Particles className="pointer-events-none absolute inset-0 -z-10 opacity-40" quantity={20} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-caption text-muted">Automate Crayo shorts</p>
+          <p className="text-caption text-muted">Clipping agent · Crayo + workflows</p>
           <h1 className="flex min-w-0 items-center gap-2 text-page font-semibold tracking-tight">
             <Bot className="size-6 shrink-0" aria-hidden="true" />
-            <SparklesText className="text-page font-semibold tracking-tight">Crayo Agent</SparklesText>
+            <SparklesText className="text-page font-semibold tracking-tight">Agent</SparklesText>
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -501,10 +502,10 @@ function AgentPage() {
         <aside className="hidden min-w-0 max-h-[70vh] overflow-y-auto rounded-card border border-border/60 bg-secondary-surface/30 lg:block">
           {runsQuery.isPending ? <Skeleton className="h-40" /> : runsPanel}
         </aside>
-        <section>
+        <section className="flex min-w-0 flex-col gap-3">
           {!runId ? (
             <GlassCard className="grid min-h-48 place-items-center">
-              <p className="text-body text-muted">Generate a short or AutoClip a URL. The file and steps show up here.</p>
+              <p className="text-body text-muted">Type a goal or /clip. Crayo cards and slash commands both run here.</p>
             </GlassCard>
           ) : detailQuery.isPending ? (
             <Skeleton className="h-64 w-full rounded-card" />
@@ -517,6 +518,31 @@ function AgentPage() {
           ) : (
             <AgentTimeline detail={detailQuery.data} rateLimitMessage={rateLimit?.message} />
           )}
+          <AgentChatComposer
+            clientId={clientId}
+            onClientId={setClientId}
+            clients={clients}
+            llmReady={llmReady}
+            starting={start.isPending}
+            cancelling={cancel.isPending}
+            canCancel={Boolean(
+              detailQuery.data &&
+                (isAgentBusy(detailQuery.data.run.status) ||
+                  detailQuery.data.run.status === "waiting_human" ||
+                  detailQuery.data.run.status === "waiting_resource"),
+            )}
+            grokAvailable={Boolean(grokQuery.data?.hasKey && grokQuery.data.enabled)}
+            runner={runner}
+            onRunner={setRunner}
+            onSubmit={(input) => {
+              setPreset(input.preset);
+              setGoal(input.goal);
+              const match = skills.find((row) => row.slug === input.preset);
+              setSkillId(match?.id ?? "");
+              start.mutate(input);
+            }}
+            onCancel={() => cancel.mutate()}
+          />
         </section>
         <aside className="hidden min-w-0 max-h-[70vh] overflow-y-auto rounded-card border border-border/60 bg-secondary-surface/30 lg:block">
           {contextPanel}
