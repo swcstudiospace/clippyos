@@ -105,8 +105,8 @@ export const INTEGRATION_COPY: Record<
     time: "~10 min",
   },
   daytona: {
-    name: "Daytona (Windows Social Machine)",
-    purpose: "On-demand Windows VM for Computer Use. Hibernate = hot snapshot. AU clock, US/EU IPs. Optional residential proxy.",
+    name: "Daytona (Social Machine)",
+    purpose: "On-demand Linux VM (daytona-vm-medium) for Computer Use. Windows snapshots are quota-gated. Hibernate = hot snapshot. AU clock. Start auto-provisions a free country proxy.",
     required: false,
     time: "~5 min",
   },

@@ -196,7 +196,7 @@ export const BUILTIN_ADDONS: readonly AddonManifest[] = [
     id: "agency.daytona-social",
     name: "Daytona browser runtime",
     version: "1.0.0",
-    description: "On-demand Windows Social Machine for Instagram, X, TikTok, YouTube, and Python skill sandboxes.",
+    description: "On-demand Social Machine (Linux default) for Instagram, X, TikTok, YouTube, and Python skill sandboxes.",
     type: "runtime",
     entry: { mcp: true, uiSlots: ["social", "settings.skills"] },
     permissions: ["social:read", "social:write", "skills:execute"],

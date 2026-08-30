@@ -469,11 +469,11 @@ function IntegrationCard({
               />
               <Field
                 id="dtn-size"
-                label="Windows size"
+                label="Snapshot / size"
                 type="text"
                 value={fields.size ?? ""}
                 onChange={(value) => setFields((cur) => ({ ...cur, size: value }))}
-                placeholder="windows-large (4 vCPU / 16 GiB) or windows-medium"
+                placeholder="daytona-vm-medium (default) or windows-large"
               />
               <Field
                 id="dtn-stop"
@@ -523,10 +523,11 @@ function IntegrationCard({
                 placeholder="••••"
               />
               <p className="text-caption text-muted">
-                Social Machine is a Windows VM. Hibernate pauses a hot snapshot (logins persist).
-                Clock is Australia/Sydney. Daytona only offers US and EU IPs — Instagram Graph API
-                is the reliable AU publish path; a residential HTTPS proxy is optional for browser
-                login. Test Connection and Test proxy never start a VM.
+                Social Machine defaults to the Linux snapshot daytona-vm-medium (Windows
+                snapshots need a Daytona plan that includes them). Hibernate pauses a hot
+                snapshot (logins persist). Clock is Australia/Sydney. Start auto-provisions a
+                free country-matched HTTP proxy; paste a paid residential URL if you have one.
+                Test Connection and Test proxy never start a VM.
               </p>
             </>
           ) : null}

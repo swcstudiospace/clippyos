@@ -26,6 +26,7 @@ import type { SocialPlatform } from "@/lib/entities";
 import {
   DEFAULT_SOCIAL_LOCALE,
   DEFAULT_SOCIAL_TIMEZONE,
+  DEFAULT_SOCIAL_MACHINE_OS,
   escapePowerShellSingleQuoted,
   HOT_SNAPSHOT_NAME,
   DEFAULT_SOCIAL_MACHINE_SIZE,
@@ -34,6 +35,7 @@ import {
   idlePolicy,
   instagramGeoWarning,
   isWindowsSnapshot,
+  linuxProxyScript,
   listWindowsCommand,
   mapProviderState,
   openUrlCommand,
@@ -42,7 +44,7 @@ import {
   composeProxyUrl,
   parseProxyCountry,
   parseProxyListLine,
-  proxyscrapeListUrl,
+  freeProxyListUrls,
   DEFAULT_PROXY_COUNTRY,
   parseSocialMachineOs,
   parseSocialMachineRegion,
@@ -367,7 +369,7 @@ function emptyStatus(partial: Partial<SocialMachineStatus>): SocialMachineStatus
     pathNote: PATH_NOTE,
     displayWidth: null,
     displayHeight: null,
-    os: "windows",
+    os: DEFAULT_SOCIAL_MACHINE_OS,
     size: DEFAULT_SOCIAL_MACHINE_SIZE,
     region: "us",
     snapshotName: null,
@@ -426,14 +428,14 @@ async function applyIdleIntervals(sandbox: Sandbox, minutes: number): Promise<vo
   }
 }
 
-async function applyWindowsProxy(sandbox: Sandbox, proxyUrl: string | null): Promise<void> {
+async function applyOutboundProxy(sandbox: Sandbox, proxyUrl: string | null, os: SocialMachineOs): Promise<void> {
   if (!proxyUrl) return;
   try {
     await sandbox.updateNetworkSettings({ outboundProxyUrl: proxyUrl } as never);
   } catch {
-    /* optional — script still applies WinHTTP */
+    /* optional — OS script still applies */
   }
-  const script = windowsProxyScript(proxyUrl);
+  const script = os === "windows" ? windowsProxyScript(proxyUrl) : linuxProxyScript(proxyUrl);
   if (!script) return;
   try {
     await sandbox.process.executeCommand(script, undefined, undefined, 40);
@@ -476,19 +478,20 @@ async function applyWindowsDesktop(sandbox: Sandbox): Promise<void> {
   }
 }
 
-async function createWindowsSandbox(daytona: Daytona, config: DaytonaConfig): Promise<Sandbox> {
+async function createSocialSandbox(daytona: Daytona, config: DaytonaConfig): Promise<Sandbox> {
   const region = parseSocialMachineRegion(config.target);
   const policy = idlePolicy(config.autoStopMinutes);
   const storedSnap = (await readAppSetting(SNAPSHOT_KEY))?.trim() || "";
   const candidates = snapshotCandidates(config.size, storedSnap);
   let lastError: unknown = null;
   for (const snapshot of candidates) {
+    const sandboxOs: SocialMachineOs = isWindowsSnapshot(snapshot) ? "windows" : "linux";
     try {
       const sandbox = await daytona.create(
         {
           name: "clippy-os-social",
           snapshot,
-          labels: { ...SOCIAL_LABELS, os: "windows", region },
+          labels: { ...SOCIAL_LABELS, os: sandboxOs, region },
           autoStopInterval: policy.autoStopInterval,
           autoPauseInterval: policy.autoPauseInterval,
           autoArchiveInterval: policy.autoArchiveInterval,
@@ -504,14 +507,15 @@ async function createWindowsSandbox(daytona: Daytona, config: DaytonaConfig): Pr
         },
         { timeout: 240 },
       );
-      await writeAppSetting(OS_KEY, "windows");
-      await writeAppSetting(SIZE_KEY, config.size);
+      await writeAppSetting(OS_KEY, sandboxOs);
+      await writeAppSetting(SIZE_KEY, sandboxOs === "linux" ? "daytona-vm-medium" : config.size);
+      await writeAppSetting(SNAPSHOT_KEY, snapshot);
       return sandbox;
     } catch (error) {
       lastError = error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("Couldn’t create the Windows Social Machine.");
+  throw lastError instanceof Error ? lastError : new Error("Couldn’t create the Social Machine.");
 }
 
 /**
@@ -679,8 +683,9 @@ export async function testResidentialProxy(overrideUrl?: string | null): Promise
 }
 
 /**
- * Pull a country-matched public HTTPS/HTTP proxy (ProxyScrape, no key) and
+ * Pull a country-matched public HTTP/HTTPS proxy (ProxyScrape, no key) and
  * keep the first one that can reach the internet. Never starts a VM.
+ * These are free public endpoints — not a paid ISP residential pool.
  */
 export async function provisionLocationProxy(countryRaw?: string | null): Promise<{
   ok: true;
@@ -689,17 +694,25 @@ export async function provisionLocationProxy(countryRaw?: string | null): Promis
   host: string;
 }> {
   const country = parseProxyCountry(countryRaw ?? (await readAppSetting(PROXY_COUNTRY_KEY)) ?? DEFAULT_PROXY_COUNTRY);
-  const response = await fetch(proxyscrapeListUrl(country), { signal: AbortSignal.timeout(12000) });
-  if (!response.ok) throw new Error("PROXY_UNAVAILABLE");
-  const text = await response.text();
-  const candidates = text
-    .split(/\r?\n/)
-    .map(parseProxyListLine)
-    .filter((row): row is string => Boolean(row))
-    .slice(0, 12);
-  if (candidates.length === 0) throw new Error("PROXY_UNAVAILABLE");
+  const urls: string[] = [];
+  for (const listUrl of freeProxyListUrls(country)) {
+    try {
+      const response = await fetch(listUrl, { signal: AbortSignal.timeout(12000) });
+      if (!response.ok) continue;
+      const text = await response.text();
+      for (const line of text.split(/\r?\n/)) {
+        const parsed = parseProxyListLine(line);
+        if (parsed && !urls.includes(parsed)) urls.push(parsed);
+        if (urls.length >= 18) break;
+      }
+    } catch {
+      /* try next list */
+    }
+    if (urls.length >= 18) break;
+  }
+  if (urls.length === 0) throw new Error("PROXY_UNAVAILABLE");
   let lastError: unknown = null;
-  for (const url of candidates) {
+  for (const url of urls) {
     try {
       const probed = await testResidentialProxy(url);
       await writeAppSetting(PROXY_KEY, url);
@@ -725,34 +738,40 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
     sandbox = null;
   }
   try {
-    if (sandbox && !sandboxLooksWindows(sandbox)) {
-      try {
-        await sandbox.stop(60).catch(() => undefined);
-      } catch {
-        /* migrate away from Linux */
-      }
-      sandbox = null;
-    }
-    if (!sandbox) {
-      sandbox = await createWindowsSandbox(daytona, config);
-    } else {
+    if (sandbox) {
       const state = mapSandboxState(sandbox.state);
       if (state !== "running" && state !== "starting") {
-        await sandbox.start(180);
+        try {
+          await sandbox.start(180);
+        } catch {
+          sandbox = null;
+        }
       }
     }
+    if (!config.proxyUrl) {
+      try {
+        await provisionLocationProxy();
+        config.proxyUrl = parseHttpsProxy(await readAppSetting(PROXY_KEY));
+      } catch {
+        /* location proxy is optional — Start still proceeds */
+      }
+    }
+    if (!sandbox) {
+      sandbox = await createSocialSandbox(daytona, config);
+    }
+    const os = await resolveOs(sandbox);
     await writeAppSetting(SANDBOX_KEY, sandbox.id);
     await writeAppSetting(STARTED_AT_KEY, new Date().toISOString());
     await deleteAppSetting(STOPPED_AT_KEY);
     await deleteAppSetting(LAST_ERROR_KEY);
-    await writeAppSetting(OS_KEY, "windows");
+    await writeAppSetting(OS_KEY, os);
 
-    if (sandboxLooksWindows(sandbox)) {
+    await applyIdleIntervals(sandbox, config.autoStopMinutes);
+    if (os === "windows") {
       await maybeResizeWindows(sandbox);
-      await applyIdleIntervals(sandbox, config.autoStopMinutes);
       await applyWindowsDesktop(sandbox);
-      await applyWindowsProxy(sandbox, config.proxyUrl);
     }
+    await applyOutboundProxy(sandbox, config.proxyUrl, os);
 
     // Storage bridge: mount the shared bucket as a network drive (best-effort,
     // never blocks machine start). Status is surfaced via storageBridgeMounted.
@@ -812,7 +831,7 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
       computerUse,
       displayWidth: display?.width ?? null,
       displayHeight: display?.height ?? null,
-      os: "windows",
+      os,
       size: config.size,
       region: parseSocialMachineRegion(config.target),
       snapshotName: sandbox.snapshot ?? (await readAppSetting(SNAPSHOT_KEY)),
