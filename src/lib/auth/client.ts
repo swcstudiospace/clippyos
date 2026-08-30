@@ -95,20 +95,30 @@ type PopupMessage = { source: "grok-auth-popup"; token: string | null; error?: s
  * Better Auth social/oauth2 calls can resolve with neither `error` nor `data.url`
  * (empty 404 on an unconfigured provider). Returning then looks like a dead form.
  */
+export function unconfiguredSocialMessage(providerId: string): string {
+  if (providerId === "twitter" || providerId === "grok-x") {
+    return "X sign-in is not configured on this host.";
+  }
+  if (providerId === "google" || providerId === "grok-google") {
+    return "Google sign-in is not configured on this host.";
+  }
+  return "Sign-in failed";
+}
+
 export function requireOAuthRedirectUrl(
   providerId: string,
   data: { url?: string | null } | null | undefined,
   error?: { message?: string | null } | null,
 ): string {
-  if (error) throw new Error(error.message ?? "Sign-in failed");
+  if (error) {
+    const message = error.message?.trim() || "Sign-in failed";
+    if (/provider not found/i.test(message)) {
+      throw new Error(unconfiguredSocialMessage(providerId));
+    }
+    throw new Error(message);
+  }
   if (!data?.url) {
-    throw new Error(
-      providerId === "google"
-        ? "Google sign-in is not configured on this host."
-        : providerId === "twitter"
-          ? "X sign-in is not configured on this host."
-          : "Sign-in failed",
-    );
+    throw new Error(unconfiguredSocialMessage(providerId));
   }
   return data.url;
 }

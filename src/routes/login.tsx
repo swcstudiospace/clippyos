@@ -66,7 +66,11 @@ function LoginForm() {
   const wantsAccess = searchStr.includes("intent=access");
   const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
   const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
-  const flags = Route.useLoaderData();
+  const flags = Route.useLoaderData() ?? {
+    googleConfigured: false,
+    twitterConfigured: false,
+    brokerConfigured: false,
+  };
   const oauthProviders = loginSocialProviders(flags);
   const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [name, setName] = useState("");
@@ -139,7 +143,7 @@ function LoginForm() {
           email: email.trim(),
           password,
         });
-        if (error) throw new Error("Could not sign in");
+        if (error) throw new Error(error.message?.trim() || "Could not sign in");
       }
       window.location.assign(oauthRedirect ?? (mode === "signup" || wantsAccess ? "/billing" : "/home"));
     } catch (error) {
