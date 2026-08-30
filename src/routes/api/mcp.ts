@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authenticateMcpToken } from "@/lib/server/autonomy-auth.server";
+import { sanitizeRequestId } from "@/lib/security-headers";
 import { handleMcpRpc } from "@/lib/server/mcp.server";
 import { writeAuditLog } from "@/lib/server/autonomy-audit.server";
 import {
@@ -60,7 +61,7 @@ function authError(request: Request, code: string): Response {
 }
 
 async function handle(request: Request): Promise<Response> {
-  const rid = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  const rid = sanitizeRequestId(request.headers.get("x-request-id"));
   const authorization = request.headers.get("authorization");
 
   if (request.method === "GET") {

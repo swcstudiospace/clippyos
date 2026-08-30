@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { rateLimitOrThrow, readWebhookSecret } from "@/lib/server/autonomy-auth.server";
+import { sanitizeRequestId } from "@/lib/security-headers";
 import { verifyInboundSignature } from "@/lib/server/autonomy-events.server";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import { readIdempotency, writeAuditLog, writeIdempotency } from "@/lib/server/autonomy-audit.server";
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/api/webhooks/inbound")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const rid = request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+        const rid = sanitizeRequestId(request.headers.get("x-request-id"));
         const secret = await readWebhookSecret();
         if (!secret) {
           return json(503, {

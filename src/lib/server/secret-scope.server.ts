@@ -3,6 +3,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
 import { isMissingTable } from "@/lib/server/mappers";
 import type { AppRole } from "@/lib/entities";
+import { decryptSecret, encryptSecret } from "@/lib/server/secret-crypto.server";
 
 export type SecretScope = {
   userId: string;
@@ -85,6 +86,19 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function decodeSecret(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    return decryptSecret(value);
+  } catch {
+    return null;
+  }
+}
+
+function encodeSecret(value: string): string {
+  return encryptSecret(value);
+}
+
 export async function readOperatorSecret(userId: string, key: string): Promise<string | null> {
   const admin = await getAgencyAdmin();
   if (admin) {
@@ -94,7 +108,7 @@ export async function readOperatorSecret(userId: string, key: string): Promise<s
       .eq("user_id", userId)
       .eq("key", key)
       .maybeSingle<{ value?: string | null }>();
-    if (!error) return data?.value ?? null;
+    if (!error) return decodeSecret(data?.value ?? null);
     if (!isMissingTable(error)) return null;
   }
   try {
@@ -103,7 +117,7 @@ export async function readOperatorSecret(userId: string, key: string): Promise<s
       "select value from operator_secrets where user_id = $1 and key = $2",
       [userId, key],
     );
-    return rows[0]?.value ?? null;
+    return decodeSecret(rows[0]?.value ?? null);
   } catch {
     return null;
   }
@@ -120,7 +134,10 @@ export async function readOperatorSecretsMap(userId: string): Promise<Map<string
     if (!error) {
       for (const row of data ?? []) {
         const rec = row as { key?: string; value?: string | null };
-        if (rec.key && rec.value) map.set(rec.key, rec.value);
+        if (rec.key && rec.value) {
+          const plain = decodeSecret(rec.value);
+          if (plain) map.set(rec.key, plain);
+        }
       }
       return map;
     }
@@ -133,7 +150,10 @@ export async function readOperatorSecretsMap(userId: string): Promise<Map<string
       [userId],
     );
     for (const row of rows) {
-      if (row.key && row.value) map.set(row.key, row.value);
+      if (row.key && row.value) {
+        const plain = decodeSecret(row.value);
+        if (plain) map.set(row.key, plain);
+      }
     }
   } catch {
     /* empty */
@@ -147,10 +167,11 @@ export async function writeOperatorSecret(
   value: string,
 ): Promise<void> {
   const now = nowIso();
+  const stored = encodeSecret(value);
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("operator_secrets").upsert(
-      { user_id: userId, key, value, updated_at: now },
+      { user_id: userId, key, value: stored, updated_at: now },
       { onConflict: "user_id,key" },
     );
     if (error && !isMissingTable(error)) {
@@ -163,7 +184,7 @@ export async function writeOperatorSecret(
       `insert into operator_secrets (user_id, key, value, created_at, updated_at)
        values ($1, $2, $3, $4, $4)
        on conflict (user_id, key) do update set value = excluded.value, updated_at = excluded.updated_at`,
-      [userId, key, value, now],
+      [userId, key, stored, now],
     );
   } catch {
     /* local store may be unavailable */

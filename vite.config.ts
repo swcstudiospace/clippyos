@@ -8,6 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
 import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.ts";
 import { appEnvPlugin } from "./scripts/app-env-plugin.ts";
+import { SECURITY_HEADERS } from "./src/lib/security-headers.ts";
 import { isMigrationFile } from "./scripts/migration-plan.ts";
 import { patchSsrExports } from "./scripts/patch-ssr-exports.ts";
 
@@ -50,16 +51,22 @@ function pgliteBootstrapPlugin(): Plugin {
   };
 }
 
-/**
- * Live-preview OAuth popup — handled HERE so the agent never has to create a
- * `/auth/popup` route (and cannot break it by scaffolding a React page that
- * paints the full app shell in the popup).
- *
- * `signIn` (client.ts) opens `/auth/popup?providerId=…` in a top-level window.
- * This middleware runs before TanStack Start, calls `handleAuthPopupRequest`,
- * and returns the 302 / completion HTML. Deployed apps do not use the popup
- * (full-page OAuth redirect), so `apply: "serve"` is enough.
- */
+function securityHeadersPlugin(): Plugin {
+  const attach = (server: { middlewares: { use: (fn: (req: unknown, res: { getHeader: (name: string) => unknown; setHeader: (name: string, value: string) => void }, next: () => void) => void) => void } }) => {
+    server.middlewares.use((_req, res, next) => {
+      for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+        if (!res.getHeader(key)) res.setHeader(key, value);
+      }
+      next();
+    });
+  };
+  return {
+    name: "clippyos:security-headers",
+    configureServer: attach,
+    configurePreviewServer: attach,
+  };
+}
+
 function authPopupPlugin(): Plugin {
   return {
     name: "app-builder:auth-popup",
@@ -218,6 +225,7 @@ export default defineConfig(({ command, isPreview }) => ({
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
+    securityHeadersPlugin(),
     tailwindcss(),
     tanstackStart(),
     ...(command === "build" || isPreview
