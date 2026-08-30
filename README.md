@@ -50,7 +50,7 @@ Eighteen screens, one sidebar (`src/lib/nav.ts`). Grouped here by job:
 |---|---|
 | **Command center** | `/home` dashboard — live roster, collections, pipeline counts, daily objectives; nothing stored as rollups |
 | **Revenue & clients** | `/money` live totals · `/clients` roster + per-client detail with AI analysis · `/calendar` collection days · `/leads` prospect pipeline · `/billing` the ClippyOS subscription itself |
-| **Production** | `/ideation` AI idea threads tagged to clients · `/agent` clipping-agent runs · `/thumbnails` chat-composed thumbnail sessions with canvas refinement · `/library` clips, thumbs, captions, platform-ready renders |
+| **Production** | `/ideation` AI idea threads tagged to clients · `/agent` Crayo.ai automation (shorts + AutoClip) · `/thumbnails` chat-composed thumbnail sessions with canvas refinement · `/library` clips, thumbs, captions, platform-ready renders |
 | **Distribution** | `/social` on-demand posting to Instagram, X, TikTok, YouTube · `/inbox` professional Telegram/WhatsApp liaison · `/approvals` human sign-off before anything goes live |
 | **Ops & assurance** | `/health` integration checks (idempotent retries, never auto-starts the Social Machine) · `/analytics` stored performance snapshots · `/team` human workload vs. overload threshold · `/onboarding` bring a channel onto the roster · `/settings` add-ons, Skills, LLM providers, MCP, Hermes Connect |
 
@@ -75,7 +75,7 @@ paused, not destroyed.
 | Database | Managed Postgres (Supabase / Neon) via `DATABASE_URL`; embedded **PGLite** fallback locally | RLS-enabled schema; migrations apply automatically |
 | Clip files | **Supabase Storage** (`clippy-library` bucket) or S3-compatible overflow (Filebase / Storj / R2) | Survives deploys. Never the Windows VM. |
 | IPFS | Pinata pin / Filebase CID | Pin layer only — never the write backend |
-| Social Machine | Daytona **windows-large** VM (4 vCPU / 16 GiB) | Computer Use only: platform logins, uploads. Pause = pause; hibernate snapshots while running. Never started by cron or Test Connection. |
+| Social Machine | Daytona **daytona-vm-medium** Linux VM (Windows snapshots optional) | Computer Use only: platform logins, uploads. Pause = pause; hibernate snapshots while running. Never started by cron or Test Connection. Start auto-provisions a free country proxy. |
 | Render / sandboxes | Short-lived Linux jobs (`ffmpeg`/`ffprobe`, skill sandboxes) | Isolated from browser profiles |
 
 Key source trees: `src/routes/_app` (operator screens), `src/routes/api`

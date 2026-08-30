@@ -62,6 +62,53 @@ export const crayoStatusFn = createServerFn({ method: "GET" })
     return crayoAvailable();
   });
 
+export type CrayoAccountSnapshot = {
+  configured: boolean;
+  plan: string | null;
+  credits: { export: number; voiceover: number; image: number; video: number } | null;
+  error: string | null;
+};
+
+export const crayoAccountFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<CrayoAccountSnapshot> => {
+    await requireUser(context.userId);
+    const crayo = await import("@/lib/server/crayo.server");
+    if (!(await crayo.crayoAvailable())) {
+      return { configured: false, plan: null, credits: null, error: null };
+    }
+    try {
+      const raw = await crayo.crayoGetAccount();
+      const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+      const account = row.account && typeof row.account === "object" ? (row.account as Record<string, unknown>) : row;
+      const creditsRaw = row.credits && typeof row.credits === "object" ? (row.credits as Record<string, unknown>) : {};
+      const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+      const plan = typeof account.plan === "string" ? account.plan : null;
+      return {
+        configured: true,
+        plan,
+        credits: {
+          export: num(creditsRaw.export),
+          voiceover: num(creditsRaw.voiceover),
+          image: num(creditsRaw.image),
+          video: num(creditsRaw.video),
+        },
+        error: null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "CRAYO_FAILED";
+      return { configured: true, plan: null, credits: null, error: message.slice(0, 120) };
+    }
+  });
+
+export const hermesConnectFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    await requireUser(context.userId);
+    const { buildConnectStatus } = await import("@/lib/server/hermes-connect.server");
+    return buildConnectStatus();
+  });
+
 const ThumbnailGenerateSchema = z.object({
   prompt: z.string().min(1).max(3500),
   clientId: z.string().nullable().optional(),

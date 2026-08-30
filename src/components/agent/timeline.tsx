@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { TypingAnimation } from "@/components/magicui/typing-animation";
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { LinearIssueActions } from "@/components/linear/issue-actions";
+import { AgentResults } from "@/components/agent/results";
 
 export function AgentTimeline({
   detail,
@@ -150,12 +151,7 @@ export function AgentTimeline({
         ) : null}
       </ol>
 
-      {detail.run.summary && !running ? (
-        <GlassCard>
-          <p className="text-caption text-muted">Summary</p>
-          <p className={cn("mt-1 text-body")}>{detail.run.summary}</p>
-        </GlassCard>
-      ) : null}
+      {!running ? <AgentResults detail={detail} /> : null}
     </div>
   );
 }

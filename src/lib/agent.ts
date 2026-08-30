@@ -14,7 +14,10 @@ export const CLIPPING_PRESET_SKILLS = [
 ] as const;
 export type ClippingPresetSkill = (typeof CLIPPING_PRESET_SKILLS)[number];
 
-export const AGENT_PRESETS = [...CLIPPING_PRESET_SKILLS, "custom"] as const;
+export const CRAYO_AGENT_PRESETS = ["crayo-short", "crayo-autoclip"] as const;
+export type CrayoAgentPreset = (typeof CRAYO_AGENT_PRESETS)[number];
+
+export const AGENT_PRESETS = [...CLIPPING_PRESET_SKILLS, ...CRAYO_AGENT_PRESETS, "custom"] as const;
 export type AgentPreset = (typeof AGENT_PRESETS)[number];
 
 const LEGACY_PRESET_MAP: Record<string, AgentPreset> = {
@@ -204,7 +207,17 @@ export const AGENT_PRESET_COPY: Record<
   custom: {
     label: "Custom goal",
     goal: "",
-    hint: "Describe the clipping workflow. The planner cannot call undeclared tools.",
+    hint: "Describe the clipping or Crayo workflow. The planner cannot call undeclared tools.",
+  },
+  "crayo-short": {
+    label: "Crayo short",
+    goal: "Using the connected Crayo API (Bearer key, never echo it): 1) crayo.get_account to confirm credits. 2) crayo.list_voices and pick one voice_id. 3) crayo.generate_image 9:16 for a hook still from this client's niche. 4) crayo.generate_voiceover from a 12–20s spoken hook script. 5) crayo.create_project with one scene covering the narration duration_ms, optional subtitles. 6) crayo.export_project and return the finished video URL plus thumbnail. Do not start the Social Machine. If Crayo is missing, say so and stop.",
+    hint: "Image + voice + project + export via api.crayo.ai. Shows the file when done.",
+  },
+  "crayo-autoclip": {
+    label: "Crayo AutoClip",
+    goal: "Using Crayo AutoClip: import or pick a long-form https video asset (1 min–3 h). crayo.create_autoclip clip_count=5 clip_length=60 edit_level=full. Then crayo.get_autoclip until clips[] has project_id + thumbnail_url. List each clip title and thumbnail. Do not start the Social Machine. Never invent URLs.",
+    hint: "Long video → vertical shorts. Poll until clips are ready.",
   },
 };
 
@@ -407,6 +420,17 @@ export const PRESET_PLAN_SKELETONS: Record<ClippingPresetSkill, AgentPlanStep[]>
   ],
 };
 
+export const CRAYO_PLAN_SKELETONS: Record<CrayoAgentPreset, AgentPlanStep[]> = {
+  "crayo-short": [
+    { id: "run", tool: "crayo.run_short", args: {}, purpose: "Generate a 9:16 short and ingest the mp4 into the Filebase library.", successCriteria: "library.assetId or videoUrl returned." },
+    { id: "finish", tool: "clipping.finish", args: { summary: "Crayo short in the library." }, purpose: "Operator-facing summary with library asset id.", successCriteria: "Summary names the asset id or honest gap." },
+  ],
+  "crayo-autoclip": [
+    { id: "run", tool: "crayo.run_autoclip", args: {}, purpose: "Import the long-form URL, AutoClip, ingest thumbnails into the library.", successCriteria: "clips[] with project_id and library asset ids." },
+    { id: "finish", tool: "clipping.finish", args: { summary: "AutoClip clips in the library." }, purpose: "List clip titles and library ids.", successCriteria: "No invented URLs." },
+  ],
+};
+
 export const DOMAIN_AGENT_TOOLS = [
   "clipping.research_channel",
   "clipping.generate_ideas",
@@ -449,12 +473,38 @@ export const DOMAIN_AGENT_TOOLS = [
   "list_at_risk_clients",
   "get_analytics_snapshot",
   "skills.invoke",
+  "crayo.get_account",
+  "crayo.list_assets",
+  "crayo.list_voices",
+  "crayo.import_asset",
+  "crayo.generate_image",
+  "crayo.generate_voiceover",
+  "crayo.create_project",
+  "crayo.export_project",
+  "crayo.get_export",
+  "crayo.create_autoclip",
+  "crayo.get_autoclip",
+  "crayo.ingest_to_library",
+  "crayo.run_short",
+  "crayo.run_autoclip",
 ] as const;
+
+export function isCrayoPreset(preset: AgentPreset): preset is CrayoAgentPreset {
+  return (CRAYO_AGENT_PRESETS as readonly string[]).includes(preset);
+}
 
 export function allowlistForPreset(preset: AgentPreset): Set<string> {
   const allow = new Set<string>(["clipping.finish"]);
   if (preset === "custom") {
     for (const tool of DOMAIN_AGENT_TOOLS) allow.add(tool);
+    return allow;
+  }
+  if (isCrayoPreset(preset)) {
+    for (const step of CRAYO_PLAN_SKELETONS[preset]) allow.add(step.tool);
+    allow.add("crayo.get_account");
+    allow.add("crayo.ingest_to_library");
+    allow.add("library.search_assets");
+    allow.add("library.get_asset");
     return allow;
   }
   const skeleton = PRESET_PLAN_SKELETONS[preset];

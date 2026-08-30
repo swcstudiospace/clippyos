@@ -9,6 +9,8 @@ export type AgentSlashCommand = {
 };
 
 export const AGENT_SLASH_COMMANDS: readonly AgentSlashCommand[] = [
+  { cmd: "/short", preset: "crayo-short", hint: "Make a 9:16 Crayo short" },
+  { cmd: "/autoclip", preset: "crayo-autoclip", hint: "AutoClip a long https URL" },
   { cmd: "/ideas", preset: "clipping-ideation-pack", hint: "Long-form ideas + titles" },
   { cmd: "/thumb", preset: "clipping-thumbnail-pass", hint: "Critique + generate a 16:9 thumb" },
   { cmd: "/package", preset: "clipping-full-package", hint: "End-to-end clip package" },
