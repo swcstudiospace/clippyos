@@ -1,16 +1,18 @@
 /** Slash commands for the Agent chat composer. No secrets. */
 
 import { AGENT_PRESET_COPY, normalizePreset, type AgentPreset } from "./agent.ts";
+import { buildCrayoAutoclipGoal, buildCrayoShortGoal } from "./agent-crayo.ts";
 
 export type AgentSlashCommand = {
   cmd: string;
   preset: AgentPreset;
   hint: string;
+  needsArg?: string;
 };
 
 export const AGENT_SLASH_COMMANDS: readonly AgentSlashCommand[] = [
-  { cmd: "/short", preset: "crayo-short", hint: "Make a 9:16 Crayo short" },
-  { cmd: "/autoclip", preset: "crayo-autoclip", hint: "AutoClip a long https URL" },
+  { cmd: "/short", preset: "crayo-short", hint: "Make a 9:16 Crayo short", needsArg: "topic after the command" },
+  { cmd: "/autoclip", preset: "crayo-autoclip", hint: "AutoClip a long https URL", needsArg: "https:// video URL" },
   { cmd: "/ideas", preset: "clipping-ideation-pack", hint: "Long-form ideas + titles" },
   { cmd: "/thumb", preset: "clipping-thumbnail-pass", hint: "Critique + generate a 16:9 thumb" },
   { cmd: "/package", preset: "clipping-full-package", hint: "End-to-end clip package" },
@@ -45,9 +47,28 @@ export function parseAgentSlash(input: string): {
   return { command, rest, matching };
 }
 
+export function slashMissingArg(command: AgentSlashCommand, rest: string): string | null {
+  if (!command.needsArg) return null;
+  if (command.cmd === "/autoclip") {
+    if (!rest.startsWith("https://")) return "Paste a public https video URL: /autoclip https://…";
+    return null;
+  }
+  if (command.cmd === "/short" && !rest.trim()) {
+    return "Add a topic: /short three habits that ruin mornings";
+  }
+  return null;
+}
+
 export function goalFromSlash(command: AgentSlashCommand, rest: string): { preset: AgentPreset; goal: string } {
   const preset = normalizePreset(command.preset);
-  const base = AGENT_PRESET_COPY[preset].goal;
   const extra = rest.trim();
+  if (preset === "crayo-short") {
+    return { preset, goal: buildCrayoShortGoal({ topic: extra, script: "" }) };
+  }
+  if (preset === "crayo-autoclip") {
+    const url = extra.split(/\s+/).find((part) => part.startsWith("https://")) ?? extra;
+    return { preset, goal: buildCrayoAutoclipGoal({ url, clipCount: 5 }) };
+  }
+  const base = AGENT_PRESET_COPY[preset].goal;
   return { preset, goal: extra ? `${base}\n\nOperator note: ${extra}` : base };
 }

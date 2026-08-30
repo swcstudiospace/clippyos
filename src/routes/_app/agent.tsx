@@ -25,7 +25,7 @@ import {
   startAgentRunFn,
 } from "@/lib/server/agent-fns";
 import { getLlmSnapshot } from "@/lib/server/llm-fns";
-import { LLM_QUERY_KEY } from "@/lib/llm";
+import { LLM_PROVIDER_COPY, LLM_PROVIDER_IDS, LLM_QUERY_KEY } from "@/lib/llm";
 import { AgentTimeline } from "@/components/agent/timeline";
 import { AgentChatComposer } from "@/components/agent/composer";
 import { HermesCrayoRail } from "@/components/agent/hermes-rail";
@@ -157,6 +157,8 @@ function AgentPage() {
       llmQuery.data?.providers["openai-compat"].configured,
   );
   const model = llmQuery.data?.router.defaultModel ?? "grok-4.6";
+  const plannerId = llmQuery.data?.router.features.agent ?? llmQuery.data?.router.defaultProvider ?? "xai-oauth";
+  const planner = LLM_PROVIDER_COPY[plannerId];
   const clients = useMemo(
     () => (clientsQuery.data ?? []).filter((row) => row.status === "ACTIVE" && !row.deletedAt),
     [clientsQuery.data],
@@ -167,14 +169,34 @@ function AgentPage() {
 
   const contextPanel = (
     <div className="flex flex-col gap-3 p-4">
-      <p className="text-caption text-muted">Crayo</p>
+      <p className="text-caption text-muted">Who actually runs what</p>
+      <p className="text-caption text-muted">
+        Three planner AIs can be connected. Only <span className="text-fg">{planner.name}</span> ({model}) plans
+        /ideas and /package. Crayo.ai mints the video — it is not a fourth planner.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {LLM_PROVIDER_IDS.map((id) => {
+          const row = llmQuery.data?.providers[id];
+          const active = id === plannerId;
+          return (
+            <li key={id} className="text-caption">
+              <span className="font-medium">{LLM_PROVIDER_COPY[id].name}</span>
+              {active ? " · this run’s planner" : ""}
+              <span className="text-muted">
+                {" "}
+                — {row?.configured ? "connected" : "not configured"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
       <div>
         <p className="text-body font-medium">
           {crayoQuery.data?.configured
             ? crayoQuery.data.plan
               ? `Crayo · ${crayoQuery.data.plan}`
               : "Crayo connected"
-            : "Crayo key missing"}
+            : "Crayo key missing on this deploy"}
         </p>
         {crayoQuery.data?.credits ? (
           <p className="text-caption text-muted">
@@ -183,7 +205,7 @@ function AgentPage() {
           </p>
         ) : (
           <p className="text-caption text-muted">
-            {crayoQuery.data?.error ?? "Credits appear after the key is live on this deploy."}
+            {crayoQuery.data?.error ?? "Credits appear after CRAYO_API_KEY is live on this deploy."}
           </p>
         )}
       </div>
@@ -191,7 +213,7 @@ function AgentPage() {
         <p className="text-body font-medium">{selectedClient?.name ?? "No client selected"}</p>
         <p className="text-caption text-muted">{selectedClient?.currentStage ?? "Optional — shorts don’t require a client."}</p>
       </div>
-      <p className="text-caption text-muted">Crayo runs never start the Social Machine.</p>
+      <p className="text-caption text-muted">Crayo runs never start the Social Machine. Leave Grok Bot off unless a computer should claim the job.</p>
     </div>
   );
 
@@ -505,7 +527,7 @@ function AgentPage() {
         <section className="flex min-w-0 flex-col gap-3">
           {!runId ? (
             <GlassCard className="grid min-h-48 place-items-center">
-              <p className="text-body text-muted">Type a goal or /clip. Crayo cards and slash commands both run here.</p>
+              <p className="text-body text-muted">Type /short your hook or /autoclip https://… then Enter. Failures now say why instead of looking stuck.</p>
             </GlassCard>
           ) : detailQuery.isPending ? (
             <Skeleton className="h-64 w-full rounded-card" />
@@ -523,6 +545,7 @@ function AgentPage() {
             onClientId={setClientId}
             clients={clients}
             llmReady={llmReady}
+            crayoReady={Boolean(crayoQuery.data?.configured)}
             starting={start.isPending}
             cancelling={cancel.isPending}
             canCancel={Boolean(

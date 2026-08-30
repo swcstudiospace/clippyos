@@ -11,12 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AGENT_PRESET_COPY, type AgentPreset } from "@/lib/agent";
+import { AGENT_PRESET_COPY, isCrayoPreset, type AgentPreset } from "@/lib/agent";
 import {
   AGENT_SLASH_COMMANDS,
   CLIPPING_WORKFLOW_STEPS,
   goalFromSlash,
   parseAgentSlash,
+  slashMissingArg,
 } from "@/lib/agent-slash";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +28,7 @@ export function AgentChatComposer({
   onClientId,
   clients,
   llmReady,
+  crayoReady,
   starting,
   cancelling,
   canCancel,
@@ -40,6 +42,7 @@ export function AgentChatComposer({
   onClientId: (id: string) => void;
   clients: ClientOpt[];
   llmReady: boolean;
+  crayoReady: boolean;
   starting: boolean;
   cancelling: boolean;
   canCancel: boolean;
@@ -50,9 +53,15 @@ export function AgentChatComposer({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [hint, setHint] = useState<string | null>(null);
   const [workflowOpen, setWorkflowOpen] = useState(false);
   const parsed = useMemo(() => parseAgentSlash(draft), [draft]);
   const showMenu = draft.trimStart().startsWith("/") && !parsed.command;
+
+  function canRun(preset: AgentPreset): boolean {
+    if (isCrayoPreset(preset)) return crayoReady || llmReady;
+    return llmReady;
+  }
 
   function send(raw: string) {
     const text = raw.trim();
@@ -60,16 +69,37 @@ export function AgentChatComposer({
     const slash = parseAgentSlash(text);
     if (slash.command?.cmd === "/clip" && !slash.rest) {
       setWorkflowOpen(true);
+      setHint("Walkthrough opened. Pin a client, then run each step.");
       return;
     }
     if (slash.command) {
+      const missing = slashMissingArg(slash.command, slash.rest);
+      if (missing) {
+        setHint(missing);
+        setDraft(`${slash.command.cmd} `);
+        return;
+      }
+      if (!canRun(slash.command.preset)) {
+        setHint(
+          isCrayoPreset(slash.command.preset)
+            ? "Crayo isn’t live on this deploy yet, so /short and /autoclip can’t mint. Planner commands still need Grok or OpenRouter."
+            : "No planner AI is connected. Settings → LLM: SuperGrok OAuth, xAI API key, or OpenRouter. Only one of those actually runs /ideas and /package.",
+        );
+        return;
+      }
       onSubmit(goalFromSlash(slash.command, slash.rest));
       setDraft("");
+      setHint(null);
       setWorkflowOpen(false);
+      return;
+    }
+    if (!llmReady) {
+      setHint("Free-text goals need a planner (Grok or OpenRouter). Use /short topic for Crayo without the planner.");
       return;
     }
     onSubmit({ preset: "custom", goal: text });
     setDraft("");
+    setHint(null);
   }
 
   return (
@@ -123,7 +153,7 @@ export function AgentChatComposer({
         </Button>
         <div className="ml-auto flex items-center gap-2">
           <Label htmlFor="agent-runner" className="text-caption text-muted">
-            Grok Bot
+            Grok Bot computer
           </Label>
           <Switch
             id="agent-runner"
@@ -133,6 +163,11 @@ export function AgentChatComposer({
           />
         </div>
       </div>
+      {runner === "grok_bot" ? (
+        <p className="mb-2 text-caption text-warning">
+          Runs wait until the Grok Bot computer claims them. Leave this off to run here on ClippyOS.
+        </p>
+      ) : null}
 
       <div className="relative">
         {showMenu ? (
@@ -142,7 +177,14 @@ export function AgentChatComposer({
                 <button
                   type="button"
                   className="flex w-full items-baseline justify-between gap-2 rounded-control px-2 py-1.5 text-left hover:bg-secondary-surface"
-                  onClick={() => setDraft(`${row.cmd} `)}
+                  onClick={() => {
+                    if (row.needsArg) {
+                      setDraft(`${row.cmd} `);
+                      setHint(row.needsArg);
+                      return;
+                    }
+                    send(row.cmd);
+                  }}
                 >
                   <span className="font-mono text-caption">{row.cmd}</span>
                   <span className="text-caption text-muted">{row.hint}</span>
@@ -153,7 +195,10 @@ export function AgentChatComposer({
         ) : null}
         <Textarea
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setHint(null);
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
@@ -162,13 +207,16 @@ export function AgentChatComposer({
           }}
           rows={3}
           className="min-h-20 pr-24"
-          placeholder="Message the clipping agent. Type / for workflows — /ideas /thumb /package /clip"
+          placeholder="Type /short your hook  ·  /autoclip https://…  ·  Enter to send"
           aria-label="Agent message"
         />
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <p className="text-caption text-muted">
-          {parsed.command ? AGENT_PRESET_COPY[parsed.command.preset].hint : "Enter sends. Shift+Enter for a new line."}
+          {hint ??
+            (parsed.command
+              ? slashMissingArg(parsed.command, parsed.rest) ?? AGENT_PRESET_COPY[parsed.command.preset].hint
+              : "Enter sends. Slash chips that need a topic stay in the box until you add it.")}
         </p>
         <div className="ml-auto flex gap-2">
           {canCancel ? (
@@ -179,7 +227,7 @@ export function AgentChatComposer({
           ) : null}
           <Button
             onClick={() => send(draft)}
-            disabled={starting || !llmReady || !draft.trim()}
+            disabled={starting || !draft.trim()}
             className="min-h-11"
           >
             <Play className="size-4" aria-hidden="true" />
@@ -193,7 +241,14 @@ export function AgentChatComposer({
             <button
               type="button"
               className={cn("rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted")}
-              onClick={() => setDraft(`${row.cmd} `)}
+              onClick={() => {
+                if (row.needsArg) {
+                  setDraft(`${row.cmd} `);
+                  setHint(row.needsArg);
+                  return;
+                }
+                send(row.cmd);
+              }}
             >
               {row.cmd}
             </button>
