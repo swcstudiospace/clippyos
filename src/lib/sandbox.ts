@@ -8,7 +8,7 @@ export const SANDBOX_LABELS: Record<SandboxType, { purpose: string; title: strin
     purpose: "social",
     title: "Social Machine",
     blurb:
-      "Windows VM + browser profiles for Instagram, X, TikTok, and YouTube. Explicit Start / Hibernate only. Idle auto-pause (hot snapshot) 15–30 min. Never starts on login. Clock is Australia/Sydney.",
+      "Linux VM (daytona-vm-medium) + browser for Instagram, X, TikTok, and YouTube. Windows snapshots need a Daytona plan that includes them. Explicit Start / Hibernate only. Idle auto-pause (hot snapshot) 15–30 min. Never starts on login. Clock is Australia/Sydney.",
   },
   skill: {
     purpose: "skill",

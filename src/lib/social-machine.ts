@@ -3,15 +3,16 @@
 export const SOCIAL_MACHINE_OS = ["windows", "linux"] as const;
 export type SocialMachineOs = (typeof SOCIAL_MACHINE_OS)[number];
 
-export const SOCIAL_MACHINE_SIZES = ["windows-medium", "windows-large"] as const;
+export const SOCIAL_MACHINE_SIZES = ["daytona-vm-medium", "windows-medium", "windows-large"] as const;
 export type SocialMachineSize = (typeof SOCIAL_MACHINE_SIZES)[number];
 
 export const SOCIAL_MACHINE_REGIONS = ["us", "eu"] as const;
 export type SocialMachineRegion = (typeof SOCIAL_MACHINE_REGIONS)[number];
 
-export const DEFAULT_SOCIAL_MACHINE_SIZE: SocialMachineSize = "windows-large";
+/** Linux snapshot available on standard Daytona accounts (Windows snapshots are quota-gated). */
+export const DEFAULT_SOCIAL_MACHINE_SIZE: SocialMachineSize = "daytona-vm-medium";
 export const DEFAULT_SOCIAL_MACHINE_REGION: SocialMachineRegion = "us";
-export const DEFAULT_SOCIAL_MACHINE_OS: SocialMachineOs = "windows";
+export const DEFAULT_SOCIAL_MACHINE_OS: SocialMachineOs = "linux";
 export const DEFAULT_SOCIAL_TIMEZONE = "Australia/Sydney";
 export const DEFAULT_SOCIAL_LOCALE = "en-AU";
 /** Windows tzutil id for AEST/AEDT (Sydney). */
@@ -19,11 +20,17 @@ export const WINDOWS_TIMEZONE_ID = "AUS Eastern Standard Time";
 /** Windows GeoId 12 = Australia. */
 export const WINDOWS_GEO_ID = 12;
 
-export const WINDOWS_SNAPSHOTS: Record<SocialMachineSize, { cpu: number; memoryGiB: number; diskGiB: number }> =
-  {
-    "windows-medium": { cpu: 2, memoryGiB: 8, diskGiB: 50 },
-    "windows-large": { cpu: 4, memoryGiB: 16, diskGiB: 50 },
-  };
+export const WINDOWS_SNAPSHOTS: Record<
+  Exclude<SocialMachineSize, "daytona-vm-medium">,
+  { cpu: number; memoryGiB: number; diskGiB: number }
+> = {
+  "windows-medium": { cpu: 2, memoryGiB: 8, diskGiB: 50 },
+  "windows-large": { cpu: 4, memoryGiB: 16, diskGiB: 50 },
+};
+
+export const LINUX_SNAPSHOTS: Record<"daytona-vm-medium", { cpu: number; memoryGiB: number; diskGiB: number }> = {
+  "daytona-vm-medium": { cpu: 2, memoryGiB: 4, diskGiB: 20 },
+};
 
 /** Daytona's largest Windows snapshot. Hot-resize existing undersized VMs to this. */
 export const TARGET_WINDOWS_RESOURCES = { cpu: 4, memory: 16 } as const;
@@ -37,7 +44,16 @@ export const WINDOWS_PROFILE_DIR = "C:\\Users\\Public\\ClippyOS\\profiles";
 export function parseSocialMachineSize(value: unknown): SocialMachineSize {
   const raw = String(value ?? "").trim();
   if (raw === "windows-medium" || raw === "windows-small") return "windows-medium";
-  return "windows-large";
+  if (raw === "windows-large") return "windows-large";
+  if (
+    raw === "daytona-vm-medium" ||
+    raw === "daytona-medium" ||
+    raw === "linux-medium" ||
+    raw === "linux"
+  ) {
+    return "daytona-vm-medium";
+  }
+  return DEFAULT_SOCIAL_MACHINE_SIZE;
 }
 
 export function parseSocialMachineRegion(value: unknown): SocialMachineRegion {
@@ -45,7 +61,14 @@ export function parseSocialMachineRegion(value: unknown): SocialMachineRegion {
 }
 
 export function parseSocialMachineOs(value: unknown): SocialMachineOs {
-  return String(value ?? "").trim().toLowerCase() === "linux" ? "linux" : "windows";
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "windows") return "windows";
+  if (raw === "linux") return "linux";
+  return DEFAULT_SOCIAL_MACHINE_OS;
+}
+
+export function osForSize(size: SocialMachineSize): SocialMachineOs {
+  return size.startsWith("windows") ? "windows" : "linux";
 }
 
 export function snapshotForSize(size: SocialMachineSize): string {
@@ -65,16 +88,27 @@ export function snapshotCandidates(
   stored?: string | null,
 ): string[] {
   const names: string[] = [];
+  const os = osForSize(size);
   const push = (value: string | null | undefined) => {
     const name = String(value ?? "").trim();
     if (!name) return;
-    if (name.toLowerCase().includes("linux")) return;
     if (names.includes(name)) return;
     names.push(name);
   };
-  push(stored);
+  if (stored) {
+    const storedWin = isWindowsSnapshot(stored);
+    const hot = isHotSnapshot(stored);
+    if (hot || (os === "windows") === storedWin) push(stored);
+  }
   push(snapshotForSize(size));
-  if (size !== "windows-medium") push("windows-medium");
+  if (os === "linux") {
+    push("daytona-vm-medium");
+    push("daytona-medium");
+  } else {
+    if (size !== "windows-medium") push("windows-medium");
+    // Accounts without Windows snapshots fall through to the Linux default.
+    push("daytona-vm-medium");
+  }
   return names;
 }
 
@@ -209,6 +243,13 @@ export function windowsProxyScript(proxyUrl: string | null): string | null {
   return `powershell -NoProfile -Command "try { netsh winhttp set proxy '${safeHost}' } catch {}; try { Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name ProxyEnable -Value 1 } catch {}; try { Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name ProxyServer -Value '${safeHost}' } catch {}; [Environment]::SetEnvironmentVariable('HTTPS_PROXY','${safeFull}','User'); [Environment]::SetEnvironmentVariable('HTTP_PROXY','${safeFull}','User'); Write-Output 'proxy-applied'"`;
 }
 
+export function linuxProxyScript(proxyUrl: string | null): string | null {
+  const parsed = parseHttpsProxy(proxyUrl);
+  if (!parsed) return null;
+  const safe = parsed.replace(/'/g, `'\\''`);
+  return `sh -lc 'export HTTP_PROXY='"'"'${safe}'"'"' HTTPS_PROXY='"'"'${safe}'"'"' http_proxy='"'"'${safe}'"'"' https_proxy='"'"'${safe}'"'"'; echo proxy-applied'`;
+}
+
 export function listWindowsCommand(os: SocialMachineOs): string {
   if (os === "windows") {
     return `powershell -NoProfile -Command "$w = Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object -First 30 Id,MainWindowTitle; $w | ForEach-Object { [pscustomobject]@{ id = [string]$_.Id; title = $_.MainWindowTitle } } | ConvertTo-Json -Compress"`;
@@ -328,10 +369,20 @@ export function parseProxyCountry(value: unknown): ProxyCountryCode {
     : DEFAULT_PROXY_COUNTRY;
 }
 
-/** ProxyScrape public list — no key. Country-matched HTTPS/HTTP endpoints. */
-export function proxyscrapeListUrl(country: unknown): string {
+/** ProxyScrape public list — no key. Country-matched HTTP/HTTPS endpoints (not a paid ISP pool). */
+export function proxyscrapeListUrl(country: unknown, protocol: "http" | "https" = "http"): string {
   const cc = parseProxyCountry(country);
-  return `https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&country=${cc}&proxy_format=protocolipport&format=text&timeout=8000`;
+  return `https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=${protocol}&country=${cc}&proxy_format=protocolipport&format=text&timeout=8000`;
+}
+
+/** Ordered free lists: country HTTP, country HTTPS, then any-country HTTP. */
+export function freeProxyListUrls(country: unknown): string[] {
+  const cc = parseProxyCountry(country);
+  return [
+    proxyscrapeListUrl(cc, "http"),
+    proxyscrapeListUrl(cc, "https"),
+    `https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text&timeout=8000`,
+  ];
 }
 
 export function parseProxyListLine(line: string): string | null {

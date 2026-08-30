@@ -86,8 +86,8 @@ export function BrowserRuntimeCard({
           <div>
             <h3 className="text-card font-semibold tracking-tight">Browser runtime</h3>
             <p className="text-caption text-muted">
-              Daytona is a core OS capability: a Windows Social Machine for Instagram, X, TikTok,
-              and YouTube Studio. VMs are on-demand — never auto-start on login. Hibernate pauses a
+              Daytona is a core OS capability: a Linux Social Machine (daytona-vm-medium) for Instagram, X, TikTok,
+              and YouTube Studio. Windows snapshots need a plan that includes them. VMs are on-demand — never auto-start on login. Hibernate pauses a
               hot snapshot.
             </p>
           </div>
@@ -140,7 +140,7 @@ export function OsFramingBanner() {
           <p className="mt-1 text-caption text-muted">
             ClippyOS is the Autonomous Operating System for Clipping. Integrations are Add-ons.
             Skills are versioned SKILL.md packages (Python in an isolated sandbox, never the Social
-            Machine). The browser runtime is a Windows VM with hot snapshots. Automation & Hermes
+            Machine). The browser runtime defaults to Linux (daytona-vm-medium) with hot snapshots. Automation & Hermes
             is the always-on control plane — mint credentials here, paste them into Hermes.
           </p>
           <p className="mt-2 flex flex-wrap items-center gap-2 text-caption text-muted">

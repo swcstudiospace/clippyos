@@ -43,6 +43,9 @@ import {
   parseSocialMachineSize,
   pickLibraryBackend,
   proxyscrapeListUrl,
+  freeProxyListUrls,
+  osForSize,
+  linuxProxyScript,
   shouldResizeWindows,
   snapshotCandidates,
   snapshotForSize,
@@ -54,21 +57,24 @@ import {
   windowsProxyScript,
 } from "./social-machine.ts";
 
-test("defaults to a large Windows Social Machine in Sydney locale", () => {
-  assert.equal(DEFAULT_SOCIAL_MACHINE_OS, "windows");
-  assert.equal(DEFAULT_SOCIAL_MACHINE_SIZE, "windows-large");
-  assert.equal(snapshotForSize("windows-large"), "windows-large");
+test("defaults to daytona-vm-medium Linux Social Machine in Sydney locale", () => {
+  assert.equal(DEFAULT_SOCIAL_MACHINE_OS, "linux");
+  assert.equal(DEFAULT_SOCIAL_MACHINE_SIZE, "daytona-vm-medium");
+  assert.equal(snapshotForSize("daytona-vm-medium"), "daytona-vm-medium");
+  assert.equal(osForSize("daytona-vm-medium"), "linux");
+  assert.equal(osForSize("windows-large"), "windows");
   assert.equal(DEFAULT_SOCIAL_TIMEZONE, "Australia/Sydney");
   assert.ok(isWindowsSnapshot("windows-large"));
-  assert.equal(isWindowsSnapshot("daytona-small"), false);
+  assert.equal(isWindowsSnapshot("daytona-vm-medium"), false);
 });
 
-test("size parser never returns a linux or tiny snapshot", () => {
+test("size parser accepts linux default and still maps windows aliases", () => {
   assert.equal(parseSocialMachineSize("windows-large"), "windows-large");
   assert.equal(parseSocialMachineSize("windows-medium"), "windows-medium");
   assert.equal(parseSocialMachineSize("windows-small"), "windows-medium");
-  assert.equal(parseSocialMachineSize("linux"), "windows-large");
-  assert.equal(parseSocialMachineSize(""), "windows-large");
+  assert.equal(parseSocialMachineSize("linux"), "daytona-vm-medium");
+  assert.equal(parseSocialMachineSize(""), "daytona-vm-medium");
+  assert.equal(parseSocialMachineSize("daytona-medium"), "daytona-vm-medium");
 });
 
 test("Daytona regions are us or eu — there is no Australia target", () => {
@@ -97,19 +103,21 @@ test("hibernate plan snapshots while running then pauses — never after pause, 
   assert.equal(plan.snapshotAfterPause, false);
 });
 
-test("snapshot candidates prefer a stored hot snapshot then windows-large, never linux", () => {
+test("snapshot candidates prefer linux default and fall back off Windows quota", () => {
+  assert.deepEqual(snapshotCandidates("daytona-vm-medium", null), [
+    "daytona-vm-medium",
+    "daytona-medium",
+  ]);
   assert.deepEqual(snapshotCandidates("windows-large", null), [
     "windows-large",
     "windows-medium",
+    "daytona-vm-medium",
   ]);
   assert.deepEqual(snapshotCandidates("windows-large", HOT_SNAPSHOT_NAME), [
     HOT_SNAPSHOT_NAME,
     "windows-large",
     "windows-medium",
-  ]);
-  assert.deepEqual(snapshotCandidates("windows-large", "linux-large"), [
-    "windows-large",
-    "windows-medium",
+    "daytona-vm-medium",
   ]);
   assert.ok(isHotSnapshot(HOT_SNAPSHOT_NAME));
   assert.equal(isHotSnapshot("windows-large"), false);
@@ -200,10 +208,10 @@ test("S3 config parser accepts Filebase-style endpoints and rejects blanks", () 
   assert.equal(parseS3Config({ endpoint: FILEBASE_ENDPOINT, bucket: "", accessKey: "k", secret: "s" }), null);
 });
 
-test("os parser treats unknown as windows", () => {
+test("os parser treats unknown as linux", () => {
   assert.equal(parseSocialMachineOs("windows"), "windows");
   assert.equal(parseSocialMachineOs("linux"), "linux");
-  assert.equal(parseSocialMachineOs("darwin"), "windows");
+  assert.equal(parseSocialMachineOs("darwin"), "linux");
 });
 
 test("residential proxy structured fields compose an https URL", () => {
@@ -242,8 +250,13 @@ test("location proxy list is country-scoped and parses ProxyScrape lines", () =>
   assert.equal(parseProxyCountry("au"), "AU");
   assert.equal(parseProxyCountry("mars"), "AU");
   assert.match(proxyscrapeListUrl("AU"), /country=AU/);
+  assert.match(proxyscrapeListUrl("AU", "https"), /protocol=https/);
+  const lists = freeProxyListUrls("AU");
+  assert.equal(lists.length, 3);
+  assert.match(lists[0] ?? "", /country=AU/);
   assert.match(parseProxyListLine("http://203.0.113.10:8080") ?? "", /203\.0\.113\.10:8080/);
   assert.equal(parseProxyListLine("socks5://nope"), null);
+  assert.match(linuxProxyScript("http://203.0.113.10:8080") ?? "", /proxy-applied/);
 });
 
 test("storage bridge paths map Windows drives and POSIX mounts to machine-drops keys", () => {

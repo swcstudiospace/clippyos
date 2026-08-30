@@ -296,8 +296,8 @@ function StorageCard({
           <h3 className="text-card font-semibold tracking-tight">Clip storage</h3>
           <p className="text-caption text-muted">
             Vercel has no durable disk. Use Supabase Storage first (free 1 GB). Optional S3-compatible
-            overflow: Filebase (5 GB free, IPFS-backed) or Storj. The Windows Social Machine’s 50 GB
-            disk is for browser profiles and hot snapshots only.
+            overflow: Filebase (5 GB free, IPFS-backed) or Storj. The Social Machine disk
+            is for browser profiles and hot snapshots only.
           </p>
         </div>
       </div>
