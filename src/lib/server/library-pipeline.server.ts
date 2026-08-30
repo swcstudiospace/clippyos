@@ -296,6 +296,7 @@ function hostAllowed(host: string): boolean {
   if (h.endsWith(".tiktokcdn.com") || h.endsWith(".tiktok.com") || h.endsWith(".muscdn.com")) return true;
   if (h.endsWith(".cdninstagram.com") || h.endsWith(".fbcdn.net")) return true;
   if (h.endsWith(".googleusercontent.com") || h.endsWith(".ggpht.com")) return true;
+  if (h === "cdn-crayo.com" || h.endsWith(".cdn-crayo.com") || h === "crayo.ai" || h.endsWith(".crayo.ai")) return true;
   return false;
 }
 

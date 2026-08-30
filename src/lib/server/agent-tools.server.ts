@@ -433,6 +433,12 @@ export async function executeAgentTool(input: {
         const { handleLibraryAction } = await import("@/lib/server/library-tools.server");
         return { data: await handleLibraryAction(name, payload, actorId) };
       }
+      if (name.startsWith("crayo.")) {
+        const { handleCrayoAction } = await import("@/lib/server/crayo-tools.server");
+        const data = await handleCrayoAction(name, payload, actorId);
+        if (data === undefined) throw new Error("UNKNOWN_ACTION");
+        return { data };
+      }
       if (name.startsWith("stream.") || name.startsWith("bridge.")) {
         const { handleStreamAction } = await import("@/lib/server/stream-tools.server");
         const data = await handleStreamAction(name, payload, actorId);
@@ -757,6 +763,52 @@ export const AGENT_LLM_TOOLS = [
           labels: { type: "array", items: { type: "string" } },
           linkTo: { type: "object", properties: { type: { type: "string" }, id: { type: "string" } } },
         },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.run_short",
+      description: "Make a 9:16 Crayo short (image + voice + export) and ingest the mp4 into the Filebase library.",
+      parameters: {
+        type: "object",
+        required: ["prompt"],
+        properties: {
+          prompt: { type: "string" },
+          script: { type: "string" },
+          title: { type: "string" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.run_autoclip",
+      description: "Import a long-form https URL, AutoClip it, ingest thumbnails into the Filebase library.",
+      parameters: {
+        type: "object",
+        required: ["url"],
+        properties: {
+          url: { type: "string" },
+          clipCount: { type: "number" },
+          clipLength: { type: "number" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.ingest_to_library",
+      description: "Copy a Crayo CDN https file into the Filebase library (source=AGENT). Rejects non-Crayo hosts.",
+      parameters: {
+        type: "object",
+        required: ["url"],
+        properties: { url: { type: "string" }, title: { type: "string" }, clientId: { type: "string" } },
       },
     },
   },

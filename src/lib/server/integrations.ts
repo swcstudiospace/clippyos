@@ -52,6 +52,7 @@ function sanitizeError(message: string): string {
     .replace(/ghp_[a-zA-Z0-9]+/g, "[redacted]")
     .replace(/Bot\s+[A-Za-z0-9._-]+/g, "Bot [redacted]")
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer [redacted]")
+    .replace(/crayo_sk_[A-Za-z0-9_-]+/g, "[redacted]")
     .replace(/AIza[A-Za-z0-9_-]+/g, "[redacted]")
     .slice(0, 180);
 }

@@ -103,15 +103,11 @@ try {
   await shot("qa-onboarding.png");
 
 
-  await page.getByRole("link", { name: "Clipping", exact: true }).click();
-  await page.waitForURL("**/clipping");
-  await page
-    .getByRole("heading", { name: "Browser skills" })
-    .waitFor({ timeout: 60000 });
-  const clipSkillsPanel = true;
-  const clipLoginButton = await page
-    .getByRole("button", { name: /Check crayo login/i })
-    .isVisible();
+  await page.getByRole("link", { name: "Crayo", exact: true }).click();
+  await page.waitForURL("**/agent");
+  await page.getByRole("heading", { name: "Crayo Agent" }).waitFor({ timeout: 60000 });
+  const clipSkillsPanel = await page.getByRole("heading", { name: /9:16 short/i }).isVisible();
+  const clipLoginButton = await page.getByRole("button", { name: /Generate short/i }).isVisible();
   notes.push({ clipSkillsPanel, clipLoginButton });
   await shot("qa-clipping.png");
   await page.setViewportSize({ width: 390, height: 844 });

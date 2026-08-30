@@ -1458,6 +1458,17 @@ async function execute(
         }
         return { ok: true, data };
       }
+      if (action.startsWith("crayo.")) {
+        const write = !(action.startsWith("crayo.get_") || action.startsWith("crayo.list_"));
+        if (write && !need(actor, "actions:ai")) return deny();
+        if (!write && !need(actor, "read")) return deny();
+        const { handleCrayoAction } = await import("@/lib/server/crayo-tools.server");
+        const data = await handleCrayoAction(action, payload, `agent:${actor.keyId ?? actor.source}`);
+        if (data === undefined) {
+          return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };
+        }
+        return { ok: true, data };
+      }
       if (action.startsWith("library.")) {
         const write =
           action === "library.ingest_url" ||

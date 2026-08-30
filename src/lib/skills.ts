@@ -642,4 +642,54 @@ Post-session housekeeping: everything the machine dropped gets ingested or repor
 </rules>
 `,
   },
+  {
+    slug: "clipping-crayo-short",
+    skillMd: `---
+name: Crayo 9:16 short
+description: Generate a vertical Crayo short via api.crayo.ai and store the mp4 in the Filebase library.
+version: 1.0.0
+tags: [clipping, crayo, library]
+category: clipping
+provenance: builtin
+permissions: [clients:read, llm:invoke]
+tools: [crayo.run_short, crayo.ingest_to_library, library.search_assets]
+runtime: { timeoutSec: 240, network: false }
+---
+
+# Crayo 9:16 short
+
+Inputs: \`prompt\` (topic/hook), optional \`script\`, optional \`clientId\`
+
+1. \`crayo.run_short\` with prompt + script (9:16 image, voiceover, one-scene project, export).
+2. Confirm \`library.assetId\` on the result. If missing, \`crayo.ingest_to_library\` with the video URL (Crayo CDN only).
+3. \`library.search_assets\` tag=crayo to show the operator the Filebase row.
+
+Never start the Social Machine. Never echo the API key. Never invent URLs.
+`,
+  },
+  {
+    slug: "clipping-crayo-autoclip",
+    skillMd: `---
+name: Crayo AutoClip
+description: Import a long-form https video, AutoClip it in Crayo, ingest thumbnails into the Filebase library.
+version: 1.0.0
+tags: [clipping, crayo, library]
+category: clipping
+provenance: builtin
+permissions: [clients:read, llm:invoke]
+tools: [crayo.run_autoclip, crayo.ingest_to_library, library.search_assets]
+runtime: { timeoutSec: 240, network: false }
+---
+
+# Crayo AutoClip
+
+Inputs: \`url\` (https long-form), \`clipCount\` (2–20, default 5), optional \`clientId\`
+
+1. \`crayo.run_autoclip\`
+2. List each clip title, project_id, thumbnail, and library.assetId
+3. Honest gap if AutoClip is still processing (TIMEOUT) — do not invent clips
+
+Never start the Social Machine. Never echo the API key. Never invent URLs.
+`,
+  },
 ];
