@@ -30,6 +30,10 @@ test("google-only true", () => {
   assert.equal(isAuthConfigured({ ...none, googleSocial: true }), true);
 });
 
+test("twitter-only true", () => {
+  assert.equal(isAuthConfigured({ ...none, twitterSocial: true }), true);
+});
+
 test("broker-only true", () => {
   assert.equal(isAuthConfigured({ ...none, grokBroker: true }), true);
 });

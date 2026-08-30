@@ -43,15 +43,28 @@ export const saveLlmApiKey = createServerFn({ method: "POST" })
     z
       .object({
         provider: z.enum(["xai-api", "openai-compat"]),
-        key: z.string().trim().min(8).max(400),
+        key: z.string().trim().min(8).max(400).optional(),
+        baseUrl: z.string().trim().max(300).optional(),
+      })
+      .refine((value) => Boolean(value.key) || value.provider === "openai-compat", {
+        message: "API key required",
       })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
     const { requireSecretEditor } = await import("@/lib/server/access");
     await requireSecretEditor(context.userId);
-    const { writeAppSetting } = await import("@/lib/server/app-settings.server");
-    await writeAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY", data.key);
+    const { deleteAppSetting, writeAppSetting } = await import("@/lib/server/app-settings.server");
+    if (data.key) {
+      await writeAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY", data.key);
+    }
+    if (data.provider === "openai-compat" && data.baseUrl !== undefined) {
+      const { normalizeOpenAiCompatBase } = await import("@/lib/llm");
+      const normalized = normalizeOpenAiCompatBase(data.baseUrl);
+      if (data.baseUrl.trim() && !normalized) throw new Error("Enter an https OpenAI-compatible base URL.");
+      if (normalized) await writeAppSetting("OPENAI_COMPAT_BASE", normalized);
+      else await deleteAppSetting("OPENAI_COMPAT_BASE");
+    }
     return { ok: true as const };
   });
 

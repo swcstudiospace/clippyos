@@ -1,6 +1,28 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { brokerButtonsEnabled, publishedBrokerConfigured, resolveGoogleSocial } from "./google-social.ts";
+import { brokerButtonsEnabled, publishedBrokerConfigured, resolveGoogleSocial, resolveTwitterSocial } from "./google-social.ts";
+
+test("TWITTER_CLIENT_ID and TWITTER_CLIENT_SECRET configure native X", () => {
+  const resolved = resolveTwitterSocial({
+    TWITTER_CLIENT_ID: "tid",
+    TWITTER_CLIENT_SECRET: "tsecret",
+  });
+  assert.deepEqual(resolved, { clientId: "tid", clientSecret: "tsecret" });
+});
+
+test("X_CLIENT_ID aliases configure native X", () => {
+  const resolved = resolveTwitterSocial({
+    X_CLIENT_ID: "xid",
+    X_CLIENT_SECRET: "xsecret",
+  });
+  assert.deepEqual(resolved, { clientId: "xid", clientSecret: "xsecret" });
+});
+
+test("missing or blank X credentials resolve to null", () => {
+  assert.equal(resolveTwitterSocial({}), null);
+  assert.equal(resolveTwitterSocial({ TWITTER_CLIENT_ID: "tid" }), null);
+  assert.equal(resolveTwitterSocial({ X_CLIENT_SECRET: "xsecret" }), null);
+});
 
 test("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET configure native Google", () => {
   const resolved = resolveGoogleSocial({

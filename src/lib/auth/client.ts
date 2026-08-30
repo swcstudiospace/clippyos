@@ -105,7 +105,9 @@ export function requireOAuthRedirectUrl(
     throw new Error(
       providerId === "google"
         ? "Google sign-in is not configured on this host."
-        : "Sign-in failed",
+        : providerId === "twitter"
+          ? "X sign-in is not configured on this host."
+          : "Sign-in failed",
     );
   }
   return data.url;
@@ -172,13 +174,13 @@ export async function signIn(
     return;
   }
 
-  if (providerId === "google") {
+  if (providerId === "google" || providerId === "twitter") {
     const { data, error } = await authClient.signIn.social({
-      provider: "google",
+      provider: providerId,
       callbackURL,
       errorCallbackURL,
     });
-    window.location.href = requireOAuthRedirectUrl("google", data, error);
+    window.location.href = requireOAuthRedirectUrl(providerId, data, error);
     return;
   }
 

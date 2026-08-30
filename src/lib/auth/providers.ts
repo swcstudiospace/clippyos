@@ -31,3 +31,31 @@ export const GROK_PROVIDERS: readonly GrokProvider[] = [
   { providerId: "grok-google", idp: "google", label: "Google" },
   { providerId: "grok-x", idp: "twitter", label: "X" },
 ];
+
+/** Booleans only — never include secrets. Filled by `loadSignInFlags`. */
+export type SignInFlags = {
+  googleConfigured: boolean;
+  twitterConfigured: boolean;
+  brokerConfigured: boolean;
+};
+
+/**
+ * Login buttons for the current host. Native Google/X win when their env
+ * creds are present; otherwise the Grok broker buttons (which 404 on a
+ * published deploy with no GROK_AUTH_*). Unconfigured providers are omitted
+ * so the form cannot POST to a missing Better Auth route.
+ */
+export function loginSocialProviders(flags: SignInFlags): GrokProvider[] {
+  const buttons: GrokProvider[] = [];
+  if (flags.googleConfigured) {
+    buttons.push({ providerId: "google", idp: "google", label: "Google" });
+  } else if (flags.brokerConfigured) {
+    buttons.push({ providerId: "grok-google", idp: "google", label: "Google" });
+  }
+  if (flags.twitterConfigured) {
+    buttons.push({ providerId: "twitter", idp: "twitter", label: "X" });
+  } else if (flags.brokerConfigured) {
+    buttons.push({ providerId: "grok-x", idp: "twitter", label: "X" });
+  }
+  return buttons;
+}

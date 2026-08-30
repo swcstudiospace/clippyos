@@ -17,7 +17,35 @@ export type LlmFeature = (typeof LLM_FEATURES)[number];
 export const LLM_MODELS = [
   { id: "grok-4.6", label: "Grok 4.6", provider: "xai", class: "flagship" },
   { id: "grok-4.5", label: "Grok 4.5", provider: "xai", class: "flagship" },
+  { id: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash (OpenRouter)", provider: "openrouter", class: "fast" },
 ] as const;
+
+export const DEFAULT_OPENAI_COMPAT_BASE = "https://openrouter.ai/api/v1";
+
+export function modelsForProvider(provider: LlmProviderId) {
+  if (provider === "openai-compat") {
+    return LLM_MODELS.filter((row) => row.provider !== "xai");
+  }
+  return LLM_MODELS.filter((row) => row.provider === "xai");
+}
+
+/** https anywhere; http only on loopback. Empty → null (caller uses the default). */
+export function normalizeOpenAiCompatBase(raw: string): string | null {
+  const value = raw.trim().replace(/\/+$/, "");
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.protocol === "http:") {
+    const host = url.hostname.toLowerCase();
+    if (host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]") return null;
+  }
+  return value;
+}
 
 export type LlmRouterConfig = {
   defaultProvider: LlmProviderId;
@@ -49,8 +77,8 @@ export const LLM_PROVIDER_COPY: Record<
   },
   "openai-compat": {
     name: "OpenAI-compatible API",
-    purpose: "Existing Claude / OpenAI-style key (AI_API_KEY) for continuity.",
-    billing: "Whatever that provider bills. Kept until you migrate defaults to Grok.",
+    purpose: "OpenRouter, Claude, or any OpenAI-style base URL + key (AI_API_KEY + OPENAI_COMPAT_BASE).",
+    billing: "Whatever that provider bills. Set the base URL to https://openrouter.ai/api/v1 for GLM 5.3 Flash.",
   },
 };
 
@@ -73,6 +101,7 @@ export type LlmProviderStatus = {
   last4: string | null;
   email: string | null;
   models: string[];
+  baseUrl?: string | null;
 };
 
 export type LlmRateLimitState = {

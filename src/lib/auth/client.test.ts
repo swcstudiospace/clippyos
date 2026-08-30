@@ -30,6 +30,10 @@ test("non-google oauth without a redirect URL fails sign-in", () => {
     () => requireOAuthRedirectUrl("grok-x", { url: null }, null),
     { message: "Sign-in failed" },
   );
+  assert.throws(
+    () => requireOAuthRedirectUrl("twitter", {}, null),
+    { message: "X sign-in is not configured on this host." },
+  );
 });
 
 test("oauth errors throw instead of returning", () => {
