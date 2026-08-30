@@ -40,22 +40,21 @@ export type SignInFlags = {
 };
 
 /**
- * Login buttons for the current host. Native Google/X win when their env
- * creds are present; otherwise the Grok broker buttons (which 404 on a
- * published deploy with no GROK_AUTH_*). Unconfigured providers are omitted
- * so the form cannot POST to a missing Better Auth route.
+ * Login always shows Google and X. Native ids win when env creds exist;
+ * otherwise the Grok broker when that client is live; otherwise native ids
+ * still render so the buttons never vanish. Unconfigured native social
+ * returns PROVIDER_NOT_FOUND (not an empty oauth2 404).
  */
 export function loginSocialProviders(flags: SignInFlags): GrokProvider[] {
-  const buttons: GrokProvider[] = [];
-  if (flags.googleConfigured) {
-    buttons.push({ providerId: "google", idp: "google", label: "Google" });
-  } else if (flags.brokerConfigured) {
-    buttons.push({ providerId: "grok-google", idp: "google", label: "Google" });
-  }
-  if (flags.twitterConfigured) {
-    buttons.push({ providerId: "twitter", idp: "twitter", label: "X" });
-  } else if (flags.brokerConfigured) {
-    buttons.push({ providerId: "grok-x", idp: "twitter", label: "X" });
-  }
-  return buttons;
+  const google: GrokProvider = flags.googleConfigured
+    ? { providerId: "google", idp: "google", label: "Google" }
+    : flags.brokerConfigured
+      ? { providerId: "grok-google", idp: "google", label: "Google" }
+      : { providerId: "google", idp: "google", label: "Google" };
+  const x: GrokProvider = flags.twitterConfigured
+    ? { providerId: "twitter", idp: "twitter", label: "X" }
+    : flags.brokerConfigured
+      ? { providerId: "grok-x", idp: "twitter", label: "X" }
+      : { providerId: "twitter", idp: "twitter", label: "X" };
+  return [google, x];
 }

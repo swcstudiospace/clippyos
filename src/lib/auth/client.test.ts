@@ -24,15 +24,22 @@ test("google social without a redirect URL is a configuration error", () => {
 test("non-google oauth without a redirect URL fails sign-in", () => {
   assert.throws(
     () => requireOAuthRedirectUrl("grok-google", null, null),
-    { message: "Sign-in failed" },
+    { message: "Google sign-in is not configured on this host." },
   );
   assert.throws(
     () => requireOAuthRedirectUrl("grok-x", { url: null }, null),
-    { message: "Sign-in failed" },
+    { message: "X sign-in is not configured on this host." },
   );
   assert.throws(
     () => requireOAuthRedirectUrl("twitter", {}, null),
     { message: "X sign-in is not configured on this host." },
+  );
+});
+
+test("provider-not-found is a configuration error", () => {
+  assert.throws(
+    () => requireOAuthRedirectUrl("google", null, { message: "Provider not found" }),
+    { message: "Google sign-in is not configured on this host." },
   );
 });
 
