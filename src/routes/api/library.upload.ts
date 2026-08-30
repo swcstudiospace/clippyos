@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { getSessionUser } from "@/lib/auth/verify.server";
 import { ingestBytes } from "@/lib/server/library-pipeline.server";
 import { readMediaSettings } from "@/lib/server/library.server";
+import { publicErrorCode } from "@/lib/safe-error";
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -54,7 +55,7 @@ export const Route = createFileRoute("/api/library/upload")({
             duplicate: result.duplicate,
           });
         } catch (error) {
-          const code = error instanceof Error ? error.message : "DATA_UNAVAILABLE";
+          const code = publicErrorCode(error);
           return json(400, { error: code });
         }
       },

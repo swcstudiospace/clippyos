@@ -9,6 +9,7 @@ import {
   SKILL_ARTIFACT_MAX_BYTES,
   SKILL_ENV_ALLOWLIST,
   SKILL_ENV_DENY,
+  shellEnvAssignment,
 } from "@/lib/sandbox";
 
 const TOKEN_KEY = "SKILL_RUN_TOKENS_JSON";
@@ -51,7 +52,8 @@ export function buildSkillSandboxEnv(input: {
 
 export function formatEnvExports(env: Record<string, string>): string {
   return Object.entries(env)
-    .map(([key, value]) => `${key}='${value.replace(/'/g, "")}'`)
+    .map(([key, value]) => shellEnvAssignment(key, value))
+    .filter((item): item is string => Boolean(item))
     .join(" ");
 }
 

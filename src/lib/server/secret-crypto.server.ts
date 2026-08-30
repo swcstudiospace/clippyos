@@ -63,3 +63,11 @@ export function decryptSecret(
 export function looksEncryptedSecret(value: string): boolean {
   return value.startsWith(SECRET_ENVELOPE_PREFIX);
 }
+
+/** Workspace/operator keys that must be enveloped. JSON blobs and timestamps stay plaintext. */
+export function isEncryptedSettingKey(key: string): boolean {
+  const k = key.trim();
+  if (!k) return false;
+  if (/_(JSON|AT|STATE|URL|PATH|DAYS|MS|HEX)$/i.test(k)) return false;
+  return /(?:^|_)(SECRET|TOKEN|API_KEY|PASSWORD|PRIVATE_KEY)(?:_|$)/i.test(k);
+}

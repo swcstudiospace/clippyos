@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { rateLimitOrThrow, readWebhookSecret } from "@/lib/server/autonomy-auth.server";
 import { sanitizeRequestId } from "@/lib/security-headers";
+import { parseJsonObject, MAX_JSON_BODY_BYTES } from "@/lib/safe-json";
 import { verifyInboundSignature } from "@/lib/server/autonomy-events.server";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import { readIdempotency, writeAuditLog, writeIdempotency } from "@/lib/server/autonomy-audit.server";
@@ -30,6 +31,9 @@ export const Route = createFileRoute("/api/webhooks/inbound")({
           });
         }
         const raw = await request.text();
+        if (raw.length > MAX_JSON_BODY_BYTES) {
+          return json(400, { error: { code: "VALIDATION", message: "JSON body required." }, requestId: rid });
+        }
         const timestamp =
           request.headers.get("x-agency-timestamp") ?? request.headers.get("x-webhook-timestamp") ?? "";
         const signature =
@@ -64,7 +68,7 @@ export const Route = createFileRoute("/api/webhooks/inbound")({
           run_id?: string;
         };
         try {
-          envelope = JSON.parse(raw) as typeof envelope;
+          envelope = parseJsonObject(raw) as typeof envelope;
         } catch {
           return json(400, { error: { code: "VALIDATION", message: "JSON body required." }, requestId: rid });
         }
