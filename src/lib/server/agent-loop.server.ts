@@ -8,7 +8,9 @@ import {
   CLIPPING_PRESET_SKILLS,
   CRAYO_PLAN_SKELETONS,
   allowlistForPreset,
+  explainAgentToolError,
   isCrayoPreset,
+  isFatalAgentToolError,
   normalizePreset,
   PRESET_PLAN_SKELETONS,
   presetSkillSlug,
@@ -425,6 +427,18 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
 
       let attempt = 0;
       let done = false;
+      if (step.tool === "crayo.run_short" || step.tool === "crayo.run_autoclip") {
+        await insertIteration({
+          runId,
+          index: stepIndex + 1,
+          kind: "observe",
+          stepId: step.id,
+          toolName: step.tool,
+          resultSummary:
+            "Calling Crayo now. Image, voice, and export can take up to 3 minutes. This is waiting on api.crayo.ai — not frozen.",
+          status: "running",
+        });
+      }
       while (attempt <= AGENT_STEP_RETRIES && !done) {
         const started = Date.now();
         try {
@@ -554,16 +568,18 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
             stepId: step.id,
             toolName: step.tool,
             argsSummary: summarize(args),
-            resultSummary: code.slice(0, 200),
+            resultSummary: explainAgentToolError(code).slice(0, 500),
             status: "error",
           });
-          if (code === "AI_TIER_GATED") {
+          if (code === "AI_TIER_GATED" || isFatalAgentToolError(code) || step.tool.startsWith("crayo.")) {
+            const summary = explainAgentToolError(code);
             await patchAgentRun(runId, {
               status: "failed",
-              errorCode: code,
-              summary: "This SuperGrok tier cannot run inference. Switch to the xAI API key.",
+              errorCode: code.slice(0, 80),
+              summary,
               finishedAt: new Date().toISOString(),
               iterationCount: stepIndex + 1,
+              outputs,
             });
             await emitRunEvent("agent.run.failed", runId, { reason: code });
             return;

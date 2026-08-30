@@ -55,6 +55,11 @@ export function AgentTimeline({
             {rateLimitMessage}
           </p>
         ) : null}
+        {detail.run.status === "failed" && detail.run.summary ? (
+          <p className="mt-3 rounded-control bg-danger/10 px-3 py-2 text-caption text-danger" role="status">
+            {detail.run.summary}
+          </p>
+        ) : null}
         {detail.run.status === "waiting_human" ? (
           <p className="mt-3 text-caption text-warning">
             Waiting on a human — login wall, CAPTCHA, or skill approval. Open Social if this is a session.

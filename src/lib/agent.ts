@@ -580,3 +580,49 @@ export function agentStatusLabel(status: AgentRunStatus): string {
       return status;
   }
 }
+
+export function explainAgentToolError(code: string): string {
+  const key = code.trim().split(/\s/)[0] ?? code;
+  switch (key) {
+    case "MISSING":
+      return "Crayo isn’t on this server yet. The key lives in Vercel Production as CRAYO_API_KEY — it only applies after the next deploy. This tab cannot mint videos until then.";
+    case "UNAUTHORIZED":
+      return "Crayo rejected the API key. Rotate it in Crayo, update Vercel CRAYO_API_KEY, and redeploy. Never paste the key into chat.";
+    case "VALIDATION":
+      return "This step needed a topic, spoken script, or https URL. Use /short your hook or /autoclip https://… — or the cards above.";
+    case "INSUFFICIENT_CREDITS":
+      return "Crayo credits or storage are empty. Top up on crayo.ai, then retry.";
+    case "TIMEOUT":
+      return "Crayo is still rendering (exports can take a few minutes). Wait, then retry. Don’t invent a video URL.";
+    case "RATE_LIMIT":
+      return "Crayo is rate-limiting. Wait a moment and retry.";
+    case "UNTRUSTED_URL":
+      return "Library ingest only accepts Crayo CDN https files. The export URL wasn’t a trusted host.";
+    case "CRAYO_FAILED":
+      return "Crayo returned an error. Check credits and the source URL. No file was stored.";
+    case "INGEST_FAILED":
+      return "The video rendered, but Filebase/library ingest failed. The Crayo URL may still be in the step output.";
+    case "GROK_BOT_NOT_CONNECTED":
+      return "Grok Bot isn’t online. Turn off the Grok Bot switch to run on this server, or open the Bot so it can claim work.";
+    case "AI_TIER_GATED":
+      return "This SuperGrok tier cannot run inference. Switch the Agent feature to the xAI API key or OpenRouter in Settings → LLM.";
+    case "AUTOMATION_DISABLED":
+      return "Automation is off. Turn it on in Settings → Hermes Connect.";
+    default:
+      return code.slice(0, 280);
+  }
+}
+
+export function isFatalAgentToolError(code: string): boolean {
+  const key = code.trim().split(/\s/)[0] ?? code;
+  return (
+    key === "MISSING" ||
+    key === "UNAUTHORIZED" ||
+    key === "VALIDATION" ||
+    key === "INSUFFICIENT_CREDITS" ||
+    key === "UNTRUSTED_URL" ||
+    key === "CRAYO_FAILED" ||
+    key === "AI_TIER_GATED" ||
+    key === "AUTOMATION_DISABLED"
+  );
+}
