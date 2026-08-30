@@ -526,6 +526,12 @@ export function userFacingErrorMessage(error: unknown): string {
   }
   if (
     error instanceof Error &&
+    /sign.?up is disabled|SIGN_UP_DISABLED/i.test(error.message)
+  ) {
+    return "This workspace does not accept public sign-up. Use Super Admin, an invited login, or a paid seat.";
+  }
+  if (
+    error instanceof Error &&
     error.message.length > 0 &&
     error.message.length < 180 &&
     /[a-z]/.test(error.message) &&

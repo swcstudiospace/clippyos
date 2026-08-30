@@ -38,6 +38,7 @@ import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
 import { isAuthConfigured } from "./auth-configured";
 import { emailAndPasswordEnabled } from "./email-password";
+import { publicSignUpEnabled } from "./public-signup";
 import { GROK_PROVIDERS } from "./providers";
 import { pgliteDialect } from "./pglite-dialect";
 import { GROK_ISSUER_DEFAULT, PREVIEW_ALLOWED_HOSTS } from "./preview";
@@ -167,6 +168,7 @@ const grokOAuthPlugin = (!authDisabled && grokClientId && grokClientSecret)
         // broker session. Combined with the broker sending Google
         // `prompt=select_account`, the user always gets the account chooser
         // and can pick (or switch) which account to sign in with.
+        disableSignUp: !publicSignUpEnabled,
         authorizationUrlParams: { idp, prompt: "login" },
         // production redirect_uri is https://os.swcstudio.space/api/auth/oauth2/callback/<provider>;
         // never clippyos.grok.me. Live preview (no DATABASE_URL) keeps dynamic sandbox URI.
@@ -196,6 +198,7 @@ export const auth = betterAuth({
       ? {
           clientId: googleSocial.clientId,
           clientSecret: googleSocial.clientSecret,
+          disableSignUp: !publicSignUpEnabled,
           redirectURI: socialCallbackURL("google", CANONICAL_APP_ORIGIN),
         }
       : undefined,
@@ -203,6 +206,7 @@ export const auth = betterAuth({
       ? {
           clientId: twitterSocial.clientId,
           clientSecret: twitterSocial.clientSecret,
+          disableSignUp: !publicSignUpEnabled,
           redirectURI: socialCallbackURL("twitter", CANONICAL_APP_ORIGIN),
         }
       : undefined,
@@ -236,7 +240,9 @@ export const auth = betterAuth({
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
-  ...(!authDisabled && emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+  ...(!authDisabled && emailAndPasswordEnabled
+    ? { emailAndPassword: { enabled: true, disableSignUp: !publicSignUpEnabled } }
+    : {}),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
