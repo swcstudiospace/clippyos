@@ -204,6 +204,60 @@ export const REMOTE_MCP_TOOLS: readonly RemoteMcpToolDef[] = [
     },
   },
   {
+    name: "crayo_get_account",
+    action: "crayo.get_account",
+    domain: "Crayo",
+    description: "Crayo plan and credits. Never returns the API key.",
+    scopes: ["agent:read"],
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "crayo_run_short",
+    action: "crayo.run_short",
+    domain: "Crayo",
+    description: "Generate a 9:16 Crayo short and ingest the mp4 into the Filebase library.",
+    scopes: ["agent:write"],
+    inputSchema: {
+      type: "object",
+      required: ["prompt"],
+      properties: {
+        prompt: { type: "string" },
+        script: { type: "string" },
+        title: { type: "string" },
+        clientId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "crayo_run_autoclip",
+    action: "crayo.run_autoclip",
+    domain: "Crayo",
+    description: "Import a long-form https URL, AutoClip, ingest thumbnails into the Filebase library.",
+    scopes: ["agent:write"],
+    inputSchema: {
+      type: "object",
+      required: ["url"],
+      properties: {
+        url: { type: "string" },
+        clipCount: { type: "number" },
+        clipLength: { type: "number" },
+        clientId: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "crayo_ingest_to_library",
+    action: "crayo.ingest_to_library",
+    domain: "Crayo",
+    description: "Copy a Crayo CDN https file into the Filebase library. Rejects non-Crayo hosts.",
+    scopes: ["agent:write"],
+    inputSchema: {
+      type: "object",
+      required: ["url"],
+      properties: { url: { type: "string" }, title: { type: "string" }, clientId: { type: "string" } },
+    },
+  },
+  {
     name: "social_get_publisher_status",
     action: "social.get_publisher_status",
     domain: "Social",
@@ -747,4 +801,4 @@ export function hermesScopesFromMcp(scopes: readonly McpScope[]): ApiKeyScope[] 
 }
 
 export const REMOTE_MCP_INSTRUCTIONS =
-  "ClippyOS Remote MCP. Least-privilege tools only. Publish honors Approvals — never bypass. Never request AppSetting secrets, OAuth tokens, webhook secrets, Super Admin, or Daytona start. Grok Bot clients: grokbot_heartbeat, grokbot_list_work, grokbot_claim_work, grokbot_complete_work. Do not start Daytona.";
+  "ClippyOS Remote MCP. Least-privilege tools only. Publish honors Approvals — never bypass. Never request AppSetting secrets, OAuth tokens, webhook secrets, Super Admin, or Daytona start. Crayo: crayo_get_account, crayo_run_short, crayo_run_autoclip, crayo_ingest_to_library (Filebase library, Crayo CDN only). Grok Bot clients: grokbot_heartbeat, grokbot_list_work, grokbot_claim_work, grokbot_complete_work. Do not start Daytona.";

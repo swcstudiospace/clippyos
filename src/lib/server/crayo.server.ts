@@ -38,8 +38,8 @@ function looksRedacted(value: string): boolean {
 
 function envPair(): CrayoCreds | null {
   const key = process.env.CRAYO_API_KEY?.trim() || process.env.CRAYO_KEY?.trim() || "";
-  const secret = process.env.CRAYO_API_SECRET?.trim() || process.env.CRAYO_SECRET?.trim() || "";
-  if (key && secret && !looksRedacted(key) && !looksRedacted(secret)) {
+  if (key && !looksRedacted(key)) {
+    const secret = process.env.CRAYO_API_SECRET?.trim() || process.env.CRAYO_SECRET?.trim() || "";
     return { key, secret };
   }
   return null;
@@ -81,16 +81,16 @@ function credsFromSettings(map: Map<string, string>): CrayoCreds | null {
     const idx = combined.indexOf(":");
     const key = combined.slice(0, idx).trim();
     const secret = combined.slice(idx + 1).trim();
+    if (key && key.startsWith("crayo_sk_")) return { key, secret };
     if (key && secret) return { key, secret };
   }
   const keyId = SETTING_KEY_IDS.find((id) => map.get(id)?.trim());
-  const secretId = SETTING_SECRET_IDS.find((id) => map.get(id)?.trim());
-  if (keyId && secretId) {
+  if (keyId) {
     const key = map.get(keyId)!.trim();
-    const secret = map.get(secretId)!.trim();
-    if (key && secret && !looksRedacted(key) && !looksRedacted(secret)) {
-      return { key, secret };
-    }
+    if (!key || looksRedacted(key)) return null;
+    const secretId = SETTING_SECRET_IDS.find((id) => map.get(id)?.trim());
+    const secret = secretId ? map.get(secretId)!.trim() : "";
+    return { key, secret };
   }
   return null;
 }
@@ -195,7 +195,12 @@ export async function crayoAvailable(): Promise<boolean> {
 }
 
 function authHeader(creds: CrayoCreds): string {
-  return `Bearer ${creds.key}:${creds.secret}`;
+  const token = creds.key.startsWith("crayo_sk_")
+    ? creds.key
+    : creds.key.includes(":")
+      ? creds.key.slice(0, creds.key.indexOf(":")).trim()
+      : creds.key;
+  return `Bearer ${token}`;
 }
 
 function requestHeaders(creds: CrayoCreds): Record<string, string> {
@@ -249,9 +254,8 @@ function detailText(payload: unknown): string {
   return "";
 }
 
-function mapHttpError(status: number, payload?: unknown): CrayoVideoResult {
+function mapHttpError(status: number, _payload?: unknown): CrayoVideoResult {
   if (status === 429) return { ok: false, error: "rate_limit" };
-  const detail = detailText(payload).toLowerCase();
   if (status === 401 || status === 403) return { ok: false, error: "missing" };
   if (status === 402) return { ok: false, error: "failed" }; // insufficient credits
   if (status >= 500) return { ok: false, error: "failed" };
@@ -408,4 +412,164 @@ export function crayoErrorMessage(
   if (error === "missing") return "This tool will be available once you connect your Crayo.ai API key.";
   if (error === "processing") return "Video is still being generated. Check back shortly.";
   return "The video didn't come through. Retry.";
+}
+
+export class CrayoApiError extends Error {
+  code: string;
+  status: number;
+  constructor(code: string, message: string, status = 400) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+async function crayoJson(
+  creds: CrayoCreds,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<unknown> {
+  const url = path.startsWith("http") ? path : `${CRAYO_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: requestHeaders(creds),
+      body: body && method !== "GET" && method !== "DELETE" ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(method === "GET" ? 20000 : 45000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") throw new CrayoApiError("TIMEOUT", "Crayo request timed out.", 504);
+    throw new CrayoApiError("FAILED", "Couldn’t reach Crayo.", 502);
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new CrayoApiError("UNAUTHORIZED", "Crayo API key is missing or revoked.", response.status);
+  }
+  if (response.status === 429) throw new CrayoApiError("RATE_LIMIT", "Crayo rate limit. Retry shortly.", 429);
+  if (response.status === 402) throw new CrayoApiError("INSUFFICIENT_CREDITS", "Crayo credits or storage are exhausted.", 402);
+  if (!response.ok) {
+    const message = detailText(payload) || `Crayo returned ${response.status}.`;
+    throw new CrayoApiError("FAILED", message.slice(0, 280), response.status);
+  }
+  return payload;
+}
+
+function requireCredsOrThrow(creds: CrayoCreds | null): CrayoCreds {
+  if (!creds) throw new CrayoApiError("MISSING", crayoErrorMessage("missing"), 503);
+  return creds;
+}
+
+export async function crayoGetAccount(): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "GET", "/account");
+}
+
+export async function crayoListAssets(input: { type?: string; limit?: number } = {}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const params = new URLSearchParams();
+  if (input.type) params.set("type", input.type);
+  if (input.limit) params.set("limit", String(Math.min(100, Math.max(1, input.limit))));
+  const q = params.toString();
+  return crayoJson(creds, "GET", `/assets${q ? `?${q}` : ""}`);
+}
+
+export async function crayoImportAsset(input: { url: string; name?: string }): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/assets", { url: input.url, name: input.name });
+}
+
+export async function crayoGenerateImage(input: {
+  prompt: string;
+  aspectRatio?: string;
+  model?: string;
+}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/image-generator", {
+    prompt: input.prompt,
+    aspect_ratio: input.aspectRatio ?? "9:16",
+    model: input.model,
+  });
+}
+
+export async function crayoListVoices(input: { search?: string; limit?: number } = {}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const params = new URLSearchParams();
+  if (input.search) params.set("search", input.search);
+  params.set("limit", String(input.limit ?? 20));
+  return crayoJson(creds, "GET", `/voices?${params.toString()}`);
+}
+
+export async function crayoGenerateVoiceover(input: {
+  script: string;
+  voiceId: string;
+  title?: string;
+}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/voiceover-generator", {
+    script: input.script,
+    voice_id: input.voiceId,
+    title: input.title,
+  });
+}
+
+export async function crayoCreateProject(input: Record<string, unknown>): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/projects", input);
+}
+
+export async function crayoExportProject(projectId: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", `/projects/${encodeURIComponent(projectId)}/export`);
+}
+
+export async function crayoGetExport(exportId: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "GET", `/exports/${encodeURIComponent(exportId)}`);
+}
+
+export async function crayoCreateAutoclip(input: {
+  assetId: string;
+  clipCount?: number;
+  clipLength?: number;
+  editLevel?: string;
+  prompt?: string;
+}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/autoclip", {
+    asset_id: input.assetId,
+    clip_count: input.clipCount ?? 5,
+    clip_length: input.clipLength ?? 60,
+    edit_level: input.editLevel ?? "full",
+    prompt: input.prompt,
+  });
+}
+
+export async function crayoGetAutoclip(id: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "GET", `/autoclip/${encodeURIComponent(id)}`);
+}
+
+export async function crayoPollExport(exportId: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  for (let i = 0; i < MAX_POLLS; i += 1) {
+    const payload = await crayoJson(creds, "GET", `/exports/${encodeURIComponent(exportId)}`);
+    const status = String(
+      (payload && typeof payload === "object" && "export" in payload
+        ? (payload as { export?: { status?: string } }).export?.status
+        : (payload as { status?: string }).status) ?? "",
+    ).toLowerCase();
+    if (status === "completed" || status === "complete" || status === "succeeded") return payload;
+    if (status === "failed" || status === "error") {
+      throw new CrayoApiError("FAILED", "Crayo export failed.", 400);
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+  throw new CrayoApiError("TIMEOUT", "Crayo export is still processing.", 504);
 }

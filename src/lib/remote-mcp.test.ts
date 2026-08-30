@@ -49,6 +49,7 @@ test("tools/list filter hides write tools from read-only scopes", () => {
   assert.equal(visible.includes("social_create_upload_job"), false);
   assert.equal(visible.includes("approvals_decide"), false);
   assert.equal(visible.includes("agent_start_run"), false);
+  assert.equal(visible.includes("crayo_run_short"), false);
   assert.equal(visible.includes("grokbot_claim_work"), false);
   assert.equal(hasMcpScope(read, "mcp:discover"), true);
 });

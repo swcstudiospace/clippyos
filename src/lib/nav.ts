@@ -1,7 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
-  Bot,
   CalendarDays,
   Clapperboard,
   CreditCard,
@@ -34,9 +33,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: "/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/leads", label: "Leads", icon: Target },
   { to: "/ideation", label: "Ideation", icon: Lightbulb },
-  { to: "/agent", label: "Agent", icon: Bot },
+  { to: "/agent", label: "Crayo", icon: Scissors },
   { to: "/thumbnails", label: "Thumbnails", icon: Image },
-  { to: "/clipping", label: "Clipping", icon: Scissors },
   { to: "/library", label: "Library", icon: Clapperboard },
   { to: "/studio", label: "Studio", icon: Clapperboard },
   { to: "/social", label: "Social", icon: Share2 },

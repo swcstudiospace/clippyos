@@ -6,7 +6,9 @@ import {
   AGENT_PROPOSE_MIN_STEPS,
   AGENT_STEP_RETRIES,
   CLIPPING_PRESET_SKILLS,
+  CRAYO_PLAN_SKELETONS,
   allowlistForPreset,
+  isCrayoPreset,
   normalizePreset,
   PRESET_PLAN_SKELETONS,
   presetSkillSlug,
@@ -14,6 +16,7 @@ import {
   type AgentPreset,
   type ClippingPresetSkill,
 } from "@/lib/agent";
+import { crayoAutoclipFieldsFromGoal, crayoShortFieldsFromGoal } from "@/lib/agent-crayo";
 import { readLlmRouter, routedChat, routedText } from "@/lib/server/llm-router.server";
 import { xaiRateLimitSnapshot, type XaiChatMessage } from "@/lib/server/xai.server";
 import { readAutomationEnabled, readPlaybookPolicies } from "@/lib/server/autonomy-policy.server";
@@ -39,6 +42,7 @@ You are the ClippyOS AI Clipping Agent — the autonomous production operator fo
 
 <capabilities>
 Your tool allowlist for this run is provided at planning time. Stay inside it. Families:
+- crayo.* — api.crayo.ai: account, assets, voices, image, voiceover, project, export, AutoClip. Spends Crayo credits. Never echo the API key.
 - clipping.* — research_channel, generate_ideas, generate_titles, generate_thumbnail, set_stage, distribute_social, run_skill, desktop observation.
 - library.* — search/get assets, queue_render, attach_to_social_job. Prefer mediaAssetId from the library (9:16 for TikTok/IG, 16:9 for YouTube-only).
 - computer.* / browser.* — Social Machine Computer Use. Every start is billable. Screenshot then vision.analyze before claiming UI state. Never type passwords, 2FA, or CAPTCHA.
@@ -284,6 +288,9 @@ async function buildPlan(input: {
     }));
     return skeleton;
   }
+  if (isCrayoPreset(input.preset)) {
+    return CRAYO_PLAN_SKELETONS[input.preset].map((step) => ({ ...step, args: { ...step.args } }));
+  }
   const allowList = [...input.allow].join(", ");
   try {
     const text = await routedText({
@@ -389,6 +396,16 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
         ) {
           args.arguments = { ...(args.arguments as Record<string, unknown>), clientId: run.clientId };
         }
+      }
+      if (step.tool === "crayo.run_short") {
+        const fields = crayoShortFieldsFromGoal(run.goal);
+        if (typeof args.prompt !== "string" || !args.prompt.trim()) args.prompt = fields.prompt;
+        if ((typeof args.script !== "string" || !args.script.trim()) && fields.script) args.script = fields.script;
+      }
+      if (step.tool === "crayo.run_autoclip") {
+        const fields = crayoAutoclipFieldsFromGoal(run.goal);
+        if ((typeof args.url !== "string" || !args.url.trim()) && fields.url) args.url = fields.url;
+        if (args.clipCount == null) args.clipCount = fields.clipCount;
       }
       if (run.skillId && (step.tool === "clipping.run_skill" || step.tool === "skills.invoke")) {
         args.skillId = run.skillId;

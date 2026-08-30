@@ -663,6 +663,92 @@ const TOOL_INPUTS: Record<string, Record<string, unknown>> = {
     properties: { agentRunId: { type: "string" } },
   },
   "clipping.check_crayo_login": { type: "object", properties: {} },
+  "crayo.get_account": { type: "object", properties: {} },
+  "crayo.list_assets": {
+    type: "object",
+    properties: { type: { type: "string" }, limit: { type: "number" } },
+  },
+  "crayo.list_voices": {
+    type: "object",
+    properties: { search: { type: "string" }, limit: { type: "number" } },
+  },
+  "crayo.import_asset": {
+    type: "object",
+    required: ["url"],
+    properties: { url: { type: "string" }, name: { type: "string" } },
+  },
+  "crayo.generate_image": {
+    type: "object",
+    required: ["prompt"],
+    properties: {
+      prompt: { type: "string" },
+      aspectRatio: { type: "string" },
+      model: { type: "string" },
+    },
+  },
+  "crayo.generate_voiceover": {
+    type: "object",
+    required: ["script", "voiceId"],
+    properties: { script: { type: "string" }, voiceId: { type: "string" }, title: { type: "string" } },
+  },
+  "crayo.create_project": {
+    type: "object",
+    required: ["title", "scenes"],
+    properties: { title: { type: "string" }, scenes: { type: "array" }, narration: { type: "object" }, music: { type: "object" }, subtitles: { type: "object" } },
+  },
+  "crayo.export_project": {
+    type: "object",
+    required: ["projectId"],
+    properties: { projectId: { type: "string" } },
+  },
+  "crayo.get_export": {
+    type: "object",
+    required: ["exportId"],
+    properties: { exportId: { type: "string" } },
+  },
+  "crayo.create_autoclip": {
+    type: "object",
+    required: ["assetId"],
+    properties: {
+      assetId: { type: "string" },
+      clipCount: { type: "number" },
+      clipLength: { type: "number" },
+      editLevel: { type: "string" },
+      prompt: { type: "string" },
+    },
+  },
+  "crayo.get_autoclip": {
+    type: "object",
+    required: ["id"],
+    properties: { id: { type: "string" } },
+  },
+  "crayo.ingest_to_library": {
+    type: "object",
+    required: ["url"],
+    properties: { url: { type: "string" }, title: { type: "string" }, clientId: { type: "string" } },
+  },
+  "crayo.run_short": {
+    type: "object",
+    required: ["prompt"],
+    properties: {
+      prompt: { type: "string" },
+      script: { type: "string" },
+      title: { type: "string" },
+      clientId: { type: "string" },
+    },
+  },
+  "crayo.run_autoclip": {
+    type: "object",
+    required: ["url"],
+    properties: {
+      url: { type: "string" },
+      clipCount: { type: "number" },
+      clipLength: { type: "number" },
+      editLevel: { type: "string" },
+      prompt: { type: "string" },
+      clientId: { type: "string" },
+    },
+  },
   "clipping.run_browser_procedure": {
     type: "object",
     required: ["skillSlug"],
