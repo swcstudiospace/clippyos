@@ -43,8 +43,14 @@ export const SKILL_ENV_DENY = [
   "WEBHOOK_SECRET",
   "WEBHOOK_SIGNING_SECRET",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_SECRET_KEY",
   "DATABASE_URL",
   "BETTER_AUTH_SECRET",
+  "CRON_SECRET",
+  "CRAYO_API_KEY",
+  "OPERATOR_SECRETS_KEY",
+  "GOOGLE_CLIENT_SECRET",
+  "TWITTER_CLIENT_SECRET",
 ] as const;
 
 export const SKILL_ARTIFACT_EXTS = [
@@ -59,6 +65,8 @@ export const SKILL_ARTIFACT_EXTS = [
 ] as const;
 
 export const SKILL_ARTIFACT_MAX_BYTES = 2_000_000;
+export const SKILL_NETWORK_DOMAIN_ALLOWLIST =
+  "os.swcstudio.space,*.swcstudio.space,clippyos.grok.me";
 export const SKILL_SANDBOX_AUTOSTOP_MINUTES = 5;
 export const SOCIAL_SANDBOX_AUTOSTOP_MINUTES = 20;
 

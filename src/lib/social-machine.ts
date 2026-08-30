@@ -667,3 +667,62 @@ export function ipfsGatewayUrl(gateway: string, cid: string): string {
   return `${base}${safeCid}`;
 }
 
+/**
+ * Default Social Machine egress domains (NIST SC-7). Computer Use needs the
+ * publisher origins plus their CDNs and Google OAuth. Operators may widen or
+ * set `unrestricted` via SOCIAL_MACHINE_DOMAIN_ALLOWLIST.
+ */
+export const DEFAULT_SOCIAL_MACHINE_DOMAIN_ALLOWLIST = [
+  "tiktok.com",
+  "*.tiktok.com",
+  "*.tiktokcdn.com",
+  "*.muscdn.com",
+  "instagram.com",
+  "*.instagram.com",
+  "*.cdninstagram.com",
+  "facebook.com",
+  "*.facebook.com",
+  "*.fbcdn.net",
+  "youtube.com",
+  "*.youtube.com",
+  "*.googlevideo.com",
+  "*.ytimg.com",
+  "*.ggpht.com",
+  "x.com",
+  "twitter.com",
+  "*.twitter.com",
+  "*.twimg.com",
+  "linkedin.com",
+  "*.linkedin.com",
+  "snapchat.com",
+  "*.snapchat.com",
+  "threads.net",
+  "*.threads.net",
+  "pinterest.com",
+  "*.pinterest.com",
+  "crayo.ai",
+  "*.crayo.ai",
+  "cdn-crayo.com",
+  "*.cdn-crayo.com",
+  "google.com",
+  "*.google.com",
+  "gstatic.com",
+  "*.gstatic.com",
+  "googleapis.com",
+  "*.googleapis.com",
+  "accounts.google.com",
+  "proxyscrape.com",
+  "*.proxyscrape.com",
+].join(",");
+
+export function socialMachineDomainAllowList(override?: string | null): string | undefined {
+  const raw = String(override ?? "").trim();
+  if (!raw) return DEFAULT_SOCIAL_MACHINE_DOMAIN_ALLOWLIST;
+  if (raw === "*" || raw.toLowerCase() === "unrestricted") return undefined;
+  const cleaned = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return cleaned.length ? cleaned.join(",") : DEFAULT_SOCIAL_MACHINE_DOMAIN_ALLOWLIST;
+}
+

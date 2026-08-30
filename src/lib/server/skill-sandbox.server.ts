@@ -6,7 +6,7 @@ import { Daytona } from "@daytona/sdk";
 import { loadDaytonaConfig } from "@/lib/server/daytona.server";
 import { sanitizeText } from "@/lib/sanitize";
 import { artifactAllowed, buildSkillSandboxEnv, formatEnvExports } from "@/lib/server/sandbox-security.server";
-import { SKILL_SANDBOX_AUTOSTOP_MINUTES } from "@/lib/sandbox";
+import { SKILL_NETWORK_DOMAIN_ALLOWLIST, SKILL_SANDBOX_AUTOSTOP_MINUTES } from "@/lib/sandbox";
 
 export type SkillArtifact = { name: string; size: number };
 
@@ -90,6 +90,7 @@ export async function runPythonInSkillSandbox(input: {
       labels: { ...SKILL_LABELS, skill: sanitizeText(input.slug).slice(0, 40) },
       public: false,
       networkBlockAll: !input.network,
+      ...(input.network ? { domainAllowList: SKILL_NETWORK_DOMAIN_ALLOWLIST } : {}),
     } as never);
 
     const root = "/home/daytona/skill";

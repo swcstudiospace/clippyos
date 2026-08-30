@@ -7,6 +7,7 @@ import { mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sanitizeText } from "@/lib/sanitize";
+import { isBlockedFetchHost } from "@/lib/net-guard";
 import {
   cuesToSrt,
   cuesToVtt,
@@ -291,6 +292,7 @@ const URL_HOST_ALLOW = [
 
 function hostAllowed(host: string): boolean {
   const h = host.toLowerCase();
+  if (isBlockedFetchHost(h)) return false;
   if (URL_HOST_ALLOW.includes(h)) return true;
   if (h.endsWith(".twitch.tv") || h.endsWith(".jtvnw.net")) return true;
   if (h.endsWith(".tiktokcdn.com") || h.endsWith(".tiktok.com") || h.endsWith(".muscdn.com")) return true;

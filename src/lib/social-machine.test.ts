@@ -49,6 +49,7 @@ import {
   shouldResizeWindows,
   snapshotCandidates,
   snapshotForSize,
+  socialMachineDomainAllowList,
   stopActionForOs,
   uploadPath,
   verifyMachineMountCommand,
@@ -301,4 +302,15 @@ test("bridge verify + bootstrap commands are os-native and idempotent", () => {
   assert.match(bridgeStatusNote(true, true), /mounted/i);
   assert.match(bridgeStatusNote(true, false), /not mounted/i);
   assert.match(bridgeStatusNote(true, null), /unknown/i);
+});
+
+test("Social Machine egress defaults to a publisher domain allowlist", () => {
+  const def = socialMachineDomainAllowList();
+  assert.ok(def);
+  assert.match(def ?? "", /tiktok\.com/);
+  assert.match(def ?? "", /instagram\.com/);
+  assert.match(def ?? "", /youtube\.com/);
+  assert.equal(socialMachineDomainAllowList("unrestricted"), undefined);
+  assert.equal(socialMachineDomainAllowList("*"), undefined);
+  assert.equal(socialMachineDomainAllowList("example.com, *.tiktok.com"), "example.com,*.tiktok.com");
 });

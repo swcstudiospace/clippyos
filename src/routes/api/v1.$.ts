@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authenticateApiKey } from "@/lib/server/autonomy-auth.server";
+import { sanitizeRequestId } from "@/lib/security-headers";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import { readIdempotency, writeIdempotency, writeAuditLog } from "@/lib/server/autonomy-audit.server";
 import { hasScope, type ApiKeyScope } from "@/lib/autonomy";
@@ -21,7 +22,7 @@ function json(status: number, body: unknown, extra?: HeadersInit) {
 }
 
 function requestIdOf(request: Request): string {
-  return request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
+  return sanitizeRequestId(request.headers.get("x-request-id"));
 }
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {

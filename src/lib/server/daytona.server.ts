@@ -51,6 +51,7 @@ import {
   parseSocialMachineSize,
   shouldResizeWindows,
   snapshotCandidates,
+  socialMachineDomainAllowList,
   stopActionForOs,
   TARGET_WINDOWS_RESOURCES,
   machineDropPath,
@@ -478,6 +479,12 @@ async function applyWindowsDesktop(sandbox: Sandbox): Promise<void> {
   }
 }
 
+async function socialMachineNetworkSettings(): Promise<{ domainAllowList?: string }> {
+  const override = (await readAppSetting("SOCIAL_MACHINE_DOMAIN_ALLOWLIST"))?.trim() || "";
+  const allow = socialMachineDomainAllowList(override);
+  return allow ? { domainAllowList: allow } : {};
+}
+
 async function createSocialSandbox(daytona: Daytona, config: DaytonaConfig): Promise<Sandbox> {
   const region = parseSocialMachineRegion(config.target);
   const policy = idlePolicy(config.autoStopMinutes);
@@ -497,6 +504,7 @@ async function createSocialSandbox(daytona: Daytona, config: DaytonaConfig): Pro
           autoArchiveInterval: policy.autoArchiveInterval,
           autoDeleteInterval: policy.autoDeleteInterval,
           public: false,
+          ...(await socialMachineNetworkSettings()),
           envVars: {
             TZ: DEFAULT_SOCIAL_TIMEZONE,
             LANG: "en_AU.UTF-8",

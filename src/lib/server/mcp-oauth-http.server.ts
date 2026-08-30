@@ -1,3 +1,4 @@
+import { applySecurityHeaders } from "@/lib/security-headers";
 import { rateLimitOrThrow } from "@/lib/server/autonomy-auth.server";
 import {
   buildAuthorizationServerMetadata,
@@ -19,6 +20,7 @@ export function mcpOauthCorsHeaders(extra?: HeadersInit): Headers {
   headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id");
   headers.set("Access-Control-Expose-Headers", "WWW-Authenticate, MCP-Protocol-Version");
   headers.set("Access-Control-Max-Age", "86400");
+  applySecurityHeaders(headers);
   return headers;
 }
 

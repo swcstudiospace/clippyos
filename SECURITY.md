@@ -51,5 +51,26 @@ Out of scope:
 - Secrets live in Vercel env vars or operator Settings — never in git.
 - RLS is enabled with no anon/authenticated policies; privileged access flows
   exclusively through verified server functions.
-- The cron route requires `CRON_SECRET` and can never start the Social
-  Machine.
+- The cron route requires `CRON_SECRET` (Bearer) and can never start the Social
+  Machine. The `x-vercel-cron` header is not accepted on its own.
+- Operator secrets in `operator_secrets` are encrypted at rest with AES-256-GCM
+  when `OPERATOR_SECRETS_KEY` or `BETTER_AUTH_SECRET` is set.
+
+## Incident response (IR-1 / IR-4 / IR-6)
+
+1. **Detect.** `/health` SLO strip, job DLQ, autonomy audit log, Vercel logs, and
+   GitHub private vulnerability reports.
+2. **Contain.** Revoke the affected API / MCP / webhook credential in Settings →
+   Automation. Rotate `CRON_SECRET`, OAuth client secrets, and
+   `OPERATOR_SECRETS_KEY` in Vercel. Sign the operator out of Social publishers.
+   Do not start the Social Machine while investigating.
+3. **Eradicate.** Patch on `main`, deploy, confirm `/health` integrations are
+   green, and re-issue scoped keys. Treat `enc:v1:` ciphertext that fails to
+   decrypt after a key rotation as lost — re-enter the secret.
+4. **Recover.** Re-run failed jobs from `/health`. Confirm library assets still
+   resolve. Restore Social Machine only after the publisher session is rotated.
+5. **Lessons.** File a POA&M row in `COMPLIANCE.md` for anything that needs a
+   follow-up control. Credit reporters after disclosure.
+
+Severity targets match the table above. Critical credential leaks: rotate first,
+then patch. Do not discuss active incidents in public issues.

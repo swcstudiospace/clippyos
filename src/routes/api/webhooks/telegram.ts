@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { secretsEqual } from "@/lib/server/secret-crypto.server";
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -20,7 +21,7 @@ export const Route = createFileRoute("/api/webhooks/telegram")({
         const secret = await loadTelegramWebhookSecret();
         if (!secret) return json(503, { ok: false });
         const header = request.headers.get("x-telegram-bot-api-secret-token")?.trim() || "";
-        if (header !== secret) return json(401, { ok: false });
+        if (!secretsEqual(header, secret)) return json(401, { ok: false });
         let payload: {
           message?: {
             message_id?: number;
