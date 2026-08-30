@@ -163,42 +163,42 @@ export const AGENT_PRESET_COPY: Record<
 > = {
   "clipping-ideation-pack": {
     label: "Ideation pack",
-    goal: "Generate 5 long-form video ideas and title alternatives for this client. Use only videos ≥ 4 minutes.",
+    goal: "Research this client's channel (long-form only, ≥ 4 minutes). Produce 5 packaging-ready ideas: each with a working title, hook mechanism, promise/tension/payoff, spoken 3-second hook, and a ≤4-word thumbnail overlay. Then generate 3 mechanistically distinct title alternatives for the latest long-form upload. Do not duplicate existing titles. No social, no VM.",
     hint: "Ideas + titles. No social, no VM.",
   },
   "clipping-thumbnail-pass": {
     label: "Thumbnail pass",
-    goal: "Critique the latest thumbnail with vision if an image exists, then generate a fresh 16:9 4K direction.",
+    goal: "If a latest thumbnail image exists, vision-critique it (emotion, contrast, overlay ≤4 words, postage-stamp legibility). Then generate a fresh 16:9 4K direction whose overlay complements — not repeats — the title. One focal face/object, mandatory emotion, complementary palette.",
     hint: "Vision critique + Higgsfield generation.",
   },
   "clipping-full-package": {
     label: "Full clip package",
-    goal: "End-to-end package: research, 5 ideas, titles for latest long-form, thumbnail, optional stage note. Write package.json.",
+    goal: "End-to-end production brief for this client: research long-form (≥ 4 min), 5 ideas with hooks + overlays, 3 titles for the latest long-form, one thumbnail direction, optional stage note only if evidence exists. Write package.json. Never invent analytics. Never start the Social Machine.",
     hint: "SKILL.md plan + orchestrate.py export. Never auto-starts Social.",
   },
   "clipping-social-draft-distribute": {
     label: "Social drafts",
-    goal: "Queue draft Instagram / X / TikTok posts for the latest publishable asset. Do not start the Social Machine.",
+    goal: "Queue draft Instagram / X / TikTok posts for the latest publishable library asset (prefer 9:16). preferredRail=AUTO, mode=draft. Do not start the Social Machine. If MACHINE_STOPPED, wait for a human — do not imply start.",
     hint: "create_upload_job in draft mode. MACHINE_STOPPED waits for a human.",
   },
   "clipping-social-verify": {
     label: "Social verify",
-    goal: "After an upload job, screenshot the desktop and verify compose/success UI with vision.",
+    goal: "After an upload job, screenshot the desktop and verify compose/success UI with vision. Never type passwords, 2FA, or CAPTCHA. If needs_login, stop for a human.",
     hint: "Needs a running Social Machine. Never types passwords.",
   },
   "clipping-pipeline-nudge": {
     label: "Pipeline nudge",
-    goal: "Read progress (including Discord-sourced stages) and suggest the next human action. Only set a stage with evidence.",
+    goal: "Read this client's progress (including Discord-sourced stages). Recommend the next human action with evidence. Only set_stage if notes can cite a real artifact. Never fabricate views or CTR.",
     hint: "Cautious set_client_stage. No fabricated analytics.",
   },
   "clipping-30d-guarantee-check": {
     label: "30-day check",
-    goal: "Single-client 30-day views check from AnalyticsSnapshots. Never invent views.",
+    goal: "Single-client 30-day views check from AnalyticsSnapshots only. Need ≥2 real snapshots to call a delta. If missing, say Insufficient data — never invent views or treat unknown as zero.",
     hint: "Honest insufficient-data when snapshots are missing.",
   },
   "clipping-agent-self-improve": {
     label: "Self-improve",
-    goal: "From the last successful Agent run, draft a pending_review skill capturing the plan.",
+    goal: "From the last successful Agent run (≥5 tool steps), draft a pending_review skill capturing the plan and pitfalls. No secrets in SKILL.md. Do not auto-publish.",
     hint: "skill_manage.create pending. Never auto-publishes.",
   },
   custom: {

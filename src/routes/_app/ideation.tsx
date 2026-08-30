@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PanelRight } from "lucide-react";
 import { IDEATION_PANEL_STORAGE_KEY } from "@/lib/constants";
 import {
+  IDEATION_PLACEHOLDER,
   IDEATION_THREADS_QUERY_KEY,
   ideationMessagesQueryKey,
 } from "@/lib/ideation";
@@ -252,6 +253,7 @@ function IdeationPage() {
         disabled={inputDisabled}
         sending={generating}
         autoFocus={!showChat}
+        placeholder={IDEATION_PLACEHOLDER}
       />
     </SectionBoundary>
   );
