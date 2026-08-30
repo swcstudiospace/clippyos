@@ -4,6 +4,7 @@ import { authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/a
 import { loginSocialProviders } from "@/lib/auth/providers";
 import { loadSignInFlags } from "@/lib/auth/sign-in-flags";
 import { isReservedOwnerEmail } from "@/lib/auth/email-password";
+import { publicSignUpEnabled } from "@/lib/auth/public-signup";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { mcpOAuthLoginRedirect } from "@/lib/mcp-oauth";
@@ -125,9 +126,17 @@ function LoginForm() {
       setFormError("Enter a valid email and a password of at least 8 characters.");
       return;
     }
-    if (mode === "signup" && isReservedOwnerEmail(email)) {
-      setFormError("Owner accounts cannot self-register.");
-      return;
+    if (mode === "signup") {
+      if (!publicSignUpEnabled) {
+        setFormError(
+          "This workspace does not accept public sign-up. Use Super Admin, an invited login, or a paid seat.",
+        );
+        return;
+      }
+      if (isReservedOwnerEmail(email)) {
+        setFormError("Owner accounts cannot self-register.");
+        return;
+      }
     }
     setBusy(true);
     try {
@@ -204,7 +213,7 @@ function LoginForm() {
         <p className="relative z-[1] mb-5 text-body text-muted">
           {mode === "signup"
             ? "Create your workspace, then choose a plan. ClippyOS is subscription-gated — Request a Demo on the landing if you want a walkthrough first."
-            : "Sign in to the private OS. New teams subscribe on the next step."}
+            : "Sign in with an invited login, Super Admin, or Google/X on an existing account."}
         </p>
 
         {authEnabled ? (
@@ -317,6 +326,7 @@ function LoginForm() {
           </button>
         ) : null}
 
+        {publicSignUpEnabled ? (
         <button
           type="button"
           className="relative z-[1] mt-4 w-full text-center text-caption text-muted underline-offset-4 hover:text-fg hover:underline"
@@ -329,6 +339,7 @@ function LoginForm() {
             ? "Already have an account? Sign in"
             : "Need an account? Create one"}
         </button>
+        ) : null}
         <p className="relative z-[1] mt-3 text-center text-caption text-muted">
           Brand stakeholder?{" "}
           <Link to="/portal/login" className="text-fg underline-offset-4 hover:underline">
