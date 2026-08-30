@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authenticateApiKey } from "@/lib/server/autonomy-auth.server";
 import { sanitizeRequestId } from "@/lib/security-headers";
+import { parseJsonObject } from "@/lib/safe-json";
+import { publicErrorCode } from "@/lib/safe-error";
 import { runAutonomyAction } from "@/lib/server/autonomy-actions.server";
 import { readIdempotency, writeIdempotency, writeAuditLog } from "@/lib/server/autonomy-audit.server";
 import { hasScope, type ApiKeyScope } from "@/lib/autonomy";
@@ -29,14 +31,7 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   if (request.method === "GET" || request.method === "HEAD") return {};
   const text = await request.text();
   if (!text.trim()) return {};
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    throw new Error("VALIDATION");
-  }
+  return parseJsonObject(text);
 }
 
 type ClippingRoute =
@@ -112,7 +107,7 @@ async function handleClippingRoute(
     const data = await runClippingProcedureSkill({ slug: route.slug, actorId: actor.keyId ?? actor.label });
     return { ok: true, data };
   } catch (error) {
-    const code = error instanceof Error ? error.message : "CLIPPING_FAILED";
+    const code = publicErrorCode(error, "CLIPPING_FAILED");
     if (route.kind === "check-login") {
       await writeAuditLog({
         requestId,

@@ -70,6 +70,13 @@ export const SKILL_NETWORK_DOMAIN_ALLOWLIST =
 export const SKILL_SANDBOX_AUTOSTOP_MINUTES = 5;
 export const SOCIAL_SANDBOX_AUTOSTOP_MINUTES = 20;
 
+/** Shell-safe KEY='value' assignment, or null if the pair is unsafe to interpolate. */
+export function shellEnvAssignment(key: string, value: string): string | null {
+  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) return null;
+  if (/[\n\r\0`$;&|<>]/.test(value)) return null;
+  return `${key}='${value.replace(/'/g, "")}'`;
+}
+
 export const SANDBOX_THREAT_MITIGATIONS = [
   {
     id: "malicious-script",

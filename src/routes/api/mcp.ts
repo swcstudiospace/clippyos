@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { authenticateMcpToken } from "@/lib/server/autonomy-auth.server";
 import { sanitizeRequestId } from "@/lib/security-headers";
+import { parseJsonObject } from "@/lib/safe-json";
 import { handleMcpRpc } from "@/lib/server/mcp.server";
 import { writeAuditLog } from "@/lib/server/autonomy-audit.server";
 import {
@@ -95,7 +96,7 @@ async function handle(request: Request): Promise<Response> {
 
   let body: { jsonrpc?: string; id?: string | number | null; method?: string; params?: Record<string, unknown> };
   try {
-    body = (await request.json()) as typeof body;
+    body = parseJsonObject(await request.text()) as typeof body;
   } catch {
     return json(400, { jsonrpc: "2.0", error: { code: -32700, message: "Parse error" }, id: null });
   }

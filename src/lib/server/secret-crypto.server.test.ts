@@ -6,6 +6,7 @@ import {
   decryptSecret,
   encryptSecret,
   looksEncryptedSecret,
+  isEncryptedSettingKey,
   secretsEqual,
 } from "./secret-crypto.server.ts";
 
@@ -32,4 +33,14 @@ test("AES-256-GCM envelope round-trips and refuses a wrong key", () => {
 test("legacy plaintext rows pass through until rewritten", () => {
   assert.equal(decryptSecret("already-plain", ENV), "already-plain");
   assert.equal(encryptSecret("x", {}), "x");
+});
+
+test("only credential-shaped setting keys are enveloped", () => {
+  assert.equal(isEncryptedSettingKey("DAYTONA_API_KEY"), true);
+  assert.equal(isEncryptedSettingKey("WEBHOOK_SIGNING_SECRET"), true);
+  assert.equal(isEncryptedSettingKey("MCP_TOKEN_HASH"), true);
+  assert.equal(isEncryptedSettingKey("WEBHOOK_OUTBOUND_JSON"), false);
+  assert.equal(isEncryptedSettingKey("MCP_LAST_USED_AT"), false);
+  assert.equal(isEncryptedSettingKey("OPENAI_COMPAT_BASE"), false);
+  assert.equal(isEncryptedSettingKey("BRAND_ACCENT_HEX"), false);
 });
