@@ -269,26 +269,40 @@ export async function handleCrayoAction(
     }
     case "crayo.generate_image": {
       const prompt = sanitizeText(str(payload, "prompt")).slice(0, 2000);
+      const clientId = str(payload, "clientId") || null;
       if (!prompt) throw new Error("VALIDATION");
-      return wrap(() =>
+      const image = await wrap(() =>
         crayoGenerateImage({
           prompt,
           aspectRatio: str(payload, "aspectRatio", "aspect_ratio") || "9:16",
           model: str(payload, "model") || undefined,
         }),
       );
+      const imageUrl = firstHttps(image);
+      const library = imageUrl
+        ? await ingestCrayoMedia(actorId, clientId, imageUrl, prompt.slice(0, 80) || "Crayo still", ["still"])
+        : null;
+      return { image, thumbnailUrl: imageUrl || null, library };
     }
     case "crayo.generate_voiceover": {
       const script = sanitizeText(str(payload, "script")).slice(0, 5000);
       const voiceId = str(payload, "voiceId", "voice_id");
+      const clientId = str(payload, "clientId") || null;
       if (!script || !voiceId) throw new Error("VALIDATION");
-      return wrap(() =>
+      const voice = await wrap(() =>
         crayoGenerateVoiceover({
           script,
           voiceId,
           title: sanitizeText(str(payload, "title")).slice(0, 25) || undefined,
         }),
       );
+      const audioUrl = firstHttps(voice);
+      const library = audioUrl
+        ? await ingestCrayoMedia(actorId, clientId, audioUrl, script.slice(0, 80) || "Crayo voiceover", [
+            "voiceover",
+          ])
+        : null;
+      return { voice, audioUrl: audioUrl || null, library };
     }
     case "crayo.create_project": {
       const title = sanitizeText(str(payload, "title")).slice(0, 200);

@@ -815,6 +815,58 @@ export const AGENT_LLM_TOOLS = [
   {
     type: "function",
     function: {
+      name: "crayo.generate_voiceover",
+      description: "Generate spoken audio from a script and Crayo voice_id. Credits per second.",
+      parameters: {
+        type: "object",
+        required: ["script", "voiceId"],
+        properties: {
+          script: { type: "string" },
+          voiceId: { type: "string" },
+          title: { type: "string" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.generate_image",
+      description: "Generate a still. Prefer aspectRatio=9:16. 1 image credit.",
+      parameters: {
+        type: "object",
+        required: ["prompt"],
+        properties: {
+          prompt: { type: "string" },
+          aspectRatio: { type: "string" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.list_voices",
+      description: "List Crayo voices. Use voice_id with generate_voiceover. Never returns the API key.",
+      parameters: {
+        type: "object",
+        properties: { search: { type: "string" }, limit: { type: "number" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.get_account",
+      description: "Crayo plan and remaining export/voice/image/video credits. Never returns the API key.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "clipping.finish",
       description: "End the run with a short operator summary. Call when the goal is done or blocked.",
       parameters: { type: "object", required: ["summary"], properties: { summary: { type: "string" } } },

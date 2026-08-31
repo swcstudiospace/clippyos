@@ -1,15 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { GlassCard } from "@/components/ui/glass-card";
-import type { AgentPreset } from "@/lib/agent";
 import { publishedMcpEndpoints } from "@/lib/app-hosts";
 import { HERMES_CONNECTION_LABELS, PLAYBOOK_PACKAGE_VERSION, type HermesConnectStatus } from "@/lib/connect";
-import { crayoHermesPlaybooks } from "@/lib/playbooks";
-
-const PLAYBOOK_TO_PRESET: Record<string, AgentPreset> = {
-  crayo_short_to_library: "crayo-short",
-  crayo_autoclip_to_library: "crayo-autoclip",
-};
+import type { CrayoAccountSnapshot } from "@/lib/server/studio-fns";
 
 function connectionTone(state: HermesConnectStatus["hermesConnection"]) {
   if (state === "fully_connected") return "green" as const;
@@ -19,14 +13,17 @@ function connectionTone(state: HermesConnectStatus["hermesConnection"]) {
 
 export function HermesCrayoRail({
   connect,
-  onRunPlaybook,
+  crayo,
+  plannerName,
+  model,
 }: {
   connect: HermesConnectStatus | null | undefined;
-  onRunPlaybook: (preset: AgentPreset) => void;
+  crayo: CrayoAccountSnapshot | null | undefined;
+  plannerName: string;
+  model: string;
 }) {
   const mcp = publishedMcpEndpoints().canonical;
   const connection = connect?.hermesConnection ?? "not_connected";
-  const playbooks = crayoHermesPlaybooks();
 
   return (
     <GlassCard className="flex flex-col gap-3 p-4">
@@ -38,8 +35,8 @@ export function HermesCrayoRail({
         <Badge tone="purple">Playbook {PLAYBOOK_PACKAGE_VERSION}</Badge>
       </div>
       <p className="text-caption text-muted">
-        This tab is the Crayo front of Hermes. Hermes talks to ClippyOS over MCP; finished files land in Library
-        (Filebase).
+        This is the in-app Hermes Agent. Crayo.ai is a specialty (shorts, voice, stills, AutoClip) — not a fourth
+        planner. {plannerName} ({model}) plans free-text and /ideas.
       </p>
       <p className="truncate font-mono text-caption text-muted" title={mcp}>
         {mcp}
@@ -50,23 +47,17 @@ export function HermesCrayoRail({
         </Link>
       ) : null}
       <div>
-        <p className="mb-1.5 text-caption text-muted">Playbook skills</p>
-        <div className="flex flex-col gap-2">
-          {playbooks.map((book) => (
-            <button
-              key={book.id}
-              type="button"
-              className="rounded-control border border-border bg-secondary-surface px-3 py-2 text-left"
-              onClick={() => {
-                const preset = PLAYBOOK_TO_PRESET[book.id];
-                if (preset) onRunPlaybook(preset);
-              }}
-            >
-              <span className="block text-body font-medium">{book.name}</span>
-              <span className="block text-caption text-muted">{book.summary}</span>
-            </button>
-          ))}
-        </div>
+        <p className="text-body font-medium">
+          {crayo?.configured ? (crayo.plan ? `Crayo · ${crayo.plan}` : "Crayo connected") : "Crayo key missing"}
+        </p>
+        {crayo?.credits ? (
+          <p className="text-caption text-muted">
+            export {crayo.credits.export} · voice {crayo.credits.voiceover} · image {crayo.credits.image} · video{" "}
+            {crayo.credits.video}
+          </p>
+        ) : (
+          <p className="text-caption text-muted">{crayo?.error ?? "Credits appear after CRAYO_API_KEY is live."}</p>
+        )}
       </div>
     </GlassCard>
   );

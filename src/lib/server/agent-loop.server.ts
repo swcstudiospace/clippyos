@@ -18,7 +18,15 @@ import {
   type AgentPreset,
   type ClippingPresetSkill,
 } from "@/lib/agent";
-import { crayoAutoclipFieldsFromGoal, crayoShortFieldsFromGoal } from "@/lib/agent-crayo";
+import {
+  crayoAutoclipFieldsFromGoal,
+  crayoExportFieldsFromGoal,
+  crayoImageFieldsFromGoal,
+  crayoImportFieldsFromGoal,
+  crayoIngestFieldsFromGoal,
+  crayoShortFieldsFromGoal,
+  crayoVoiceoverFieldsFromGoal,
+} from "@/lib/agent-crayo";
 import { readLlmRouter, routedChat, routedText } from "@/lib/server/llm-router.server";
 import { xaiRateLimitSnapshot, type XaiChatMessage } from "@/lib/server/xai.server";
 import { readAutomationEnabled, readPlaybookPolicies } from "@/lib/server/autonomy-policy.server";
@@ -409,6 +417,35 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
         if ((typeof args.url !== "string" || !args.url.trim()) && fields.url) args.url = fields.url;
         if (args.clipCount == null) args.clipCount = fields.clipCount;
       }
+      if (step.tool === "crayo.generate_voiceover") {
+        const fields = crayoVoiceoverFieldsFromGoal(run.goal);
+        if ((typeof args.script !== "string" || !args.script.trim()) && fields.script) args.script = fields.script;
+        if ((typeof args.voiceId !== "string" || !args.voiceId.trim()) && fields.voiceId) args.voiceId = fields.voiceId;
+        if ((typeof args.title !== "string" || !args.title.trim()) && fields.title) args.title = fields.title;
+      }
+      if (step.tool === "crayo.generate_image") {
+        const fields = crayoImageFieldsFromGoal(run.goal);
+        if ((typeof args.prompt !== "string" || !args.prompt.trim()) && fields.prompt) args.prompt = fields.prompt;
+        if ((typeof args.aspectRatio !== "string" || !args.aspectRatio.trim()) && fields.aspectRatio) {
+          args.aspectRatio = fields.aspectRatio;
+        }
+      }
+      if (step.tool === "crayo.import_asset") {
+        const fields = crayoImportFieldsFromGoal(run.goal);
+        if ((typeof args.url !== "string" || !args.url.trim()) && fields.url) args.url = fields.url;
+        if ((typeof args.name !== "string" || !args.name.trim()) && fields.name) args.name = fields.name;
+      }
+      if (step.tool === "crayo.export_project") {
+        const fields = crayoExportFieldsFromGoal(run.goal);
+        if ((typeof args.projectId !== "string" || !args.projectId.trim()) && fields.projectId) {
+          args.projectId = fields.projectId;
+        }
+      }
+      if (step.tool === "crayo.ingest_to_library") {
+        const fields = crayoIngestFieldsFromGoal(run.goal);
+        if ((typeof args.url !== "string" || !args.url.trim()) && fields.url) args.url = fields.url;
+        if ((typeof args.title !== "string" || !args.title.trim()) && fields.title) args.title = fields.title;
+      }
       if (run.skillId && (step.tool === "clipping.run_skill" || step.tool === "skills.invoke")) {
         args.skillId = run.skillId;
       }
@@ -427,7 +464,13 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
 
       let attempt = 0;
       let done = false;
-      if (step.tool === "crayo.run_short" || step.tool === "crayo.run_autoclip") {
+      if (
+        step.tool === "crayo.run_short" ||
+        step.tool === "crayo.run_autoclip" ||
+        step.tool === "crayo.generate_voiceover" ||
+        step.tool === "crayo.generate_image" ||
+        step.tool === "crayo.export_project"
+      ) {
         await insertIteration({
           runId,
           index: stepIndex + 1,
@@ -435,7 +478,13 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
           stepId: step.id,
           toolName: step.tool,
           resultSummary:
-            "Calling Crayo now. Image, voice, and export can take up to 3 minutes. This is waiting on api.crayo.ai — not frozen.",
+            step.tool === "crayo.generate_voiceover"
+              ? "Calling Crayo voiceover. Credits spend per second of audio. This is waiting on api.crayo.ai — not frozen."
+              : step.tool === "crayo.generate_image"
+                ? "Calling Crayo image generator (1 image credit). This is waiting on api.crayo.ai — not frozen."
+                : step.tool === "crayo.export_project"
+                  ? "Queueing a Crayo export. Renders can take a few minutes. This is waiting on api.crayo.ai — not frozen."
+                  : "Calling Crayo now. Image, voice, and export can take up to 3 minutes. This is waiting on api.crayo.ai — not frozen.",
           status: "running",
         });
       }
