@@ -15,9 +15,12 @@ import { AGENT_PRESET_COPY, isCrayoPreset, type AgentPreset } from "@/lib/agent"
 import {
   AGENT_SLASH_COMMANDS,
   CLIPPING_WORKFLOW_STEPS,
+  cardDraftFromSlash,
   goalFromSlash,
   parseAgentSlash,
   slashMissingArg,
+  type AgentSlashCommand,
+  type AgentSlashUi,
 } from "@/lib/agent-slash";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +40,7 @@ export function AgentChatComposer({
   onRunner,
   onSubmit,
   onCancel,
+  onOpenCard,
 }: {
   clientId: string;
   onClientId: (id: string) => void;
@@ -51,16 +55,27 @@ export function AgentChatComposer({
   onRunner: (next: "local" | "grok_bot") => void;
   onSubmit: (input: { preset: AgentPreset; goal: string }) => void;
   onCancel: () => void;
+  onOpenCard: (ui: AgentSlashUi, draft: Record<string, string>) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [hint, setHint] = useState<string | null>(null);
   const [workflowOpen, setWorkflowOpen] = useState(false);
+  const [moreSlash, setMoreSlash] = useState(false);
   const parsed = useMemo(() => parseAgentSlash(draft), [draft]);
   const showMenu = draft.trimStart().startsWith("/") && !parsed.command;
 
   function canRun(preset: AgentPreset): boolean {
     if (isCrayoPreset(preset)) return crayoReady || llmReady;
     return llmReady;
+  }
+
+  function openFromCommand(command: AgentSlashCommand, rest: string) {
+    if (!command.ui) return false;
+    onOpenCard(command.ui, cardDraftFromSlash(command, rest));
+    setDraft("");
+    setHint(null);
+    setWorkflowOpen(false);
+    return true;
   }
 
   function send(raw: string) {
@@ -73,16 +88,29 @@ export function AgentChatComposer({
       return;
     }
     if (slash.command) {
+      if (slash.command.cardOnly && slash.command.ui) {
+        openFromCommand(slash.command, slash.rest);
+        return;
+      }
       const missing = slashMissingArg(slash.command, slash.rest);
       if (missing) {
+        if (slash.command.ui) {
+          openFromCommand(slash.command, slash.rest);
+          setHint(missing);
+          return;
+        }
         setHint(missing);
         setDraft(`${slash.command.cmd} `);
+        return;
+      }
+      if (slash.command.ui) {
+        openFromCommand(slash.command, slash.rest);
         return;
       }
       if (!canRun(slash.command.preset)) {
         setHint(
           isCrayoPreset(slash.command.preset)
-            ? "Crayo isn’t live on this deploy yet, so /short and /autoclip can’t mint. Planner commands still need Grok or OpenRouter."
+            ? "Crayo isn’t live on this deploy yet, so Crayo slash commands can’t mint. Planner commands still need Grok or OpenRouter."
             : "No planner AI is connected. Settings → LLM: SuperGrok OAuth, xAI API key, or OpenRouter. Only one of those actually runs /ideas and /package.",
         );
         return;
@@ -101,6 +129,23 @@ export function AgentChatComposer({
     setDraft("");
     setHint(null);
   }
+
+  function pickChip(row: AgentSlashCommand) {
+    if (row.ui) {
+      onOpenCard(row.ui, cardDraftFromSlash(row, ""));
+      setHint(row.needsArg ?? row.hint);
+      return;
+    }
+    if (row.needsArg) {
+      setDraft(`${row.cmd} `);
+      setHint(row.needsArg);
+      return;
+    }
+    send(row.cmd);
+  }
+
+  const crayoCmds = AGENT_SLASH_COMMANDS.filter((row) => row.group === "crayo");
+  const clippingCmds = AGENT_SLASH_COMMANDS.filter((row) => row.group === "clipping");
 
   return (
     <div className="rounded-card border border-border/70 bg-secondary-surface/40 p-3">
@@ -171,20 +216,13 @@ export function AgentChatComposer({
 
       <div className="relative">
         {showMenu ? (
-          <ul className="absolute bottom-full mb-1 w-full rounded-control border border-border bg-bg p-1 shadow-lg">
+          <ul className="absolute bottom-full mb-1 max-h-64 w-full overflow-y-auto rounded-control border border-border bg-bg p-1 shadow-lg">
             {(parsed.matching.length ? parsed.matching : AGENT_SLASH_COMMANDS).map((row) => (
               <li key={row.cmd}>
                 <button
                   type="button"
                   className="flex w-full items-baseline justify-between gap-2 rounded-control px-2 py-1.5 text-left hover:bg-secondary-surface"
-                  onClick={() => {
-                    if (row.needsArg) {
-                      setDraft(`${row.cmd} `);
-                      setHint(row.needsArg);
-                      return;
-                    }
-                    send(row.cmd);
-                  }}
+                  onClick={() => pickChip(row)}
                 >
                   <span className="font-mono text-caption">{row.cmd}</span>
                   <span className="text-caption text-muted">{row.hint}</span>
@@ -207,7 +245,7 @@ export function AgentChatComposer({
           }}
           rows={3}
           className="min-h-20 pr-24"
-          placeholder="Type /short your hook  ·  /autoclip https://…  ·  Enter to send"
+          placeholder="Ask Hermes, or /short  ·  /voice  ·  /image  ·  /autoclip"
           aria-label="Agent message"
         />
       </div>
@@ -215,8 +253,8 @@ export function AgentChatComposer({
         <p className="text-caption text-muted">
           {hint ??
             (parsed.command
-              ? slashMissingArg(parsed.command, parsed.rest) ?? AGENT_PRESET_COPY[parsed.command.preset].hint
-              : "Enter sends. Slash chips that need a topic stay in the box until you add it.")}
+              ? (slashMissingArg(parsed.command, parsed.rest) ?? AGENT_PRESET_COPY[parsed.command.preset].hint)
+              : "Enter sends. Crayo slash commands open a specialty card. Free text uses the planner.")}
         </p>
         <div className="ml-auto flex gap-2">
           {canCancel ? (
@@ -225,36 +263,47 @@ export function AgentChatComposer({
               Cancel
             </Button>
           ) : null}
-          <Button
-            onClick={() => send(draft)}
-            disabled={starting || !draft.trim()}
-            className="min-h-11"
-          >
+          <Button onClick={() => send(draft)} disabled={starting || !draft.trim()} className="min-h-11">
             <Play className="size-4" aria-hidden="true" />
             {starting ? "Sending…" : "Send"}
           </Button>
         </div>
       </div>
       <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Slash shortcuts">
-        {AGENT_SLASH_COMMANDS.map((row) => (
+        {crayoCmds.map((row) => (
           <li key={row.cmd}>
             <button
               type="button"
               className={cn("rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted")}
-              onClick={() => {
-                if (row.needsArg) {
-                  setDraft(`${row.cmd} `);
-                  setHint(row.needsArg);
-                  return;
-                }
-                send(row.cmd);
-              }}
+              onClick={() => pickChip(row)}
             >
               {row.cmd}
             </button>
           </li>
         ))}
       </ul>
+      <button
+        type="button"
+        className="mt-1 text-caption text-muted underline-offset-2 hover:underline"
+        onClick={() => setMoreSlash((open) => !open)}
+      >
+        {moreSlash ? "Hide clipping commands" : "More clipping commands"}
+      </button>
+      {moreSlash ? (
+        <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Clipping slash shortcuts">
+          {clippingCmds.map((row) => (
+            <li key={row.cmd}>
+              <button
+                type="button"
+                className={cn("rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted")}
+                onClick={() => pickChip(row)}
+              >
+                {row.cmd}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

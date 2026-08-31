@@ -160,3 +160,73 @@ export const imageGenStatusFn = createServerFn({ method: "GET" })
     const { imageGenAvailable } = await import("@/lib/server/higgsfield.server");
     return imageGenAvailable();
   });
+
+export type CrayoVoiceOption = { id: string; name: string };
+export type CrayoAssetOption = { id: string; name: string; type: string };
+
+function pickString(value: unknown, ...keys: string[]): string {
+  if (!value || typeof value !== "object") return "";
+  const rec = value as Record<string, unknown>;
+  for (const key of keys) {
+    const direct = rec[key];
+    if (typeof direct === "string" && direct.trim()) return direct.trim();
+  }
+  return "";
+}
+
+function asRows(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    for (const key of ["voices", "assets", "data", "items", "results"]) {
+      if (Array.isArray(rec[key])) return rec[key] as unknown[];
+    }
+  }
+  return [];
+}
+
+export const crayoListVoicesFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ ok: true; voices: CrayoVoiceOption[] } | { ok: false; error: string }> => {
+    await requireUser(context.userId);
+    const crayo = await import("@/lib/server/crayo.server");
+    if (!(await crayo.crayoAvailable())) return { ok: false, error: "MISSING" };
+    try {
+      const raw = await crayo.crayoListVoices({ limit: 40 });
+      const voices: CrayoVoiceOption[] = [];
+      for (const row of asRows(raw)) {
+        const id = pickString(row, "voice_id", "id");
+        if (!id) continue;
+        voices.push({ id, name: pickString(row, "name", "label", "title") || id });
+      }
+      return { ok: true, voices };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "CRAYO_FAILED";
+      return { ok: false, error: message.slice(0, 80) };
+    }
+  });
+
+export const crayoListAssetsFn = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ ok: true; assets: CrayoAssetOption[] } | { ok: false; error: string }> => {
+    await requireUser(context.userId);
+    const crayo = await import("@/lib/server/crayo.server");
+    if (!(await crayo.crayoAvailable())) return { ok: false, error: "MISSING" };
+    try {
+      const raw = await crayo.crayoListAssets({ limit: 40 });
+      const assets: CrayoAssetOption[] = [];
+      for (const row of asRows(raw)) {
+        const id = pickString(row, "id", "asset_id");
+        if (!id) continue;
+        assets.push({
+          id,
+          name: pickString(row, "name", "title") || id,
+          type: pickString(row, "type", "kind") || "file",
+        });
+      }
+      return { ok: true, assets };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "CRAYO_FAILED";
+      return { ok: false, error: message.slice(0, 80) };
+    }
+  });
