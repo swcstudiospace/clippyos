@@ -6,7 +6,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const DEFAULT_APP_NAME = "Grok App";
+export const DEFAULT_APP_NAME = "ClippyOS";
+export const PWA_DESCRIPTION = "Autonomous Operating System for Clipping";
+export const PWA_THEME_COLOR = "#10B981";
+export const PWA_BACKGROUND_COLOR = "#04140e";
 export const OG_SERVICE_URL_DEFAULT = "https://og.grok.me";
 export const OG_SITE_REL_PATH = "src/lib/og/site.json";
 
@@ -195,17 +198,43 @@ export function renderWebManifest(hostHeader: MaybeString) {
     {
       name,
       short_name: name,
+      description: PWA_DESCRIPTION,
       id: "/",
       start_url: "/",
       scope: "/",
       display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
+      background_color: PWA_BACKGROUND_COLOR,
+      theme_color: PWA_THEME_COLOR,
       icons: [
         {
           src: "/__grok/icon-180.png",
           sizes: "180x180",
           type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/__grok/icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/__grok/icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/__grok/icon-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "maskable",
+        },
+        {
+          src: "/__grok/icon-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "maskable",
         },
       ],
     },
@@ -228,7 +257,7 @@ export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
       "apple-mobile-web-app-status-bar-style",
       '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
     ],
-    ["theme-color", '<meta name="theme-color" content="#000000">'],
+    ["theme-color", `<meta name="theme-color" content="${PWA_THEME_COLOR}">`],
   ];
 }
 

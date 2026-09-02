@@ -39,6 +39,7 @@ import { SkillsPanel } from "@/components/settings/skills-panel";
 import { LlmProvidersPanel } from "@/components/settings/llm-providers";
 import { MediaPipelinePanel } from "@/components/settings/media-pipeline";
 import { PortalPanel } from "@/components/settings/portal-panel";
+import { DesktopInstallPanel } from "@/components/desktop-install";
 import { captureClientError, userFacingErrorMessage } from "@/lib/errors";
 import { copyTextToClipboard, downloadTextFile } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
@@ -108,6 +109,9 @@ function SettingsPage() {
       <Header />
 
       <div className="mt-8 flex flex-col gap-8">
+        <section id="desktop" className="scroll-mt-24">
+          <DesktopInstallPanel />
+        </section>
         <section id="llm" className="scroll-mt-24">
           <LlmProvidersPanel />
         </section>
