@@ -9,6 +9,7 @@ import { useState } from "react";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import { DesktopRuntimeBridge } from "@/components/desktop-runtime-bridge";
+import { DesktopInstallProvider } from "@/components/desktop-install";
 import { ThemeProvider, THEME_BOOTSTRAP } from "@/lib/theme";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -47,8 +48,12 @@ export const Route = createRootRoute({
         { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
         { title: APP_NAME },
         { name: "description", content: APP_TAGLINE },
+        { name: "application-name", content: APP_NAME },
+        { name: "apple-mobile-web-app-title", content: APP_NAME },
         { name: "theme-color", content: "#10B981" },
         { name: "color-scheme", content: "dark light" },
+        { property: "og:title", content: APP_NAME },
+        { name: "twitter:title", content: APP_NAME },
         ...(xBanner ? [{ property: "x:game:image", content: xBanner }] : []),
       ],
       links: [
@@ -87,18 +92,20 @@ function RootDocument() {
       <body className="bg-bg text-fg antialiased">
         <PreviewHostBridge />
         <DesktopRuntimeBridge />
-        <AuthProvider>
-          <ThemeProvider>
-            <QueryClientProvider client={queryClient}>
-              <TooltipProvider>
-                <AppErrorBoundary>
-                  <Outlet />
-                </AppErrorBoundary>
-                <Toaster />
-              </TooltipProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
-        </AuthProvider>
+        <DesktopInstallProvider>
+          <AuthProvider>
+            <ThemeProvider>
+              <QueryClientProvider client={queryClient}>
+                <TooltipProvider>
+                  <AppErrorBoundary>
+                    <Outlet />
+                  </AppErrorBoundary>
+                  <Toaster />
+                </TooltipProvider>
+              </QueryClientProvider>
+            </ThemeProvider>
+          </AuthProvider>
+        </DesktopInstallProvider>
         <Scripts />
       </body>
     </html>

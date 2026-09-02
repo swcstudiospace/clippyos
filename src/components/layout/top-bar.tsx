@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { MobileBrand } from "@/components/layout/sidebar";
 import { ScrollProgress } from "@/components/magicui/scroll-progress";
 import { NotificationBell } from "@/components/safety/notification-bell";
+import { DesktopInstallButton } from "@/components/desktop-install";
 
 export function TopBar({ onOpenNav }: { onOpenNav: () => void }) {
   return (
@@ -20,6 +21,7 @@ export function TopBar({ onOpenNav }: { onOpenNav: () => void }) {
       </Button>
       <MobileBrand />
       <div className="ml-auto flex items-center gap-1">
+        <DesktopInstallButton />
         <NotificationBell />
         <ThemeToggle />
         <AccountMenu />
