@@ -270,7 +270,7 @@ export function TestimonialsSection() {
   return (
     <section id="stories" className="relative">
       <TestimonialsCanvas>
-        <div className="liquid-glass liquid-glass-modal max-w-2xl px-6 py-8 text-center">
+        <div className="max-w-2xl px-4 text-center">
             <motion.h2
               initial={{ opacity: 0, filter: "blur(10px)" }}
               animate={{ opacity: 1, filter: "blur(0px)" }}
@@ -519,7 +519,7 @@ function TestimonialsCanvas({ children }: { children?: ReactNode }) {
     <div
       ref={containerRef}
       className={cn(
-        "relative isolate h-[100dvh] w-full overflow-hidden bg-transparent",
+        "relative isolate h-[100dvh] w-full overflow-hidden bg-bg",
         isDragging ? "cursor-grabbing" : "cursor-grab",
       )}
       onMouseDown={(event) => handlePointerDown(event.clientX, event.clientY)}
@@ -557,7 +557,7 @@ function TestimonialsCanvas({ children }: { children?: ReactNode }) {
               return (
                 <motion.article
                   key={card.id}
-                  className="liquid-glass absolute overflow-hidden rounded-card p-5"
+                  className="absolute overflow-hidden rounded-card border border-border bg-elevated p-5 shadow-(--shadow-border)"
                   style={{ left: card.x, top: card.y, width: card.width }}
                   initial={false}
                   animate={{ scale: isActive ? 1.08 : 1, opacity: dim ? (isActive ? 1 : 0.14) : 1 }}

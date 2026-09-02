@@ -70,7 +70,7 @@ export function FeatureGrid() {
         {FEATURES.map((feature, index) => (
           <article
             key={feature.title}
-            className="liquid-glass liquid-glass-interactive relative overflow-hidden rounded-modal p-6"
+            className="relative overflow-hidden rounded-modal border border-border bg-gradient-to-b from-secondary-surface to-elevated p-6"
           >
             <Grid size={20} squares={SQUARE_PATTERNS[index]} />
             <p className="relative z-20 text-section font-semibold tracking-tight tabular-nums">

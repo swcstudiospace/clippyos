@@ -81,7 +81,7 @@ function FaqItem({
   return (
     <button
       type="button"
-      className="liquid-glass mb-4 w-full p-4 text-left"
+      className="mb-4 w-full rounded-card border border-border bg-elevated p-4 text-left shadow-(--shadow-border)"
       onClick={() => setOpen(isOpen ? null : question)}
       aria-expanded={isOpen}
     >
