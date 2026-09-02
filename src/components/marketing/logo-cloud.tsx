@@ -12,7 +12,6 @@ const LOGOS: { title: string; mark: ReactNode }[] = [
   { title: "Whop", mark: <WhopMark /> },
   { title: "Hermes Agent", mark: <NousMark /> },
   { title: "Grok Bot", mark: <GrokBotMark /> },
-  { title: "Linear", mark: <LinearMark /> },
 ];
 
 export function LogoCloud() {
@@ -121,14 +120,6 @@ function GrokBotMark() {
   return (
     <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden="true">
       <path d="M12 2.4 13.8 9 21 12l-7.2 3L12 21.6 10.2 15 3 12l7.2-3z" />
-    </svg>
-  );
-}
-
-function LinearMark() {
-  return (
-    <svg viewBox="0 0 24 24" className="size-6" fill="currentColor" aria-hidden="true">
-      <path d="M4.2 14.8 14.8 4.2A9.9 9.9 0 0 0 4.2 14.8zm2.4 4.1 12.3-12.3a10 10 0 0 1-12.3 12.3zM19.5 9.7 9.7 19.5a9.9 9.9 0 0 0 9.8-9.8z" />
     </svg>
   );
 }
