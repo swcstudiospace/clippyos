@@ -37,11 +37,11 @@ import { AnimatedShinyText } from "@/components/magicui/animated-shiny-text";
 import { BlurFade } from "@/components/magicui/blur-fade";
 import { BorderBeam } from "@/components/magicui/border-beam";
 import { Marquee } from "@/components/magicui/marquee";
-import { Particles } from "@/components/magicui/particles";
 import { ScrollProgress } from "@/components/magicui/scroll-progress";
 import { ShineBorder } from "@/components/magicui/shine-border";
 import { SparklesText } from "@/components/magicui/sparkles-text";
 import { TypingAnimation } from "@/components/magicui/typing-animation";
+import { LiquidGlassCanvas } from "@/components/marketing/liquid-glass-canvas";
 import { Spotlight } from "@/components/marketing/spotlight";
 import { TiltCard } from "@/components/marketing/tilt-card";
 import { FeatureGrid } from "@/components/marketing/feature-grid";
@@ -227,7 +227,7 @@ function DemoForm() {
 
   if (done) {
     return (
-      <div className="rounded-card border border-border bg-elevated p-6">
+      <div className="liquid-glass liquid-glass-modal rounded-modal p-6">
         <h3 className="text-card font-semibold tracking-tight">You’re on the list.</h3>
         <p className="mt-2 text-body text-muted">
           We sent a confirmation to {email}. We’ll reach out to walk ClippyOS — Social Machine,
@@ -311,9 +311,10 @@ export function LandingPage() {
 
   return (
     <div className="relative min-h-dvh bg-bg text-fg">
-      <Spotlight />
-      <Particles quantity={36} />
-      <header className="sticky top-0 z-50 border-b border-border/70 bg-bg/80 backdrop-blur-md">
+      <LiquidGlassCanvas />
+      <Spotlight className="z-[1]" />
+      <div className="relative z-10">
+      <header className="liquid-glass-nav sticky top-0 z-50">
         <div className="mx-auto flex max-w-6xl flex-nowrap items-center justify-between gap-2 px-3 py-2.5 md:px-6">
           <a href="#top" className="flex min-w-0 items-center gap-2">
             <ClippyMark size={28} />
@@ -334,9 +335,9 @@ export function LandingPage() {
         <section className="relative overflow-hidden px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-20">
           <AnimatedGridPattern className="opacity-40" />
           <div className="relative mx-auto grid max-w-6xl gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-center">
-            <div>
+            <div className="liquid-glass liquid-glass-modal p-5 md:p-7">
               <BlurFade>
-                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-elevated/70 px-3 py-1">
+                <div className="liquid-glass-pill inline-flex items-center gap-2 rounded-full px-3 py-1">
                   <Sparkles className="size-3.5 text-accent" aria-hidden="true" />
                   <AnimatedShinyText className="text-caption">{APP_TAGLINE}</AnimatedShinyText>
                 </div>
@@ -351,7 +352,7 @@ export function LandingPage() {
                 </h1>
               </BlurFade>
               <BlurFade delay={0.16}>
-                <p className="mt-4 max-w-xl text-body text-muted">
+                <p className="mt-4 max-w-xl text-body text-fg/80">
                   <TypingAnimation duration={16}>
                     Globally reachable clipping OS. Social Machine for X, YouTube, Instagram, and
                     TikTok. Telegram, WhatsApp, and Discord for the people around the work.
@@ -380,7 +381,7 @@ export function LandingPage() {
             </div>
             <BlurFade delay={0.12} className="relative">
               <TiltCard>
-                <div className="relative overflow-hidden rounded-modal border border-border bg-elevated shadow-(--shadow-border)">
+                <div className="liquid-glass liquid-glass-modal relative overflow-hidden rounded-modal">
                   <ShineBorder />
                   <BorderBeam />
                   <Shot
@@ -402,7 +403,7 @@ export function LandingPage() {
             {MARQUEE.map((item) => (
               <span
                 key={item}
-                className="rounded-full border border-border bg-elevated px-4 py-1.5 text-caption text-muted"
+                className="liquid-glass-pill rounded-full px-4 py-1.5 text-caption text-muted"
               >
                 {item}
               </span>
@@ -424,7 +425,7 @@ export function LandingPage() {
               {SHOTS.map((shot, index) => (
                 <BlurFade key={shot.title} delay={index * 0.06}>
                   <TiltCard>
-                    <article className="relative min-w-0 overflow-hidden rounded-card border border-border bg-elevated">
+                    <article className="liquid-glass relative min-w-0 overflow-hidden rounded-card">
                       <BorderBeam delay={index * 0.4} reverse={index % 2 === 1} />
                       <Shot name={shot.name} alt={`${shot.title} in ClippyOS`} />
                       <div className="p-4">
@@ -451,7 +452,7 @@ export function LandingPage() {
               {LAYERS.map((layer) => (
                 <article
                   key={layer.title}
-                  className="rounded-card border border-border bg-elevated p-5"
+                  className="liquid-glass liquid-glass-interactive p-5"
                 >
                   <span className="grid size-10 place-items-center rounded-control bg-secondary-surface">
                     <layer.icon className="size-5 text-accent" aria-hidden="true" />
@@ -491,7 +492,7 @@ export function LandingPage() {
               </ul>
             </BlurFade>
             <TiltCard>
-              <div className="relative overflow-hidden rounded-modal border border-border bg-elevated">
+              <div className="liquid-glass liquid-glass-modal relative overflow-hidden rounded-modal">
                 <ShineBorder />
                 <Shot name="social" alt="Social Machine inside ClippyOS" />
               </div>
@@ -513,7 +514,7 @@ export function LandingPage() {
               </p>
             </BlurFade>
             <TiltCard>
-              <div className="relative overflow-hidden rounded-modal border border-border bg-elevated">
+              <div className="liquid-glass liquid-glass-modal relative overflow-hidden rounded-modal">
                 <ShineBorder />
                 <Shot
                   name="inbox"
@@ -526,7 +527,7 @@ export function LandingPage() {
 
         <section id="native" className="px-4 py-16 md:px-6">
           <div className="mx-auto grid max-w-6xl gap-4 md:grid-cols-2">
-            <article className="rounded-card border border-border bg-elevated p-6">
+            <article className="liquid-glass liquid-glass-interactive p-6">
               <Bot className="size-6 text-accent" aria-hidden="true" />
               <h3 className="mt-3 text-card font-semibold tracking-tight">Native Hermes Agent</h3>
               <p className="mt-2 text-body text-muted">
@@ -534,7 +535,7 @@ export function LandingPage() {
                 in the OS. Skills run isolated. The Social Machine stays a specialist runtime.
               </p>
             </article>
-            <article className="rounded-card border border-border bg-elevated p-6">
+            <article className="liquid-glass liquid-glass-interactive p-6">
               <Kanban className="size-6 text-accent" aria-hidden="true" />
               <h3 className="mt-3 text-card font-semibold tracking-tight">Native Linear kanban</h3>
               <p className="mt-2 text-body text-muted">
@@ -582,7 +583,7 @@ export function LandingPage() {
                 </Button>
               </div>
             </div>
-            <div className="relative overflow-hidden rounded-modal border border-border bg-elevated p-6">
+            <div className="liquid-glass liquid-glass-modal relative overflow-hidden rounded-modal p-6">
               <ShineBorder />
               <h3 className="relative z-[1] text-card font-semibold tracking-tight">Request a Demo</h3>
               <p className="relative z-[1] mt-1 mb-4 text-caption text-muted">
@@ -598,7 +599,7 @@ export function LandingPage() {
         <LandingFaq />
       </main>
 
-      <footer className="border-t border-border px-4 py-8 md:px-6">
+      <footer className="liquid-glass-nav px-4 py-8 md:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <ClippyMark size={24} />
@@ -609,6 +610,7 @@ export function LandingPage() {
           <p className="text-caption text-muted">Globally reachable. Immutable storage. Hot hibernate.</p>
         </div>
       </footer>
+      </div>
     </div>
   );
 }

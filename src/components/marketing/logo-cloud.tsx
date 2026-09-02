@@ -29,7 +29,7 @@ export function LogoCloud() {
   const visible = LOGOS.slice(setIndex * LOGOS_PER_ROW, setIndex * LOGOS_PER_ROW + LOGOS_PER_ROW);
 
   return (
-    <section className="border-y border-border bg-elevated/40 px-4 py-10 md:px-6">
+    <section className="liquid-glass-nav px-4 py-10 md:px-6">
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-6 md:flex-row md:gap-8">
         <h2 className="shrink-0 text-center text-caption font-medium tracking-tight text-muted md:text-left">
           Infrastructure we run on
