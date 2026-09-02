@@ -209,6 +209,28 @@ export default defineConfig(({ command, isPreview }) => ({
     port: 8080,
     strictPort: true,
     allowedHosts: true,
+    watch: {
+      followSymlinks: false,
+      ignored: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/coverage/**",
+        "**/.vite/**",
+        "**/.output/**",
+        "**/.vercel/**",
+        "**/.nitro/**",
+        "**/.tanstack/**",
+        "**/dist-desktop/**",
+        "**/src-tauri/target/**",
+        "**/src-tauri/binaries/**",
+        "**/src-tauri/gen/**",
+        "**/*.log",
+        "**/tmp/**",
+        "**/temp/**",
+      ],
+    },
   },
   preview: {
     host: "127.0.0.1",
@@ -217,6 +239,8 @@ export default defineConfig(({ command, isPreview }) => ({
     allowedHosts: true,
   },
   resolve: { tsconfigPaths: true },
+  optimizeDeps: { include: ["three"] },
+  ssr: { external: ["three"] },
   plugins: [
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
