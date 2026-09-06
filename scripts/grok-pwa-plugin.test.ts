@@ -364,14 +364,22 @@ test("strips install params from the app link", () => {
 });
 
 test("names the install page from host slug", () => {
-  assert.equal(appNameFromHost("localhost:8080"), "Grok App");
-  assert.equal(appNameFromHost("172.17.154.217:8080"), "Grok App");
+  assert.equal(appNameFromHost("localhost:8080"), "ClippyOS");
+  assert.equal(appNameFromHost("172.17.154.217:8080"), "ClippyOS");
+  assert.equal(appNameFromHost("os.swcstudio.space"), "ClippyOS");
   assert.equal(appNameFromHost("wild-race.grok.me"), "Wild Race");
 });
 
 test("rejects hosts that are not plain slugs", () => {
-  assert.equal(appNameFromHost("<script>alert(1)</script>"), "Grok App");
-  assert.equal(appNameFromHost('"><img src=x onerror=1>.grok.me'), "Grok App");
+  assert.equal(appNameFromHost("<script>alert(1)</script>"), "ClippyOS");
+  assert.equal(appNameFromHost('"><img src=x onerror=1>.grok.me'), "ClippyOS");
+});
+
+test("install page on published hosts brands ClippyOS not Grok", () => {
+  const html = renderInstallPage("os.swcstudio.space", "/?install=1&platform=ios");
+  assert.match(html, /Powered by ClippyOS/);
+  assert.equal(html.includes("Powered by Grok"), false);
+  assert.match(html, /\/__grok\/icon-180\.png/);
 });
 
 test("renders install page markup", () => {
@@ -395,6 +403,22 @@ test("renders the manifest with the per-app name", () => {
   assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
 });
 
+test("published hosts get ClippyOS branding, palette, and any+maskable icons", () => {
+  const manifest = JSON.parse(renderWebManifest("os.swcstudio.space"));
+  assert.equal(manifest.name, "ClippyOS");
+  assert.equal(manifest.short_name, "ClippyOS");
+  assert.equal(manifest.description, "Autonomous Operating System for Clipping");
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.start_url, "/");
+  assert.equal(manifest.scope, "/");
+  assert.equal(manifest.theme_color, "#10B981");
+  assert.equal(manifest.background_color, "#04140e");
+  const purposes = manifest.icons.map((icon: { purpose?: string }) => icon.purpose);
+  assert.ok(purposes.includes("any"));
+  assert.ok(purposes.includes("maskable"));
+  assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
+});
+
 // Tripwires: the deployed-app path only works if Nitro scans server/ — an
 // accidental edit that drops serverDir or the middleware file would otherwise
 // fail silently (published apps would just render the app for ?install=1).
@@ -410,6 +434,8 @@ test("nitro middleware and its bundled assets exist", () => {
   assert.match(middleware, /virtual:grok-og-identity/);
   readFileSync(join(TEMPLATE_ROOT, "scripts/install-page.html"));
   readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-180.png"));
+  readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-192.png"));
+  readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-512.png"));
   readFileSync(join(TEMPLATE_ROOT, "public/__grok/install/styles.css"));
 });
 
