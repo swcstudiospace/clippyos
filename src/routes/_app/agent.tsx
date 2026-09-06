@@ -298,8 +298,7 @@ function AgentPage() {
 
       {!crayoQuery.isPending && !crayoQuery.data?.configured ? (
         <p className="rounded-control bg-warning/10 px-3 py-2 text-caption text-warning" role="status">
-          Crayo API key is not live on this deploy yet. Production has it; wait for the next deploy or paste
-          CRAYO_API_KEY in Vercel.
+          Crayo isn’t connected. Paste your Crayo API key in Settings → Add-ons → Crayo.ai and run Test.
         </p>
       ) : null}
 

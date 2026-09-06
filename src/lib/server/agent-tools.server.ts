@@ -69,6 +69,8 @@ export async function executeAgentTool(input: {
   actorId: string;
   /** Long tools (sandbox fetch, Crayo polls) report human-readable milestones here. */
   onProgress?: (message: string) => Promise<void> | void;
+  /** Agent run id, when called from the agent loop — lets tools park the run in a background job. */
+  runId?: string;
 }): Promise<ToolResult> {
   const { name, payload, actorId } = input;
   switch (name) {
@@ -437,7 +439,7 @@ export async function executeAgentTool(input: {
       }
       if (name.startsWith("crayo.")) {
         const { handleCrayoAction } = await import("@/lib/server/crayo-tools.server");
-        const data = await handleCrayoAction(name, payload, actorId, input.onProgress);
+        const data = await handleCrayoAction(name, payload, actorId, input.onProgress, input.runId);
         if (data === undefined) throw new Error("UNKNOWN_ACTION");
         return { data };
       }

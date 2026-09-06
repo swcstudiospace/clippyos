@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  ASSUMED_BYTES_PER_SEC,
+  CRAYO_MIN_CLIPS_PER_JOB,
   DAYTONA_DOMAIN_ALLOWLIST_MAX,
+  MEDIA_MAX_BYTES,
+  MEDIA_MAX_SEGMENT_SECONDS,
+  hms,
+  maxSegmentSeconds,
+  parseMediaJobStatus,
+  planMediaSegments,
   FETCHABLE_PAGE_HOSTS,
   MEDIA_MAX_SECONDS,
   mediaAssetFilename,
@@ -68,4 +76,34 @@ test("mediaContentType and mediaAssetFilename match Crayo's accepted video forma
   assert.equal(mediaContentType("/tmp/mf/src.flv"), null);
   assert.equal(mediaAssetFilename("iShowSpeed: HE SNAPPED!! (full stream)", "mp4"), "iShowSpeed-HE-SNAPPED-full-stream.mp4");
   assert.equal(mediaAssetFilename("", "webm"), "long-form.webm");
+});
+
+test("planMediaSegments keeps every segment under Crayo's 3 h and 1 GB limits", () => {
+  const short = planMediaSegments({ durationSec: 45 * 60, clipCount: 5 });
+  assert.equal(short?.segments.length, 1);
+  assert.equal(short?.segments[0]?.endSec, null);
+  assert.equal(short?.clipsPerSegment, 5);
+
+  const sixHours = planMediaSegments({ durationSec: 6 * 3600, clipCount: 10 });
+  assert.ok(sixHours);
+  const segLen = maxSegmentSeconds();
+  assert.ok(segLen <= MEDIA_MAX_SEGMENT_SECONDS);
+  assert.ok(segLen * ASSUMED_BYTES_PER_SEC <= MEDIA_MAX_BYTES);
+  for (const seg of sixHours!.segments) {
+    assert.ok((seg.endSec ?? 0) - seg.startSec <= segLen + 1, `segment ${seg.index} too long`);
+  }
+  assert.equal(sixHours!.segments[0]?.startSec, 0);
+  assert.equal(sixHours!.segments.at(-1)?.endSec, 6 * 3600);
+  assert.ok(sixHours!.clipsPerSegment >= CRAYO_MIN_CLIPS_PER_JOB);
+  assert.ok(sixHours!.totalClips >= 10);
+  assert.equal(planMediaSegments({ durationSec: 20 * 3600, clipCount: 5 }), null);
+});
+
+test("hms and parseMediaJobStatus round-trip the sandbox contract", () => {
+  assert.equal(hms(0), "00:00:00");
+  assert.equal(hms(3 * 3600 + 5 * 60 + 9), "03:05:09");
+  const status = parseMediaJobStatus('{"phase":"probed","probe":{"title":"T","durationSec":100},"segments":[]}');
+  assert.equal(status?.phase, "probed");
+  assert.equal(status?.probe?.durationSec, 100);
+  assert.equal(parseMediaJobStatus("cat: /tmp/mf/status.json: No such file"), null);
 });

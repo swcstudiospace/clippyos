@@ -287,6 +287,12 @@ export async function cancelAgentRun(id: string): Promise<void> {
   } catch {
     /* optional */
   }
+  try {
+    const { abortMediaFetchJob } = await import("@/lib/server/media-fetch-job.server");
+    await abortMediaFetchJob(run.outputs);
+  } catch {
+    /* sandbox auto-stop policy still applies */
+  }
 }
 
 async function buildPlan(input: {
@@ -513,7 +519,7 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
       while (attempt <= AGENT_STEP_RETRIES && !done) {
         const started = Date.now();
         try {
-          const result = await executeAgentTool({ name: step.tool, payload: args, actorId, onProgress });
+          const result = await executeAgentTool({ name: step.tool, payload: args, actorId, onProgress, runId });
           await writeAuditLog({
             requestId: runId,
             actor: { source: "api" as const, keyId: null, label: actorId },
@@ -600,6 +606,17 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
             result: "error",
             errorCode: code.slice(0, 80),
           });
+          if (code === "MEDIA_FETCH_PENDING") {
+            // The fetch/upload/AutoClip now runs as a background job; ticks (Agent tab polling
+            // and the ops cron) finish the run. Nothing else in this plan can proceed before it.
+            await patchAgentRun(runId, {
+              status: "waiting_resource",
+              errorCode: "MEDIA_FETCH",
+              iterationCount: stepIndex + 1,
+              outputs,
+            });
+            return;
+          }
           if (code === "MACHINE_STOPPED") {
             await insertIteration({
               runId,
