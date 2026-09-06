@@ -95,7 +95,7 @@ async function wrap<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function ingestCrayoMedia(
+export async function ingestCrayoMedia(
   actorId: string,
   clientId: string | null,
   url: string,
@@ -209,6 +209,7 @@ async function runAutoclip(
   payload: Record<string, unknown>,
   actorId: string,
   onProgress?: (message: string) => Promise<void> | void,
+  runId?: string,
 ): Promise<unknown> {
   const url = str(payload, "url");
   const clientId = str(payload, "clientId") || null;
@@ -220,6 +221,27 @@ async function runAutoclip(
   const name = sanitizeText(str(payload, "name")).slice(0, 200) || undefined;
   let assetId = "";
   let fetched: { title: string; durationSec: number | null; bytes: number } | null = null;
+  if (mediaSourceKind(url) === "fetch" && runId) {
+    // Agent runs: hand the fetch to the background job (survives the function limit, splits
+    // long streams into Crayo-sized segments). The loop parks the run; ticks finish it.
+    const { startMediaFetchJob } = await import("@/lib/server/media-fetch-job.server");
+    try {
+      await startMediaFetchJob({
+        runId,
+        url,
+        actorId,
+        clientId,
+        clipCount: num(payload, "clipCount", 5, 2, 20),
+        clipLength: num(payload, "clipLength", 60, 30, 90),
+        editLevel: str(payload, "editLevel", "edit_level") || "full",
+        prompt: sanitizeText(str(payload, "prompt")).slice(0, 500) || null,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "MEDIA_FETCH_FAILED";
+      throw new CrayoToolError(/^[A-Z_]{3,60}$/.test(code) ? code : "MEDIA_FETCH_FAILED", error instanceof Error ? error.message : "");
+    }
+    throw new CrayoToolError("MEDIA_FETCH_PENDING", "Background fetch started.");
+  }
   if (mediaSourceKind(url) === "fetch") {
     const { fetchPageVideoToCrayoAsset, MediaFetchError } = await import("@/lib/server/media-fetch.server");
     try {
@@ -277,6 +299,7 @@ export async function handleCrayoAction(
   payload: Record<string, unknown>,
   actorId: string,
   onProgress?: (message: string) => Promise<void> | void,
+  runId?: string,
 ): Promise<unknown> {
   switch (action) {
     case "crayo.get_account":
@@ -390,7 +413,7 @@ export async function handleCrayoAction(
     case "crayo.run_short":
       return runShort(payload, actorId);
     case "crayo.run_autoclip":
-      return runAutoclip(payload, actorId, onProgress);
+      return runAutoclip(payload, actorId, onProgress, runId);
     default:
       return undefined;
   }

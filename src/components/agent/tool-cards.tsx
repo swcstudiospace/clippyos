@@ -302,7 +302,7 @@ function AutoclipFields({
         />
         <p id="card-long-url-hint" className={problem ? "text-caption text-warning" : "text-caption text-muted-foreground"} role={problem ? "alert" : undefined}>
           {problem ??
-            "YouTube, TikTok, Vimeo, X or Twitch links are fetched in a sandbox (≤720p, ≤1GB) and uploaded to Crayo. Direct file links (mp4/mov ≤100MB) import straight away. Video must be 1 min–3 h."}
+            "YouTube, TikTok, Vimeo, X or Twitch links are fetched in a sandbox at 720p and uploaded to Crayo. Streams over 3 h are split into ~70-min segments, each its own AutoClip job (clips and credits spread across them). Direct file links (mp4/mov ≤100MB) import straight away."}
         </p>
       </div>
       <div className="flex flex-col gap-1.5">

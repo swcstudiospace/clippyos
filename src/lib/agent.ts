@@ -664,6 +664,12 @@ export function explainAgentToolError(code: string): string {
       return "Crayo AutoClip only takes videos between 1 minute and 3 hours.";
     case "MEDIA_TOO_LARGE":
       return "The download is over Crayo’s 1GB upload cap even at 720p. Pick a shorter video or trim it first.";
+    case "MEDIA_FETCH_PENDING":
+      return "The video is being fetched in the background (sandbox download → Crayo upload → AutoClip). Long streams are split into ≤3 h segments. Keep this tab open for fastest progress; the ops cron also advances it.";
+    case "MEDIA_SEGMENT_FAILED":
+      return "One segment of the stream could not be downloaded. The provider message is shown with the step; retry, or set a residential proxy in Settings → Social Machine if YouTube is blocking the sandbox.";
+    case "MEDIA_FETCH_TIMEOUT":
+      return "The background fetch ran past its 4-hour ceiling. Retry with a shorter stream, or run it again — segments already in Crayo are still on your account.";
     case "MEDIA_UPLOAD_FAILED":
       return "The video downloaded but the upload to Crayo’s signed URL failed. Retry; if it keeps failing, check Crayo storage headroom on crayo.ai.";
     case "UPLOAD_NOT_FOUND":
@@ -715,6 +721,8 @@ export function isFatalAgentToolError(code: string): boolean {
     key === "MEDIA_LENGTH_OUT_OF_RANGE" ||
     key === "MEDIA_TOO_LARGE" ||
     key === "MEDIA_UPLOAD_FAILED" ||
+    key === "MEDIA_SEGMENT_FAILED" ||
+    key === "MEDIA_FETCH_TIMEOUT" ||
     key === "UPLOAD_NOT_FOUND" ||
     key === "AI_TIER_GATED" ||
     key === "AUTOMATION_DISABLED"

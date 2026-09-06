@@ -19,6 +19,18 @@ export const getAgentRunFn = createServerFn({ method: "GET" })
     const { getAgentRunDetail } = await import("@/lib/server/agent.server");
     const detail = await getAgentRunDetail(id);
     if (!detail) throw new Error("JOB_MISSING");
+    if (detail.run.status === "waiting_resource" && detail.run.errorCode === "MEDIA_FETCH") {
+      // The Agent tab polls every ~1.2s while parked; each poll advances the background fetch.
+      const job = import("@/lib/server/media-fetch-job.server")
+        .then((mod) => mod.tickMediaFetchJob(id))
+        .catch(() => "idle" as const);
+      try {
+        const { waitUntil } = await import("@vercel/functions");
+        waitUntil(job);
+      } catch {
+        void job;
+      }
+    }
     return detail;
   });
 
