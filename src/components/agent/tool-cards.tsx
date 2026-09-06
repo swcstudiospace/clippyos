@@ -290,19 +290,19 @@ function AutoclipFields({
   return (
     <>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="card-long-url">Video file URL</Label>
+        <Label htmlFor="card-long-url">Video URL</Label>
         <Input
           id="card-long-url"
           type="url"
           value={url}
           onChange={(event) => set({ url: event.target.value })}
-          placeholder="https://…/video.mp4"
+          placeholder="https://www.youtube.com/watch?v=… or https://…/video.mp4"
           aria-invalid={problem ? true : undefined}
           aria-describedby="card-long-url-hint"
         />
         <p id="card-long-url-hint" className={problem ? "text-caption text-warning" : "text-caption text-muted-foreground"} role={problem ? "alert" : undefined}>
           {problem ??
-            "A direct https link to the video file (mp4/mov, ≤100MB, 1 min–3 h). YouTube/TikTok page links can’t be imported by Crayo."}
+            "YouTube, TikTok, Vimeo, X or Twitch links are fetched in a sandbox (≤720p, ≤1GB) and uploaded to Crayo. Direct file links (mp4/mov ≤100MB) import straight away. Video must be 1 min–3 h."}
         </p>
       </div>
       <div className="flex flex-col gap-1.5">

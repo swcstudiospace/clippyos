@@ -39,7 +39,7 @@ export type AgentSlashCommand = {
 
 export const AGENT_SLASH_COMMANDS: readonly AgentSlashCommand[] = [
   { cmd: "/short", preset: "crayo-short", hint: "Make a 9:16 short", group: "crayo", needsArg: "topic after the command", ui: "short" },
-  { cmd: "/autoclip", preset: "crayo-autoclip", hint: "AutoClip a long https URL", group: "crayo", needsArg: "https:// video URL", ui: "autoclip" },
+  { cmd: "/autoclip", preset: "crayo-autoclip", hint: "AutoClip a YouTube link or video URL", group: "crayo", needsArg: "https:// YouTube link or video file URL", ui: "autoclip" },
   { cmd: "/voice", preset: "crayo-voiceover", hint: "Generate a voiceover", group: "crayo", needsArg: "spoken script", ui: "voiceover" },
   { cmd: "/voiceover", preset: "crayo-voiceover", hint: "Generate a voiceover", group: "crayo", needsArg: "spoken script", ui: "voiceover" },
   { cmd: "/image", preset: "crayo-image", hint: "Generate a 9:16 still", group: "crayo", needsArg: "image prompt", ui: "image" },

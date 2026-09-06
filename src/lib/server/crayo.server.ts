@@ -501,6 +501,61 @@ export async function crayoImportAsset(input: { url: string; name?: string }): P
   return crayoJson(creds, "POST", "/assets", { url: input.url, name: input.name });
 }
 
+export type CrayoUpload = {
+  id: string;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  expiresAt: string | null;
+};
+
+/**
+ * Direct upload, step one (docs: POST /v1/uploads). Returns a single-use signed PUT URL that
+ * must start receiving bytes within 5 minutes. Video ≤ 1GB, audio ≤ 100MB, images ≤ 20MB.
+ */
+export async function crayoCreateUpload(input: {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}): Promise<CrayoUpload> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const payload = (await crayoJson(creds, "POST", "/uploads", {
+    filename: input.filename.slice(0, 100),
+    content_type: input.contentType,
+    size_bytes: Math.floor(input.sizeBytes),
+  })) as { upload?: Record<string, unknown> } | null;
+  const upload = payload?.upload;
+  const id = typeof upload?.id === "string" ? upload.id : "";
+  const url = typeof upload?.url === "string" ? upload.url : "";
+  if (!id || !url.startsWith("https://")) {
+    throw new CrayoApiError("FAILED", "Crayo did not return a signed upload URL.", 502);
+  }
+  const headers: Record<string, string> = {};
+  if (upload?.headers && typeof upload.headers === "object") {
+    for (const [key, value] of Object.entries(upload.headers as Record<string, unknown>)) {
+      if (typeof value === "string") headers[key.toLowerCase()] = value;
+    }
+  }
+  return {
+    id,
+    url,
+    method: typeof upload?.method === "string" ? upload.method : "PUT",
+    headers,
+    expiresAt: typeof upload?.expires_at === "string" ? upload.expires_at : null,
+  };
+}
+
+/** Direct upload, step three (docs: POST /v1/uploads/{id}/complete). Returns the new asset id. */
+export async function crayoCompleteUpload(uploadId: string): Promise<string> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const payload = (await crayoJson(creds, "POST", `/uploads/${encodeURIComponent(uploadId)}/complete`)) as
+    | { asset?: { id?: unknown } }
+    | null;
+  const id = typeof payload?.asset?.id === "string" ? payload.asset.id : "";
+  if (!id) throw new CrayoApiError("FAILED", "Crayo completed the upload without returning an asset id.", 502);
+  return id;
+}
+
 export async function crayoGenerateImage(input: {
   prompt: string;
   aspectRatio?: string;
