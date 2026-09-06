@@ -151,11 +151,17 @@ export async function routedChat(input: {
     const code = error instanceof Error ? error.message : "";
     if (code === "AI_TIER_GATED") throw error;
     const fallback = router.fallbackProvider;
+    // Upstream failure of the preferred provider (no key, rate-limited, or a non-OK / timed-out
+    // response) hands the same turn to the fallback provider once. Tier gating never falls back.
     if (
       fallback &&
       fallback !== preferred &&
-      (code === "AI_UNAVAILABLE" || code === "AI_RATE_LIMIT")
+      (code === "AI_UNAVAILABLE" ||
+        code === "AI_RATE_LIMIT" ||
+        code === "GENERATION_FAILED" ||
+        (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")))
     ) {
+      console.error("[llm] falling back", preferred, "→", fallback, "after", code || (error as Error).name);
       const result = await attempt(fallback);
       return { ...result, provider: fallback, model };
     }
