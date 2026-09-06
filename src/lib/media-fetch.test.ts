@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  DAYTONA_DOMAIN_ALLOWLIST_MAX,
+  FETCHABLE_PAGE_HOSTS,
   MEDIA_MAX_SECONDS,
   mediaAssetFilename,
   mediaContentType,
@@ -24,11 +26,23 @@ test("mediaSourceKind routes page links to the sandbox fetch and files to Crayo 
   assert.equal(mediaSourceKind("not a url"), null);
 });
 
-test("mediaFetchAllowlist adds the signed upload host and rejects junk", () => {
-  const list = mediaFetchAllowlist(["uploads-abc.s3.amazonaws.com", "bad host!"]);
-  assert.match(list, /\*\.googlevideo\.com/);
-  assert.match(list, /uploads-abc\.s3\.amazonaws\.com/);
-  assert.doesNotMatch(list, /bad host/);
+test("mediaFetchAllowlist opens only the source site's family plus install/upload hosts", () => {
+  const yt = mediaFetchAllowlist("https://www.youtube.com/watch?v=x", ["uploads-abc.s3.amazonaws.com", "bad host!"]);
+  assert.match(yt, /\*\.googlevideo\.com/);
+  assert.match(yt, /uploads-abc\.s3\.amazonaws\.com/);
+  assert.match(yt, /pypi\.org/);
+  assert.doesNotMatch(yt, /tiktok|twimg|bad host/);
+  const tt = mediaFetchAllowlist("https://www.tiktok.com/@a/video/1");
+  assert.match(tt, /\*\.tiktokcdn\.com/);
+  assert.doesNotMatch(tt, /googlevideo/);
+});
+
+test("mediaFetchAllowlist never exceeds Daytona's 20-domain cap", () => {
+  for (const host of FETCHABLE_PAGE_HOSTS) {
+    const list = mediaFetchAllowlist(`https://www.${host}/x`, ["uploads.example-s3.amazonaws.com"]);
+    const n = list.split(",").length;
+    assert.ok(n <= DAYTONA_DOMAIN_ALLOWLIST_MAX, `${host}: ${n} domains`);
+  }
 });
 
 test("parseMediaProbe reads yt-dlp JSON, tolerating log noise and playlist wrappers", () => {

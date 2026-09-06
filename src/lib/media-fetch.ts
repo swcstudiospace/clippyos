@@ -42,55 +42,39 @@ export const MEDIA_MAX_HEIGHT = 720;
 export const YTDLP_FORMAT_MERGED = `bv*[height<=${MEDIA_MAX_HEIGHT}][ext=mp4]+ba[ext=m4a]/b[height<=${MEDIA_MAX_HEIGHT}][ext=mp4]/b[ext=mp4]/b`;
 export const YTDLP_FORMAT_PROGRESSIVE = `b[ext=mp4][vcodec^=avc1][height<=${MEDIA_MAX_HEIGHT}]/b[ext=mp4][height<=${MEDIA_MAX_HEIGHT}]/b[ext=mp4]/b[height<=${MEDIA_MAX_HEIGHT}]/b`;
 
-/** Outbound domains the fetch sandbox may reach. yt-dlp install + the page hosts + their CDNs. */
-export const MEDIA_FETCH_DOMAIN_ALLOWLIST = [
+/** Daytona rejects a sandbox allow-list with more than this many entries. */
+export const DAYTONA_DOMAIN_ALLOWLIST_MAX = 20;
+
+/** Always needed: yt-dlp install sources and Crayo's signed upload hosts. */
+const MEDIA_FETCH_BASE_DOMAINS = [
   "pypi.org",
   "files.pythonhosted.org",
   "github.com",
   "objects.githubusercontent.com",
   "release-assets.githubusercontent.com",
-  "youtube.com",
-  "*.youtube.com",
-  "youtu.be",
-  "*.googlevideo.com",
-  "*.ytimg.com",
-  "*.ggpht.com",
-  "vimeo.com",
-  "*.vimeo.com",
-  "*.vimeocdn.com",
-  "*.akamaized.net",
-  "tiktok.com",
-  "*.tiktok.com",
-  "*.tiktokcdn.com",
-  "*.tiktokcdn-us.com",
-  "*.byteoversea.com",
-  "twitch.tv",
-  "*.twitch.tv",
-  "*.ttvnw.net",
-  "*.jtvnw.net",
-  "x.com",
-  "*.x.com",
-  "twitter.com",
-  "*.twitter.com",
-  "*.twimg.com",
-  "kick.com",
-  "*.kick.com",
-  "rumble.com",
-  "*.rumble.com",
-  "*.rmbl.ws",
-  "dailymotion.com",
-  "*.dailymotion.com",
-  "*.dmcdn.net",
-  "facebook.com",
-  "*.facebook.com",
-  "fb.watch",
-  "*.fbcdn.net",
-  "instagram.com",
-  "*.instagram.com",
-  "*.cdninstagram.com",
   "uploads.crayo.ai",
   "*.crayo.ai",
 ] as const;
+
+/** Per-site page + CDN domains. Only the family matching the source URL is opened. */
+const MEDIA_FETCH_SITE_DOMAINS: ReadonlyArray<{ hosts: readonly string[]; allow: readonly string[] }> = [
+  {
+    hosts: ["youtube.com", "youtu.be", "youtube-nocookie.com"],
+    allow: ["youtube.com", "*.youtube.com", "youtu.be", "*.googlevideo.com", "*.ytimg.com", "*.ggpht.com"],
+  },
+  { hosts: ["vimeo.com"], allow: ["vimeo.com", "*.vimeo.com", "*.vimeocdn.com", "*.akamaized.net"] },
+  {
+    hosts: ["tiktok.com"],
+    allow: ["tiktok.com", "*.tiktok.com", "*.tiktokcdn.com", "*.tiktokcdn-us.com", "*.byteoversea.com"],
+  },
+  { hosts: ["twitch.tv"], allow: ["twitch.tv", "*.twitch.tv", "*.ttvnw.net", "*.jtvnw.net"] },
+  { hosts: ["x.com", "twitter.com"], allow: ["x.com", "*.x.com", "twitter.com", "*.twitter.com", "*.twimg.com"] },
+  { hosts: ["kick.com"], allow: ["kick.com", "*.kick.com"] },
+  { hosts: ["rumble.com"], allow: ["rumble.com", "*.rumble.com", "*.rmbl.ws"] },
+  { hosts: ["dailymotion.com"], allow: ["dailymotion.com", "*.dailymotion.com", "*.dmcdn.net"] },
+  { hosts: ["facebook.com", "fb.watch"], allow: ["facebook.com", "*.facebook.com", "fb.watch", "*.fbcdn.net"] },
+  { hosts: ["instagram.com"], allow: ["instagram.com", "*.instagram.com", "*.cdninstagram.com"] },
+];
 
 export type MediaSourceKind = "direct" | "fetch";
 
@@ -123,14 +107,23 @@ export function mediaSourceKind(url: string): MediaSourceKind | null {
   return "direct";
 }
 
-/** Domain allow-list for the sandbox, plus the exact host of Crayo's signed PUT URL. */
-export function mediaFetchAllowlist(extraHosts: string[] = []): string {
-  const set = new Set<string>(MEDIA_FETCH_DOMAIN_ALLOWLIST);
-  for (const host of extraHosts) {
-    const clean = host.trim().toLowerCase();
+/**
+ * Domain allow-list for the sandbox fetching `sourceUrl`: the install/upload base, the one site
+ * family that matches the source, and any extra hosts (Crayo's signed PUT host). Always at most
+ * DAYTONA_DOMAIN_ALLOWLIST_MAX entries — Daytona refuses longer lists outright.
+ */
+export function mediaFetchAllowlist(sourceUrl: string, extraHosts: string[] = []): string {
+  const set = new Set<string>(MEDIA_FETCH_BASE_DOMAINS);
+  const host = registrableHost(sourceUrl);
+  if (host) {
+    const family = MEDIA_FETCH_SITE_DOMAINS.find((site) => hostMatches(host, site.hosts));
+    for (const domain of family?.allow ?? [host]) set.add(domain);
+  }
+  for (const extra of extraHosts) {
+    const clean = extra.trim().toLowerCase();
     if (/^[a-z0-9.*-]+$/.test(clean)) set.add(clean);
   }
-  return [...set].join(",");
+  return [...set].slice(0, DAYTONA_DOMAIN_ALLOWLIST_MAX).join(",");
 }
 
 export type MediaProbe = {

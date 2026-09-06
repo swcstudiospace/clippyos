@@ -105,7 +105,7 @@ export async function fetchPageVideoToCrayoAsset(input: {
         labels: { ...LABELS },
         public: false,
         networkBlockAll: false,
-        domainAllowList: mediaFetchAllowlist(),
+        domainAllowList: mediaFetchAllowlist(input.url),
         ...(config.proxyUrl ? { outboundProxyUrl: config.proxyUrl } : {}),
       } as never,
       { timeout: Math.min(120, remainingSec(90)) },
@@ -185,7 +185,7 @@ export async function fetchPageVideoToCrayoAsset(input: {
     }
     if (putHost) {
       try {
-        await sandbox.updateNetworkSettings({ domainAllowList: mediaFetchAllowlist([putHost]) });
+        await sandbox.updateNetworkSettings({ domainAllowList: mediaFetchAllowlist(input.url, [putHost]) });
       } catch {
         /* allow-list already covers *.crayo.ai; best-effort for S3-style hosts */
       }
