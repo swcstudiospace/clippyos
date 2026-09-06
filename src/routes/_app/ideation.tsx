@@ -146,6 +146,8 @@ function IdeationPage() {
       setFailed(result.fallback ? false : !result.ok);
       if (result.fallback) {
         toast.message("Generation is paused until AI is connected.");
+      } else if (!result.ok) {
+        toast.error(userFacingErrorMessage(new Error(result.reason || "GENERATION_FAILED")));
       }
     },
     onError: (error, content) => {
@@ -162,6 +164,11 @@ function IdeationPage() {
       await queryClient.invalidateQueries({ queryKey: IDEATION_THREADS_QUERY_KEY });
       queryClient.setQueryData(ideationMessagesQueryKey(result.thread.id), result.messages);
       setFailed(!result.ok && !result.fallback);
+      if (result.fallback) {
+        toast.message("Generation is paused until AI is connected.");
+      } else if (!result.ok) {
+        toast.error(userFacingErrorMessage(new Error(result.reason || "GENERATION_FAILED")));
+      }
     },
     onError: (error) => {
       captureClientError(error, { source: "ideation-retry" });

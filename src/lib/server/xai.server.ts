@@ -410,7 +410,9 @@ export function xaiRateLimitSnapshot(): {
 export async function llmAvailable(): Promise<boolean> {
   if (platformKey()) return true;
   if (await settingsApiKey()) return true;
-  return Boolean(await oauthBearer());
+  if (await oauthBearer()) return true;
+  // An OpenAI-compatible key (OpenRouter etc.) is a full provider for the router too.
+  return Boolean(await compatApiKey());
 }
 
 export async function llmStatus(): Promise<{
