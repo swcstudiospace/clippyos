@@ -6,7 +6,7 @@ import type {
   SuggestedTitleGroup,
   SuggestedTitlesPayload,
 } from "@/lib/entities";
-import { LONG_FORM_SECONDS } from "@/lib/ideation";
+import { LONG_FORM_SECONDS } from "./ideation.ts";
 
 export { LONG_FORM_SECONDS };
 

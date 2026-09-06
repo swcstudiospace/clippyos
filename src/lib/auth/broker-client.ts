@@ -10,7 +10,7 @@
  * off — grok_preview's allowed callbacks are *.grok-sandbox.com, which is
  * invalid_uri at auth.grok.me for production hosts.
  */
-import { PREVIEW_CLIENT_ID, PREVIEW_CLIENT_SECRET } from "./preview";
+import { PREVIEW_CLIENT_ID, PREVIEW_CLIENT_SECRET } from "./preview.ts";
 
 export type GrokBrokerClient = {
   clientId: string | undefined;
