@@ -459,7 +459,7 @@ function buildIntegrationCards(input: {
   }
   const items = input.integrations?.items;
   if (items) {
-    for (const id of ["ai", "higgsfield", "daytona", "linear", "whop", "discord", "youtube"] as const) {
+    for (const id of ["ai", "crayo", "higgsfield", "daytona", "linear", "whop", "discord", "youtube"] as const) {
       const row = items[id];
       if (!row) continue;
       cards.push({

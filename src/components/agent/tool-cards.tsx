@@ -115,7 +115,7 @@ export function AgentToolCardView({
       ) : null}
       {!crayoReady && RUNNABLE.has(card.ui) ? (
         <p className="mt-2 text-caption text-warning">
-          Crayo isn’t live on this deploy yet. Production CRAYO_API_KEY applies after the next deploy.
+          Crayo isn’t connected. Paste your Crayo API key in Settings → Integrations → Crayo.ai (no redeploy needed).
         </p>
       ) : null}
     </GlassCard>
