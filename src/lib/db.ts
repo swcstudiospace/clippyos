@@ -100,7 +100,15 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    // Supabase's session-mode pooler caps clients at 15 per project; every warm serverless
+    // instance keeps its own pool, so hold few connections and let idle ones go quickly.
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      max: 3,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 15_000,
+      allowExitOnIdle: true,
+    });
     try {
       const client = await pool.connect();
       try {

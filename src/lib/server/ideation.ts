@@ -26,7 +26,18 @@ export type SendResult = {
   messages: IdeationMessage[];
   toolsUsed: string[];
   fallback: boolean;
+  /** Error code when `ok` is false and it is not the paused/fallback state (AI_TIER_GATED, AI_RATE_LIMIT, GENERATION_FAILED, DATA_UNAVAILABLE…). */
+  reason?: string | null;
 };
+
+/** Public, UPPER_SNAKE code for a failed turn — never a stack or a provider URL. */
+function turnFailureReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  if (/^[A-Z][A-Z0-9_]{2,60}$/.test(message)) return message;
+  if (/EMAXCONNSESSION|max clients reached|Neon bootstrap/i.test(message)) return "DATA_UNAVAILABLE";
+  if (/timeout|aborted/i.test(message)) return "GENERATION_TIMEOUT";
+  return "GENERATION_FAILED";
+}
 
 function newId(): string {
   return crypto.randomUUID();
@@ -440,12 +451,15 @@ export const sendIdeationMessage = createServerFn({ method: "POST" })
           fallback: true,
         };
       }
+      const reason = turnFailureReason(error);
+      console.error("[ideation] turn failed", reason, error instanceof Error ? error.message.slice(0, 200) : "");
       return {
         ok: false,
         thread: decorated,
         messages: history,
         toolsUsed: [],
         fallback: false,
+        reason,
       };
     }
   });
@@ -477,13 +491,19 @@ export const retryIdeationTurn = createServerFn({ method: "POST" })
         toolsUsed: reply.toolsUsed,
         fallback: reply.fallback,
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message === "AI_UNAVAILABLE") {
+        return { ok: false, thread: await decorate(thread), messages: history, toolsUsed: [], fallback: true };
+      }
+      const reason = turnFailureReason(error);
+      console.error("[ideation] retry failed", reason, error instanceof Error ? error.message.slice(0, 200) : "");
       return {
         ok: false,
         thread: await decorate(thread),
         messages: history,
         toolsUsed: [],
         fallback: false,
+        reason,
       };
     }
   });

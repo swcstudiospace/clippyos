@@ -232,6 +232,9 @@ export function userFacingErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message === "UNTRUSTED_IMAGE") {
     return "That image can’t be used here.";
   }
+  if (error instanceof Error && error.message === "GENERATION_TIMEOUT") {
+    return "The model took longer than 60 seconds on this turn. Retry, or ask for fewer ideas at once.";
+  }
   if (error instanceof Error && error.message === "GENERATION_FAILED") {
     return "The reply didn’t come through. Retry to send the same thread.";
   }
