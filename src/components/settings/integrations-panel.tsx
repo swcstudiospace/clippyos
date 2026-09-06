@@ -212,6 +212,7 @@ function IntegrationCard({
   const [reveal, setReveal] = useState(false);
   const [pendingDisconnect, setPendingDisconnect] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
+  const configured = health !== "not_configured";
 
   useEffect(() => {
     if (id !== "x") return;
@@ -233,8 +234,15 @@ function IntegrationCard({
   const save = useMutation({
     mutationFn: () => saveIntegration({ data: { id, values: fields } }),
     onSuccess: async () => {
+      const secretReplaced = SECRET_FIELD_KEYS.some((key) => (fields[key] ?? "").trim());
       setFields({});
-      toast.success(`${copy.name} saved`);
+      toast.success(
+        secretReplaced
+          ? `${copy.name} key replaced. Run Test to confirm the new key works.`
+          : configured
+            ? `${copy.name} settings saved — the stored key was kept.`
+            : `${copy.name} saved`,
+      );
       await queryClient.invalidateQueries({ queryKey: INTEGRATIONS_QUERY_KEY });
       await queryClient.invalidateQueries({ queryKey: ["ai-status"] });
       await queryClient.invalidateQueries({ queryKey: PUBLISHERS_QUERY_KEY });
@@ -313,8 +321,6 @@ function IntegrationCard({
     event.preventDefault();
     save.mutate();
   }
-
-  const configured = health !== "not_configured";
 
   return (
     <GlassCard>
@@ -716,8 +722,19 @@ function IntegrationCard({
               </p>
             </>
           ) : null}
-          <Button type="submit" variant="secondary" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save"}
+          {configured ? (
+            <p className="text-caption text-muted" id={`${id}-rotate-hint`}>
+              A key is already stored{last4 ? ` (ends …${last4})` : ""}. Paste a new one above and Save to
+              replace it; fields you leave blank keep their current values. Disconnect removes it.
+            </p>
+          ) : null}
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={save.isPending}
+            aria-describedby={configured ? `${id}-rotate-hint` : undefined}
+          >
+            {save.isPending ? "Saving…" : configured ? "Save changes" : "Save"}
           </Button>
         </form>
       ) : (
@@ -818,6 +835,9 @@ function IntegrationCard({
     </GlassCard>
   );
 }
+
+/** Field names that carry a secret; any non-empty one on Save means the stored key was replaced. */
+const SECRET_FIELD_KEYS = ["key", "apiKey", "secret", "token", "keyId", "clientSecret", "proxyPassword"] as const;
 
 function Field({
   id,

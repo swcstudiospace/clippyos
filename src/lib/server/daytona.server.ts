@@ -1223,18 +1223,31 @@ export async function persistDaytonaSettings(values: {
     if (key.length < 12) throw new Error("KEY_TOO_SHORT");
     await writeAppSetting(KEY, key);
   }
-  const url = (values.apiUrl ?? "").trim();
-  await writeAppSetting(URL_KEY, url || DEFAULT_DAYTONA_API_URL);
-  const target = parseSocialMachineRegion(values.target);
-  await writeAppSetting(TARGET_KEY, target);
-  const minutesRaw = (values.autoStopMinutes ?? "").trim();
-  if (minutesRaw) {
-    const parsed = Number.parseInt(minutesRaw, 10);
-    if (!Number.isFinite(parsed) || parsed < 5 || parsed > 240) {
-      throw new Error("AUTO_STOP_INVALID");
+  // Untouched fields (undefined) keep their stored value, so rotating just the key never
+  // resets URL / region / idle minutes. A field sent as "" is an explicit reset to default.
+  if (values.apiUrl !== undefined) {
+    const url = values.apiUrl.trim();
+    await writeAppSetting(URL_KEY, url || DEFAULT_DAYTONA_API_URL);
+  } else if (!(await readAppSetting(URL_KEY))?.trim()) {
+    await writeAppSetting(URL_KEY, DEFAULT_DAYTONA_API_URL);
+  }
+  if (values.target !== undefined) {
+    await writeAppSetting(TARGET_KEY, parseSocialMachineRegion(values.target));
+  } else if (!(await readAppSetting(TARGET_KEY))?.trim()) {
+    await writeAppSetting(TARGET_KEY, parseSocialMachineRegion(""));
+  }
+  if (values.autoStopMinutes !== undefined) {
+    const minutesRaw = values.autoStopMinutes.trim();
+    if (minutesRaw) {
+      const parsed = Number.parseInt(minutesRaw, 10);
+      if (!Number.isFinite(parsed) || parsed < 5 || parsed > 240) {
+        throw new Error("AUTO_STOP_INVALID");
+      }
+      await writeAppSetting(AUTO_STOP_KEY, String(parsed));
+    } else {
+      await writeAppSetting(AUTO_STOP_KEY, String(DEFAULT_AUTO_STOP_MINUTES));
     }
-    await writeAppSetting(AUTO_STOP_KEY, String(parsed));
-  } else {
+  } else if (!(await readAppSetting(AUTO_STOP_KEY))?.trim()) {
     await writeAppSetting(AUTO_STOP_KEY, String(DEFAULT_AUTO_STOP_MINUTES));
   }
   if (values.size !== undefined) {
