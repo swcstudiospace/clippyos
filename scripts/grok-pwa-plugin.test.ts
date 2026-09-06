@@ -417,6 +417,12 @@ test("published hosts get ClippyOS branding, palette, and any+maskable icons", (
   assert.ok(purposes.includes("any"));
   assert.ok(purposes.includes("maskable"));
   assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
+  // Maskable art is a separate, padded asset — never the full-bleed "any" file.
+  const maskable = manifest.icons.filter((icon: { purpose?: string }) => icon.purpose === "maskable");
+  assert.equal(maskable.length, 2);
+  for (const icon of maskable) {
+    assert.match(icon.src, /icon-maskable-(192|512)\.png$/);
+  }
 });
 
 // Tripwires: the deployed-app path only works if Nitro scans server/ — an
@@ -436,6 +442,8 @@ test("nitro middleware and its bundled assets exist", () => {
   readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-180.png"));
   readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-192.png"));
   readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-512.png"));
+  readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-maskable-192.png"));
+  readFileSync(join(TEMPLATE_ROOT, "public/__grok/icon-maskable-512.png"));
   readFileSync(join(TEMPLATE_ROOT, "public/__grok/install/styles.css"));
 });
 
