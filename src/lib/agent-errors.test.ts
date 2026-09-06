@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { explainAgentToolError, isFatalAgentToolError } from "./agent.ts";
 
-test("MISSING is fatal and explains the Vercel deploy gap", () => {
+test("MISSING is fatal and points at Settings → Integrations → Crayo.ai", () => {
   assert.equal(isFatalAgentToolError("MISSING"), true);
-  assert.match(explainAgentToolError("MISSING"), /next deploy/);
+  assert.match(explainAgentToolError("MISSING"), /Settings → Integrations → Crayo\.ai/);
 });
 
 test("unknown codes pass through without looking like success", () => {

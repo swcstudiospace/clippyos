@@ -91,6 +91,12 @@ async function youtubeKey(): Promise<string | null> {
   return loadYoutubeApiKey();
 }
 
+async function crayoStored(): Promise<string | null> {
+  const { loadCrayoCreds } = await import("@/lib/server/crayo.server");
+  const creds = await loadCrayoCreds().catch(() => null);
+  return creds?.key ?? null;
+}
+
 async function higgsfieldStored(): Promise<{ key: string; secret: string } | null> {
   const key =
     (await (await load_app_settings()).readAppSetting("HIGGSFIELD_API_KEY"))?.trim() ||
@@ -161,7 +167,7 @@ function xCard(
 
 async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
   (await load_discord_agent()).ensureDiscordAgentLoop();
-  const [meta, llm, yt, hf, discord, notion, daytona, whop, first, sa, role, access, discordAgentHealth, xPub, linear, telegram, whatsapp] = await Promise.all([
+  const [meta, llm, yt, hf, discord, notion, daytona, whop, first, sa, role, access, discordAgentHealth, xPub, linear, telegram, whatsapp, crayo] = await Promise.all([
     readMeta(),
     import("@/lib/server/xai.server").then((mod) => mod.llmStatus()),
     youtubeKey(),
@@ -187,6 +193,7 @@ async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
     import("@/lib/server/channels.server")
       .then((mod) => mod.loadWhatsAppConfig())
       .catch(() => null),
+    crayoStored(),
   ]);
 
   const aiConfigured = llm.source !== "none";
@@ -199,6 +206,15 @@ async function buildSnapshot(userId: string): Promise<IntegrationsSnapshot> {
       lastError: meta.ai?.lastError ?? null,
       last4: (await load_discord()).last4((await aiKey()) ?? (llm.source === "oauth" ? "oauthxxxx" : llm.source === "platform" ? "platxxxx" : null)),
       required: true,
+    },
+    crayo: {
+      id: "crayo" as const,
+      configured: Boolean(crayo),
+      health: healthFor(Boolean(crayo), meta.crayo ?? emptyMeta(), false),
+      lastTestedAt: saneIso(meta.crayo?.lastTestedAt),
+      lastError: meta.crayo?.lastError ?? null,
+      last4: (await load_discord()).last4(crayo),
+      required: false,
     },
     higgsfield: {
       id: "higgsfield" as const,
@@ -333,6 +349,12 @@ export const saveIntegration = createServerFn({ method: "POST" })
       if (key.length < 8) throw new Error("KEY_TOO_SHORT");
       await (await load_app_settings()).writeAppSetting("XAI_API_KEY", key);
       await (await load_app_settings()).writeAppSetting("AI_API_KEY", key);
+    } else if (data.id === "crayo") {
+      const key = (values.key ?? values.apiKey ?? "").trim();
+      if (key.length < 12) throw new Error("KEY_TOO_SHORT");
+      const { persistCrayoCreds, clearCrayoCredsCache } = await import("@/lib/server/crayo.server");
+      await persistCrayoCreds({ key, secret: (values.secret ?? "").trim() });
+      clearCrayoCredsCache();
     } else if (data.id === "higgsfield") {
       const keyId = (values.keyId ?? values.key ?? "").trim();
       const secret = (values.secret ?? "").trim();
@@ -426,6 +448,12 @@ export const disconnectIntegration = createServerFn({ method: "POST" })
       await (await load_app_settings()).deleteAppSetting("AI_API_KEY");
       const { disconnectGrokOAuth } = await import("@/lib/server/xai.server");
       await disconnectGrokOAuth();
+    } else if (id === "crayo") {
+      for (const key of ["CRAYO_API_KEY", "CRAYO_API_SECRET", "CRAYO_KEY", "CRAYO_SECRET", "CRAYO_CREDENTIALS"]) {
+        await (await load_app_settings()).deleteAppSetting(key);
+      }
+      const { clearCrayoCredsCache } = await import("@/lib/server/crayo.server");
+      clearCrayoCredsCache();
     } else if (id === "higgsfield") {
       await (await load_app_settings()).deleteAppSetting("HIGGSFIELD_API_KEY");
       await (await load_app_settings()).deleteAppSetting("HIGGSFIELD_API_SECRET");
@@ -475,6 +503,18 @@ async function testAi(): Promise<void> {
     timeoutMs: 20000,
   });
   if (!ping) throw new Error("AI_UNAVAILABLE");
+}
+
+async function testCrayo(): Promise<void> {
+  const { crayoGetAccount, CrayoApiError } = await import("@/lib/server/crayo.server");
+  try {
+    await crayoGetAccount();
+  } catch (error) {
+    if (error instanceof CrayoApiError) {
+      throw new Error(error.code === "MISSING" ? "CRAYO_UNAVAILABLE" : error.code === "UNAUTHORIZED" ? "UNAUTHORIZED" : "CRAYO_UNAVAILABLE");
+    }
+    throw error;
+  }
 }
 
 async function testHiggsfield(): Promise<void> {
@@ -556,6 +596,7 @@ export const testIntegration = createServerFn({ method: "POST" })
     testLock.set(stamp, Date.now());
     try {
       if (id === "ai") await testAi();
+      else if (id === "crayo") await testCrayo();
       else if (id === "higgsfield") await testHiggsfield();
       else if (id === "youtube") await testYoutube();
       else if (id === "discord") await testDiscord();

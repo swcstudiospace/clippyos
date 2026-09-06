@@ -223,6 +223,9 @@ export function userFacingErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message === "HIGGSFIELD_UNAVAILABLE") {
     return "This tool will be available once you connect your API key.";
   }
+  if (error instanceof Error && error.message === "CRAYO_UNAVAILABLE") {
+    return "Crayo did not answer with this key. Check the key on crayo.ai/developers, paste it again, and Test.";
+  }
   if (error instanceof Error && error.message === "OVERLAY_TOO_LARGE") {
     return "That overlay is too large. Shorten the text and try again.";
   }

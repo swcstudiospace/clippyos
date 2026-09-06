@@ -14,6 +14,7 @@ import {
   Youtube,
   BookOpen,
   PlugZap,
+  Clapperboard,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -69,6 +70,7 @@ function XMarkIcon({ className }: { className?: string }) {
 
 const ICONS: Record<IntegrationId, typeof Sparkles> = {
   ai: Sparkles,
+  crayo: Clapperboard,
   higgsfield: Image,
   youtube: Youtube,
   discord: Bot,
@@ -387,6 +389,21 @@ function IntegrationCard({
               onChange={(value) => setFields({ key: value })}
               placeholder={configured ? "•••• stored on the server" : "Paste the xAI / Grok API key"}
             />
+          ) : null}
+          {id === "crayo" ? (
+            <>
+              <Field
+                id="crayo-key"
+                label="API key"
+                value={fields.key ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, key: value }))}
+                placeholder={configured ? "•••• stored on the server" : "crayo_sk_…"}
+              />
+              <p className="text-caption text-muted">
+                From crayo.ai → Developer API. A key saved here is used ahead of the deploy’s
+                CRAYO_API_KEY, so you can rotate it without a redeploy. Test calls GET /v1/account (free).
+              </p>
+            </>
           ) : null}
           {id === "higgsfield" ? (
             <>

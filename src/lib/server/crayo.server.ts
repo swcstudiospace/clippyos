@@ -144,9 +144,10 @@ async function writeSetting(key: string, value: string): Promise<void> {
 }
 
 export async function persistCrayoCreds(creds: CrayoCreds): Promise<void> {
-  if (!creds.key || !creds.secret) return;
+  if (!creds.key) return;
+  // Crayo authenticates with the single Bearer key; the secret is optional legacy input.
   await writeSetting("CRAYO_API_KEY", creds.key);
-  await writeSetting("CRAYO_API_SECRET", creds.secret);
+  await writeSetting("CRAYO_API_SECRET", creds.secret ?? "");
   credsCache = { at: Date.now(), creds };
 }
 
@@ -167,15 +168,14 @@ export function clearCrayoCredsCache(): void {
   persistAttempted = false;
 }
 
+/**
+ * Operator-saved key (Settings → Integrations → Crayo.ai) wins over the deploy's CRAYO_API_KEY,
+ * so a rotation in Settings takes effect without a redeploy. Env is the fallback and is copied
+ * into Settings once so the card shows it as configured.
+ */
 export async function loadCrayoCreds(): Promise<CrayoCreds | null> {
   const now = Date.now();
   if (credsCache && now - credsCache.at < CREDS_TTL_MS) return credsCache.creds;
-  const fromEnv = envPair();
-  if (fromEnv) {
-    credsCache = { at: now, creds: fromEnv };
-    void persistPreviewIfNeeded(fromEnv);
-    return fromEnv;
-  }
   try {
     const map = await readSettingsMap();
     const fromSettings = credsFromSettings(map);
@@ -184,7 +184,13 @@ export async function loadCrayoCreds(): Promise<CrayoCreds | null> {
       return fromSettings;
     }
   } catch {
-    /* fall through — no credentials configured */
+    /* fall through — env may still be configured */
+  }
+  const fromEnv = envPair();
+  if (fromEnv) {
+    credsCache = { at: now, creds: fromEnv };
+    void persistPreviewIfNeeded(fromEnv);
+    return fromEnv;
   }
   credsCache = { at: now, creds: null };
   return null;
