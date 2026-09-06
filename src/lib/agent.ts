@@ -655,7 +655,19 @@ export function explainAgentToolError(code: string): string {
     case "CRAYO_FAILED":
       return "Crayo returned an error. Check credits and the source URL. No file was stored.";
     case "CRAYO_SOURCE_NOT_MEDIA":
-      return "Crayo AutoClip needs a direct https link to the video file (mp4/mov, ≤100MB, 1 min–3 h), not a YouTube/TikTok/Vimeo page link. Upload the video to the Library first, then paste that file URL.";
+      return "This link can’t be fetched automatically (sign-in or share-token wall). Paste a YouTube/TikTok/Vimeo link, a direct video file URL, or upload the file to the Library and use that URL.";
+    case "DAYTONA_UNAVAILABLE":
+      return "Fetching a YouTube/TikTok link runs yt-dlp in a Daytona sandbox, and Daytona isn’t connected. Add the Daytona API key in Settings → Social Machine, or paste a direct video file URL instead.";
+    case "MEDIA_FETCH_FAILED":
+      return "The sandbox could not download this page link. The provider message is shown with the step (age/sign-in walls and bot checks are the usual cause). A residential proxy in Settings → Social Machine helps with YouTube.";
+    case "MEDIA_LENGTH_OUT_OF_RANGE":
+      return "Crayo AutoClip only takes videos between 1 minute and 3 hours.";
+    case "MEDIA_TOO_LARGE":
+      return "The download is over Crayo’s 1GB upload cap even at 720p. Pick a shorter video or trim it first.";
+    case "MEDIA_UPLOAD_FAILED":
+      return "The video downloaded but the upload to Crayo’s signed URL failed. Retry; if it keeps failing, check Crayo storage headroom on crayo.ai.";
+    case "UPLOAD_NOT_FOUND":
+      return "Crayo never received the bytes on its signed upload URL. Retry the run.";
     case "VALIDATION_ERROR":
       return "Crayo rejected the request: the URL could not be fetched, is not a public https media file, or the video is too short/long (AutoClip needs 1 min–3 h). No credits were spent on a rejected request.";
     case "UNSUPPORTED_MEDIA_TYPE":
@@ -699,6 +711,11 @@ export function isFatalAgentToolError(code: string): boolean {
     key === "STORAGE_LIMIT_EXCEEDED" ||
     key === "NOT_FOUND" ||
     key === "JOB_LIMIT_REACHED" ||
+    key === "MEDIA_FETCH_FAILED" ||
+    key === "MEDIA_LENGTH_OUT_OF_RANGE" ||
+    key === "MEDIA_TOO_LARGE" ||
+    key === "MEDIA_UPLOAD_FAILED" ||
+    key === "UPLOAD_NOT_FOUND" ||
     key === "AI_TIER_GATED" ||
     key === "AUTOMATION_DISABLED"
   );

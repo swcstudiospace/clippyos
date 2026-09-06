@@ -245,7 +245,10 @@ export default defineConfig(({ command, isPreview }) => ({
             // Collapse Nitro's own chunks the same way — circular live
             // bindings 500 the published app otherwise.
             inlineDynamicImports: true,
-          }),
+            // Agent runs (sandbox fetch + Crayo polls) execute inside the
+            // request's function via waitUntil; 300s is the Hobby ceiling.
+            vercel: { functions: { maxDuration: 300 } },
+          } as never),
           ...(process.env.NITRO_PRESET === "node-server" && !isPreview
             ? []
             : [patchSsrAfterBuildPlugin()]),

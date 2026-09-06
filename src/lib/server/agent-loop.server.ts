@@ -30,6 +30,7 @@ import {
 import { readLlmRouter, routedChat, routedText } from "@/lib/server/llm-router.server";
 import { xaiRateLimitSnapshot, type XaiChatMessage } from "@/lib/server/xai.server";
 import { readAutomationEnabled, readPlaybookPolicies } from "@/lib/server/autonomy-policy.server";
+import { mediaSourceKind } from "@/lib/media-fetch";
 import { maybeDistillSkillFromRun } from "@/lib/server/skill-distill.server";
 import { writeAuditLog } from "@/lib/server/autonomy-audit.server";
 import { emitAutonomyEvent } from "@/lib/server/autonomy-events.server";
@@ -258,7 +259,15 @@ export async function startAgentRun(input: {
     });
     return { id: run.id };
   }
-  void executeAgentRun(run.id, input.createdBy);
+  const job = executeAgentRun(run.id, input.createdBy).catch(() => {});
+  // On Vercel, keep the instance alive for the background run (up to maxDuration). Elsewhere
+  // (desktop sidecar, dev server) the promise simply runs to completion in-process.
+  try {
+    const { waitUntil } = await import("@vercel/functions");
+    waitUntil(job);
+  } catch {
+    /* not on Vercel */
+  }
   return { id: run.id };
 }
 
@@ -484,14 +493,27 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
                 ? "Calling Crayo image generator (1 image credit). This is waiting on api.crayo.ai — not frozen."
                 : step.tool === "crayo.export_project"
                   ? "Queueing a Crayo export. Renders can take a few minutes. This is waiting on api.crayo.ai — not frozen."
-                  : "Calling Crayo now. Image, voice, and export can take up to 3 minutes. This is waiting on api.crayo.ai — not frozen.",
+                  : step.tool === "crayo.run_autoclip" && mediaSourceKind(String(args.url ?? "")) === "fetch"
+                    ? "Fetching the page link in a Daytona sandbox (yt-dlp), uploading it to Crayo, then AutoClipping. Up to ~4 minutes for a long video. Progress lines follow — not frozen."
+                    : "Calling Crayo now. Image, voice, and export can take up to 3 minutes. This is waiting on api.crayo.ai — not frozen.",
           status: "running",
         });
       }
+      const onProgress = async (message: string) => {
+        await insertIteration({
+          runId,
+          index: stepIndex + 1,
+          kind: "observe",
+          stepId: step.id,
+          toolName: step.tool,
+          resultSummary: message.slice(0, 500),
+          status: "running",
+        }).catch(() => {});
+      };
       while (attempt <= AGENT_STEP_RETRIES && !done) {
         const started = Date.now();
         try {
-          const result = await executeAgentTool({ name: step.tool, payload: args, actorId });
+          const result = await executeAgentTool({ name: step.tool, payload: args, actorId, onProgress });
           await writeAuditLog({
             requestId: runId,
             actor: { source: "api" as const, keyId: null, label: actorId },

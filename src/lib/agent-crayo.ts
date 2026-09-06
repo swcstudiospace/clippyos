@@ -51,30 +51,14 @@ export function crayoAutoclipFieldsFromGoal(goal: string): { url: string; clipCo
   return { url, clipCount: Number.isFinite(count) ? Math.min(20, Math.max(2, Math.floor(count))) : 5 };
 }
 
-/** Hosts that serve a watch/landing page, never a raw media file. Crayo cannot import these. */
-const PAGE_ONLY_HOSTS = [
-  "youtube.com",
-  "youtu.be",
-  "youtube-nocookie.com",
-  "vimeo.com",
-  "tiktok.com",
-  "instagram.com",
-  "facebook.com",
-  "fb.watch",
-  "x.com",
-  "twitter.com",
-  "twitch.tv",
-  "kick.com",
-  "rumble.com",
-  "dailymotion.com",
-  "drive.google.com",
-  "dropbox.com",
-];
+/** Share-page hosts nothing can fetch unattended (sign-in or share-token walls). */
+const PAGE_ONLY_HOSTS = ["drive.google.com", "dropbox.com", "onedrive.live.com"];
 
 /**
- * Why Crayo AutoClip cannot use this source URL, or null when it looks importable.
- * Crayo's `POST /v1/assets` downloads a public https media file (≤100MB); AutoClip then needs a
- * video asset between 1 minute and 3 hours. A YouTube link is an HTML page, not a file.
+ * Why AutoClip cannot use this source URL, or null when it is usable.
+ * Direct https file links go to Crayo's `POST /v1/assets` (≤100MB). YouTube/TikTok/Vimeo/X/Twitch
+ * page links are fetched with yt-dlp in a Daytona sandbox and uploaded to Crayo (video ≤1GB).
+ * Share-page hosts behind a sign-in (Drive, Dropbox, OneDrive) cannot be fetched unattended.
  */
 export function autoclipSourceProblem(raw: string): string | null {
   const url = raw.trim();
@@ -88,7 +72,7 @@ export function autoclipSourceProblem(raw: string): string | null {
   if (parsed.protocol !== "https:") return "Crayo only downloads from https URLs.";
   const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
   if (PAGE_ONLY_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
-    return `Crayo can’t import a ${host} page link. AutoClip needs a direct link to the video file (mp4/mov, ≤100MB, 1 min–3 h) — for example a Library file URL or a CDN link. Download the video first, upload it to the Library, then paste that file URL.`;
+    return `${host} share links need a sign-in, so they can’t be fetched automatically. Download the file, upload it to the Library, then paste that file URL — or paste a YouTube/TikTok/Vimeo link, which ClippyOS fetches for you.`;
   }
   return null;
 }

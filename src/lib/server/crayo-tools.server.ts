@@ -2,6 +2,7 @@
  * crayo.* tools for Agent / MCP. Never returns API keys.
  */
 import { autoclipSourceProblem, isCrayoMediaUrl } from "@/lib/agent-crayo";
+import { mediaSourceKind } from "@/lib/media-fetch";
 import { sanitizeText } from "@/lib/sanitize";
 import {
   CrayoApiError,
@@ -204,22 +205,37 @@ async function runShort(payload: Record<string, unknown>, actorId: string): Prom
   };
 }
 
-async function runAutoclip(payload: Record<string, unknown>, actorId: string): Promise<unknown> {
+async function runAutoclip(
+  payload: Record<string, unknown>,
+  actorId: string,
+  onProgress?: (message: string) => Promise<void> | void,
+): Promise<unknown> {
   const url = str(payload, "url");
   const clientId = str(payload, "clientId") || null;
   if (!url.startsWith("https://")) throw new Error("VALIDATION");
-  // Crayo imports a *file* (POST /v1/assets downloads it); a YouTube/TikTok/Vimeo page is HTML
-  // and fails with 415/400 after the request is accepted. Refuse up front, before credits move.
+  // Crayo imports a *file* (POST /v1/assets downloads it). A YouTube/TikTok/Vimeo page is HTML,
+  // so those go through the Daytona sandbox fetch (yt-dlp → signed Crayo upload) instead.
   const sourceProblem = autoclipSourceProblem(url);
   if (sourceProblem) throw new CrayoToolError("CRAYO_SOURCE_NOT_MEDIA", sourceProblem);
-  const imported = await wrap(() =>
-    crayoImportAsset({
-      url,
-      name: sanitizeText(str(payload, "name")).slice(0, 200) || undefined,
-    }),
-  );
-  const assetId = pickField(imported, "id") || pickField(imported, "asset_id");
+  const name = sanitizeText(str(payload, "name")).slice(0, 200) || undefined;
+  let assetId = "";
+  let fetched: { title: string; durationSec: number | null; bytes: number } | null = null;
+  if (mediaSourceKind(url) === "fetch") {
+    const { fetchPageVideoToCrayoAsset, MediaFetchError } = await import("@/lib/server/media-fetch.server");
+    try {
+      const result = await fetchPageVideoToCrayoAsset({ url, name, onProgress });
+      assetId = result.assetId;
+      fetched = { title: result.title, durationSec: result.durationSec, bytes: result.bytes };
+    } catch (error) {
+      if (error instanceof MediaFetchError) throw new CrayoToolError(error.message, error.detail);
+      throw error;
+    }
+  } else {
+    const imported = await wrap(() => crayoImportAsset({ url, name }));
+    assetId = pickField(imported, "id") || pickField(imported, "asset_id");
+  }
   if (!assetId) throw new Error("CRAYO_FAILED");
+  await onProgress?.(`Crayo asset ${assetId} is ready. Starting AutoClip (credits are charged per requested clip).`);
 
   const job = await wrap(() =>
     crayoCreateAutoclip({
@@ -253,13 +269,14 @@ async function runAutoclip(payload: Record<string, unknown>, actorId: string): P
       library,
     });
   }
-  return { autoclipId, assetId, clips };
+  return { autoclipId, assetId, clips, ...(fetched ? { source: fetched } : {}) };
 }
 
 export async function handleCrayoAction(
   action: string,
   payload: Record<string, unknown>,
   actorId: string,
+  onProgress?: (message: string) => Promise<void> | void,
 ): Promise<unknown> {
   switch (action) {
     case "crayo.get_account":
@@ -373,7 +390,7 @@ export async function handleCrayoAction(
     case "crayo.run_short":
       return runShort(payload, actorId);
     case "crayo.run_autoclip":
-      return runAutoclip(payload, actorId);
+      return runAutoclip(payload, actorId, onProgress);
     default:
       return undefined;
   }

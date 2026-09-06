@@ -232,7 +232,7 @@ export const REMOTE_MCP_TOOLS: readonly RemoteMcpToolDef[] = [
     name: "crayo_run_autoclip",
     action: "crayo.run_autoclip",
     domain: "Crayo",
-    description: "Import a long-form https URL, AutoClip, ingest thumbnails into the Filebase library.",
+    description: "AutoClip a long-form video: a YouTube/TikTok/Vimeo link is fetched in a Daytona sandbox and uploaded to Crayo; a direct https file URL is imported by Crayo. Thumbnails are ingested into the Filebase library.",
     scopes: ["agent:write"],
     inputSchema: {
       type: "object",
