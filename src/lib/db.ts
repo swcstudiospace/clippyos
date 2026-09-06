@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.ts";
+import { preferTransactionPooler } from "./db-url.ts";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -7,8 +8,9 @@ export type DbSource = "neon" | "pglite";
 // "unset" — otherwise production would silently run on the PGLite fallback.
 const rawDatabaseUrl =
   typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+// Supabase session-mode pooler URLs are moved to transaction mode (see db-url.ts).
 const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+  rawDatabaseUrl && rawDatabaseUrl.trim() ? preferTransactionPooler(rawDatabaseUrl.trim()) : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
