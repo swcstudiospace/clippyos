@@ -187,7 +187,11 @@ function ThumbnailsPage() {
       if (result.imageFallback) {
         toast.message("Image generation is paused until an API key is connected.");
       } else if (!result.ok) {
-        toast.error("The image didn’t come through. Retry.");
+        toast.error(
+          result.imageError
+            ? `The image didn’t come through. ${result.imageError}`
+            : "The image didn’t come through. Retry.",
+        );
       }
     } catch (error) {
       captureClientError(error, { source: "thumbnail-image" });

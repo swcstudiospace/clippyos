@@ -654,6 +654,22 @@ export function explainAgentToolError(code: string): string {
       return "Library ingest only accepts Crayo CDN https files. The export URL wasn’t a trusted host.";
     case "CRAYO_FAILED":
       return "Crayo returned an error. Check credits and the source URL. No file was stored.";
+    case "CRAYO_SOURCE_NOT_MEDIA":
+      return "Crayo AutoClip needs a direct https link to the video file (mp4/mov, ≤100MB, 1 min–3 h), not a YouTube/TikTok/Vimeo page link. Upload the video to the Library first, then paste that file URL.";
+    case "VALIDATION_ERROR":
+      return "Crayo rejected the request: the URL could not be fetched, is not a public https media file, or the video is too short/long (AutoClip needs 1 min–3 h). No credits were spent on a rejected request.";
+    case "UNSUPPORTED_MEDIA_TYPE":
+      return "Crayo fetched the URL but it is not an image, audio, or video file (a YouTube page link, for example). Use a direct media file URL.";
+    case "FILE_TOO_LARGE":
+      return "The source file is over Crayo’s 100MB import ceiling. Trim or re-encode it, then retry.";
+    case "STORAGE_LIMIT_EXCEEDED":
+      return "Crayo storage is full. Delete assets on crayo.ai or upgrade, then retry.";
+    case "NOT_FOUND":
+      return "Crayo could not find that asset or job on this account.";
+    case "JOB_LIMIT_REACHED":
+      return "Crayo already has 3 AutoClip jobs running. Wait for one to finish, then retry.";
+    case "FAILED":
+      return "Crayo returned an error for this step. The provider message is shown with the step.";
     case "INGEST_FAILED":
       return "The video rendered, but Filebase/library ingest failed. The Crayo URL may still be in the step output.";
     case "GROK_BOT_NOT_CONNECTED":
@@ -676,6 +692,13 @@ export function isFatalAgentToolError(code: string): boolean {
     key === "INSUFFICIENT_CREDITS" ||
     key === "UNTRUSTED_URL" ||
     key === "CRAYO_FAILED" ||
+    key === "CRAYO_SOURCE_NOT_MEDIA" ||
+    key === "VALIDATION_ERROR" ||
+    key === "UNSUPPORTED_MEDIA_TYPE" ||
+    key === "FILE_TOO_LARGE" ||
+    key === "STORAGE_LIMIT_EXCEEDED" ||
+    key === "NOT_FOUND" ||
+    key === "JOB_LIMIT_REACHED" ||
     key === "AI_TIER_GATED" ||
     key === "AUTOMATION_DISABLED"
   );

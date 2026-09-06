@@ -1,7 +1,7 @@
 /**
  * crayo.* tools for Agent / MCP. Never returns API keys.
  */
-import { isCrayoMediaUrl } from "@/lib/agent-crayo";
+import { autoclipSourceProblem, isCrayoMediaUrl } from "@/lib/agent-crayo";
 import { sanitizeText } from "@/lib/sanitize";
 import {
   CrayoApiError,
@@ -73,11 +73,23 @@ function firstHttps(value: unknown): string {
   return "";
 }
 
+/**
+ * Tool-level error: `message` is the machine code the agent loop keys on, `detail` is the
+ * provider's human message (never a credential) so operators see why a step failed.
+ */
+export class CrayoToolError extends Error {
+  detail: string;
+  constructor(code: string, detail: string) {
+    super(code);
+    this.detail = detail;
+  }
+}
+
 async function wrap<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
-    if (error instanceof CrayoApiError) throw new Error(error.code);
+    if (error instanceof CrayoApiError) throw new CrayoToolError(error.code, error.message);
     throw error;
   }
 }
@@ -196,6 +208,10 @@ async function runAutoclip(payload: Record<string, unknown>, actorId: string): P
   const url = str(payload, "url");
   const clientId = str(payload, "clientId") || null;
   if (!url.startsWith("https://")) throw new Error("VALIDATION");
+  // Crayo imports a *file* (POST /v1/assets downloads it); a YouTube/TikTok/Vimeo page is HTML
+  // and fails with 415/400 after the request is accepted. Refuse up front, before credits move.
+  const sourceProblem = autoclipSourceProblem(url);
+  if (sourceProblem) throw new CrayoToolError("CRAYO_SOURCE_NOT_MEDIA", sourceProblem);
   const imported = await wrap(() =>
     crayoImportAsset({
       url,
