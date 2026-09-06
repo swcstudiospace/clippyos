@@ -601,6 +601,8 @@ export async function xaiChat(params: {
           )
         : [XAI_MODEL, XAI_MODEL_FALLBACK];
   let lastStatus = 0;
+  let lastRaw = "";
+  let lastModel = "";
   let usedRefresh = false;
 
   for (const base of creds.bases) {
@@ -657,6 +659,8 @@ export async function xaiChat(params: {
             continue;
           }
           const raw = await response.text();
+          lastRaw = raw;
+          lastModel = model;
           if (response.ok) {
             lim.backoffUntil = null;
             const body = JSON.parse(raw) as {
@@ -711,6 +715,15 @@ export async function xaiChat(params: {
   }
 
   if (lastStatus === 429) throw new Error("AI_RATE_LIMIT");
+  // Operator-facing breadcrumb: which provider/model/status hid behind GENERATION_FAILED.
+  // Never echoes the bearer; the upstream body is clipped and stripped of URLs.
+  console.error(
+    "[llm] upstream failed",
+    creds.source,
+    lastModel || params.model || "",
+    lastStatus || "no-response",
+    lastRaw.replace(/https?:\/\/\S+/g, "<url>").replace(/\s+/g, " ").slice(0, 240),
+  );
   throw new Error("GENERATION_FAILED");
 }
 
