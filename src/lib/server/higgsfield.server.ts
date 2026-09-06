@@ -2,9 +2,19 @@ import { isTrustedImageUrl } from "@/lib/thumbnails";
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
 import { isMissingTable } from "@/lib/server/mappers";
 
-const HIGGSFIELD_BASE = "https://platform.higgsfield.ai";
-/** Confirmed live path. 404s are skipped so a renamed catalog still works. */
-const MODEL_PATHS = ["nano-banana-pro", "google/nano-banana-pro"] as const;
+/** Documented base (docs.higgsfield.ai). platform.higgsfield.ai answers too, but the spec names api. */
+const HIGGSFIELD_BASE = "https://api.higgsfield.ai";
+/**
+ * Candidate generation endpoints, tried in order. Higgsfield answers 404 / 423 / 503 for a
+ * model the account cannot use and 422 for a body it rejects, so any of those moves on to the
+ * next path. `/nano-banana` is the path in the public OpenAPI spec and takes no `resolution`.
+ */
+const MODEL_PATHS: ReadonlyArray<{ path: string; resolution: "4k" | null }> = [
+  { path: "nano-banana-pro", resolution: "4k" },
+  { path: "google/nano-banana-pro", resolution: "4k" },
+  { path: "nano-banana", resolution: null },
+];
+const SKIP_TO_NEXT_PATH = new Set([404, 422, 423, 503]);
 const POLL_MS = 2000;
 const MAX_POLLS = 45;
 const SETTING_KEY_IDS = [
@@ -28,7 +38,12 @@ const SETTING_COMBINED_IDS = ["HIGGSFIELD_KEY", "HF_KEY", "HF_CREDENTIALS"];
 
 export type ImageGenResult =
   | { ok: true; url: string; provider: "higgsfield" | "xai" }
-  | { ok: false; error: "missing" | "rate_limit" | "timeout" | "failed" };
+  | {
+      ok: false;
+      error: "missing" | "rate_limit" | "timeout" | "failed";
+      /** Provider status + message, safe to show an operator. Never contains credentials. */
+      detail?: string;
+    };
 
 type HiggsfieldCreds = { key: string; secret: string };
 
@@ -280,16 +295,18 @@ function detailText(payload: unknown): string {
 }
 
 function mapHttpError(status: number, payload?: unknown): ImageGenResult {
-  if (status === 429) return { ok: false, error: "rate_limit" };
-  const detail = detailText(payload).toLowerCase();
-  if (status === 401) return { ok: false, error: "missing" };
+  const text = detailText(payload).slice(0, 240);
+  const detail = text ? `Higgsfield ${status}: ${text}` : `Higgsfield ${status}`;
+  if (status === 429) return { ok: false, error: "rate_limit", detail };
+  const lower = text.toLowerCase();
+  if (status === 401) return { ok: false, error: "missing", detail };
   if (status === 403) {
-    if (detail.includes("not_enough_credits") || detail.includes("credit")) {
-      return { ok: false, error: "failed" };
+    if (lower.includes("not_enough_credits") || lower.includes("credit")) {
+      return { ok: false, error: "failed", detail };
     }
-    return { ok: false, error: "missing" };
+    return { ok: false, error: "missing", detail };
   }
-  return { ok: false, error: "failed" };
+  return { ok: false, error: "failed", detail };
 }
 
 async function pollStatus(statusUrl: string, creds: HiggsfieldCreds): Promise<ImageGenResult> {
@@ -305,9 +322,9 @@ async function pollStatus(statusUrl: string, creds: HiggsfieldCreds): Promise<Im
       if (error instanceof Error && error.name === "TimeoutError") {
         continue;
       }
-      return { ok: false, error: "failed" };
+      return { ok: false, error: "failed", detail: "Higgsfield status request failed." };
     }
-    if (response.status === 429) return { ok: false, error: "rate_limit" };
+    if (response.status === 429) return { ok: false, error: "rate_limit", detail: "Higgsfield 429" };
     if (!response.ok) {
       const body = await response.json().catch(() => null);
       return mapHttpError(response.status, body);
@@ -316,7 +333,7 @@ async function pollStatus(statusUrl: string, creds: HiggsfieldCreds): Promise<Im
     try {
       body = await response.json();
     } catch {
-      return { ok: false, error: "failed" };
+      return { ok: false, error: "failed", detail: "Higgsfield status was not JSON." };
     }
     const status =
       typeof body === "object" && body && "status" in body
@@ -331,7 +348,7 @@ async function pollStatus(statusUrl: string, creds: HiggsfieldCreds): Promise<Im
     ) {
       const url = extractImageUrl(body);
       if (url) return { ok: true, url, provider: "higgsfield" };
-      return { ok: false, error: "failed" };
+      return { ok: false, error: "failed", detail: "Higgsfield completed without a usable https image URL." };
     }
     if (
       status === "failed" ||
@@ -340,25 +357,30 @@ async function pollStatus(statusUrl: string, creds: HiggsfieldCreds): Promise<Im
       status === "cancelled" ||
       status === "canceled"
     ) {
-      return { ok: false, error: "failed" };
+      const reason =
+        typeof body === "object" && body && "error" in body && typeof (body as { error?: unknown }).error === "string"
+          ? String((body as { error: string }).error).slice(0, 200)
+          : "";
+      return { ok: false, error: "failed", detail: `Higgsfield ${status}${reason ? `: ${reason}` : ""}` };
     }
   }
-  return { ok: false, error: "timeout" };
+  return { ok: false, error: "timeout", detail: "Higgsfield did not finish within 90 seconds." };
 }
 
 async function submitHiggsfield(
   creds: HiggsfieldCreds,
   prompt: string,
 ): Promise<ImageGenResult> {
-  const body = JSON.stringify({
-    prompt,
-    aspect_ratio: "16:9",
-    resolution: "4k",
-  });
-  for (const path of MODEL_PATHS) {
+  let lastSkipped: string | null = null;
+  for (const model of MODEL_PATHS) {
+    const body = JSON.stringify({
+      prompt,
+      aspect_ratio: "16:9",
+      ...(model.resolution ? { resolution: model.resolution } : {}),
+    });
     let response: Response;
     try {
-      response = await fetch(`${HIGGSFIELD_BASE}/${path}`, {
+      response = await fetch(`${HIGGSFIELD_BASE}/${model.path}`, {
         method: "POST",
         headers: requestHeaders(creds),
         body,
@@ -366,19 +388,30 @@ async function submitHiggsfield(
       });
     } catch (error) {
       if (error instanceof Error && error.name === "TimeoutError") {
-        return { ok: false, error: "timeout" };
+        return { ok: false, error: "timeout", detail: `Higgsfield ${model.path} timed out.` };
       }
+      lastSkipped = `Higgsfield ${model.path}: network error`;
       continue;
     }
-    if (response.status === 404) continue;
     let payload: unknown = null;
     try {
       payload = await response.json();
     } catch {
       payload = null;
     }
-    if (response.status === 429) return { ok: false, error: "rate_limit" };
-    if (!response.ok) return mapHttpError(response.status, payload);
+    if (SKIP_TO_NEXT_PATH.has(response.status)) {
+      lastSkipped = `Higgsfield ${model.path} → ${response.status}${
+        detailText(payload) ? `: ${detailText(payload).slice(0, 160)}` : ""
+      }`;
+      console.error("[thumbnails-image]", lastSkipped);
+      continue;
+    }
+    if (response.status === 429) return { ok: false, error: "rate_limit", detail: "Higgsfield 429" };
+    if (!response.ok) {
+      const mapped = mapHttpError(response.status, payload);
+      console.error("[thumbnails-image]", model.path, mapped.ok ? "" : mapped.detail);
+      return mapped;
+    }
     const immediate = extractImageUrl(payload);
     if (immediate) return { ok: true, url: immediate, provider: "higgsfield" };
     const statusUrl =
@@ -392,10 +425,16 @@ async function submitHiggsfield(
     const pollUrl =
       statusUrl ||
       (requestId ? `${HIGGSFIELD_BASE}/requests/${requestId}/status` : "");
-    if (!pollUrl) return { ok: false, error: "failed" };
+    if (!pollUrl) {
+      return { ok: false, error: "failed", detail: `Higgsfield ${model.path} accepted the job but returned no status URL.` };
+    }
     return pollStatus(pollUrl, creds);
   }
-  return { ok: false, error: "failed" };
+  return {
+    ok: false,
+    error: "failed",
+    detail: lastSkipped ?? "No Higgsfield image endpoint is enabled for this account.",
+  };
 }
 
 async function generateWithXai(prompt: string): Promise<ImageGenResult> {
@@ -430,8 +469,13 @@ async function generateWithXai(prompt: string): Promise<ImageGenResult> {
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
         console.error("[thumbnails-image]", model, response.status, detail.slice(0, 240));
-        if (response.status === 429) return { ok: false, error: "rate_limit" };
-        return mapHttpError(response.status);
+        if (response.status === 429) return { ok: false, error: "rate_limit", detail: "xAI 429" };
+        const mapped = mapHttpError(response.status);
+        return {
+          ok: false,
+          error: mapped.ok ? "failed" : mapped.error,
+          detail: `xAI ${model} ${response.status}: ${detail.slice(0, 160)}`,
+        };
       }
       const payload = (await response.json()) as {
         data?: { url?: string; b64_json?: string }[];
@@ -470,6 +514,13 @@ export async function generateThumbnailImage(prompt: string): Promise<ImageGenRe
     if (result.error === "missing" || result.error === "failed") {
       const fallback = await generateWithXai(trimmed);
       if (fallback.ok) return fallback;
+      if (fallback.error !== "missing" && fallback.detail) {
+        return {
+          ok: false,
+          error: result.error,
+          detail: [result.detail, fallback.detail].filter(Boolean).join(" · "),
+        };
+      }
     }
     return result;
   }

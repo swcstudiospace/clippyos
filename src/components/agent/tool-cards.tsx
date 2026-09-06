@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentPreset } from "@/lib/agent";
 import type { AgentSlashUi } from "@/lib/agent-slash";
 import {
+  autoclipSourceProblem,
   buildCrayoAutoclipGoal,
   buildCrayoExportGoal,
   buildCrayoImageGoal,
@@ -191,7 +192,8 @@ const CARD_COPY: Record<
 
 function canSubmit(ui: AgentSlashUi, draft: Record<string, string>): boolean {
   if (ui === "short") return Boolean(draft.topic?.trim() || draft.script?.trim());
-  if (ui === "autoclip" || ui === "import" || ui === "ingest") return Boolean(draft.url?.startsWith("https://"));
+  if (ui === "autoclip") return Boolean(draft.url?.trim()) && autoclipSourceProblem(draft.url ?? "") === null;
+  if (ui === "import" || ui === "ingest") return Boolean(draft.url?.startsWith("https://"));
   if (ui === "voiceover") return Boolean(draft.script?.trim() && draft.voiceId?.trim());
   if (ui === "image") return Boolean(draft.prompt?.trim());
   if (ui === "export") return Boolean(draft.projectId?.trim());
@@ -283,17 +285,25 @@ function AutoclipFields({
   draft: Record<string, string>;
   set: (partial: Record<string, string>) => void;
 }) {
+  const url = draft.url ?? "";
+  const problem = url.trim() ? autoclipSourceProblem(url) : null;
   return (
     <>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="card-long-url">Video URL</Label>
+        <Label htmlFor="card-long-url">Video file URL</Label>
         <Input
           id="card-long-url"
           type="url"
-          value={draft.url ?? ""}
+          value={url}
           onChange={(event) => set({ url: event.target.value })}
-          placeholder="https://…"
+          placeholder="https://…/video.mp4"
+          aria-invalid={problem ? true : undefined}
+          aria-describedby="card-long-url-hint"
         />
+        <p id="card-long-url-hint" className={problem ? "text-caption text-warning" : "text-caption text-muted-foreground"} role={problem ? "alert" : undefined}>
+          {problem ??
+            "A direct https link to the video file (mp4/mov, ≤100MB, 1 min–3 h). YouTube/TikTok page links can’t be imported by Crayo."}
+        </p>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="card-clip-count">How many clips</Label>

@@ -245,6 +245,11 @@ function detailText(payload: unknown): string {
       (payload as { message?: unknown }).message ??
       (payload as { error?: unknown }).error;
     if (typeof detail === "string") return detail;
+    // Crayo envelope: { success:false, error:{ code, message } }
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message.trim();
+    }
     try {
       return JSON.stringify(detail);
     } catch {
@@ -252,6 +257,15 @@ function detailText(payload: unknown): string {
     }
   }
   return "";
+}
+
+/** Crayo's own error code (UPPER_SNAKE) from its `{ error: { code } }` envelope, if present. */
+function crayoErrorCode(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || !("error" in payload)) return null;
+  const error = (payload as { error?: unknown }).error;
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,60}$/.test(code) ? code : null;
 }
 
 function mapHttpError(status: number, _payload?: unknown): CrayoVideoResult {
@@ -456,7 +470,9 @@ async function crayoJson(
   if (response.status === 402) throw new CrayoApiError("INSUFFICIENT_CREDITS", "Crayo credits or storage are exhausted.", 402);
   if (!response.ok) {
     const message = detailText(payload) || `Crayo returned ${response.status}.`;
-    throw new CrayoApiError("FAILED", message.slice(0, 280), response.status);
+    // Keep Crayo's documented code (VALIDATION_ERROR, UNSUPPORTED_MEDIA_TYPE, FILE_TOO_LARGE,
+    // NOT_FOUND, JOB_LIMIT_REACHED, …) so the run can explain what actually went wrong.
+    throw new CrayoApiError(crayoErrorCode(payload) ?? "FAILED", message.slice(0, 280), response.status);
   }
   return payload;
 }

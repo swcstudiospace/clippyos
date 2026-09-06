@@ -51,6 +51,48 @@ export function crayoAutoclipFieldsFromGoal(goal: string): { url: string; clipCo
   return { url, clipCount: Number.isFinite(count) ? Math.min(20, Math.max(2, Math.floor(count))) : 5 };
 }
 
+/** Hosts that serve a watch/landing page, never a raw media file. Crayo cannot import these. */
+const PAGE_ONLY_HOSTS = [
+  "youtube.com",
+  "youtu.be",
+  "youtube-nocookie.com",
+  "vimeo.com",
+  "tiktok.com",
+  "instagram.com",
+  "facebook.com",
+  "fb.watch",
+  "x.com",
+  "twitter.com",
+  "twitch.tv",
+  "kick.com",
+  "rumble.com",
+  "dailymotion.com",
+  "drive.google.com",
+  "dropbox.com",
+];
+
+/**
+ * Why Crayo AutoClip cannot use this source URL, or null when it looks importable.
+ * Crayo's `POST /v1/assets` downloads a public https media file (≤100MB); AutoClip then needs a
+ * video asset between 1 minute and 3 hours. A YouTube link is an HTML page, not a file.
+ */
+export function autoclipSourceProblem(raw: string): string | null {
+  const url = raw.trim();
+  if (!url) return "Paste a public https link to the video file.";
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "That is not a valid https URL.";
+  }
+  if (parsed.protocol !== "https:") return "Crayo only downloads from https URLs.";
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+  if (PAGE_ONLY_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+    return `Crayo can’t import a ${host} page link. AutoClip needs a direct link to the video file (mp4/mov, ≤100MB, 1 min–3 h) — for example a Library file URL or a CDN link. Download the video first, upload it to the Library, then paste that file URL.`;
+  }
+  return null;
+}
+
 export function buildCrayoAutoclipGoal(input: { url: string; clipCount: number }): string {
   const url = input.url.trim();
   const count = Number.isFinite(input.clipCount) ? Math.min(20, Math.max(2, Math.floor(input.clipCount))) : 5;

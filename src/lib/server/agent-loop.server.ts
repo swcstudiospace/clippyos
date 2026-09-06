@@ -561,6 +561,12 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
           done = true;
         } catch (error) {
           const code = error instanceof Error ? error.message : "TOOL_FAILED";
+          // Provider detail (Crayo/Higgsfield message) — operator-safe, never a credential.
+          const detail =
+            error && typeof error === "object" && "detail" in error && typeof (error as { detail?: unknown }).detail === "string"
+              ? (error as { detail: string }).detail.trim().slice(0, 300)
+              : "";
+          const explained = detail && detail !== code ? `${explainAgentToolError(code)}\n\nProvider said: ${detail}` : explainAgentToolError(code);
           await writeAuditLog({
             requestId: runId,
             actor: { source: "api" as const, keyId: null, label: actorId },
@@ -617,11 +623,11 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
             stepId: step.id,
             toolName: step.tool,
             argsSummary: summarize(args),
-            resultSummary: explainAgentToolError(code).slice(0, 500),
+            resultSummary: explained.slice(0, 800),
             status: "error",
           });
           if (code === "AI_TIER_GATED" || isFatalAgentToolError(code) || step.tool.startsWith("crayo.")) {
-            const summary = explainAgentToolError(code);
+            const summary = explained.slice(0, 800);
             await patchAgentRun(runId, {
               status: "failed",
               errorCode: code.slice(0, 80),
