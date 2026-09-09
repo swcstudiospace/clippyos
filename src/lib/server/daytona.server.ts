@@ -34,6 +34,7 @@ import {
   hibernatePlan,
   idlePolicy,
   instagramGeoWarning,
+  isUnsupportedPauseClassError,
   isWindowsSnapshot,
   linuxProxyScript,
   listWindowsCommand,
@@ -886,13 +887,20 @@ export async function stopSocialMachine(): Promise<SocialMachineStatus> {
         try {
           await sandbox.pause(120);
         } catch (error) {
-          // Never cold-stop on pause failure — stop() drops the RAM session,
-          // including when the machine is already snapshotting/pausing.
-          const message = sanitizeDaytonaError(
-            error instanceof Error ? error.message : "Couldn’t pause the Social Machine.",
-          );
-          await writeAppSetting(LAST_ERROR_KEY, message);
-          throw new Error(message);
+          const rawMessage =
+            error instanceof Error ? error.message : "Couldn’t pause the Social Machine.";
+          if (isUnsupportedPauseClassError(rawMessage)) {
+            // The hot named snapshot was already captured above, so a cold
+            // stop is safe here and clears the sandbox for good instead of
+            // failing every idle cycle on this class.
+            await sandbox.stop(120);
+          } else {
+            // Never cold-stop on other pause failures — stop() drops the RAM
+            // session, including when the machine is already snapshotting/pausing.
+            const message = sanitizeDaytonaError(rawMessage);
+            await writeAppSetting(LAST_ERROR_KEY, message);
+            throw new Error(message);
+          }
         }
       } else {
         await sandbox.stop(120);
