@@ -5,7 +5,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
 const email = `ops.social.${Date.now()}@agency.test`;
-const password = "password123";
 const daytonaKey = process.env.DAYTONA_QA_KEY || "";
 const notes = [];
 const errors = [];
@@ -29,13 +28,7 @@ async function dismissWelcome() {
 }
 
 try {
-  await page.goto(base, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Social QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 28000 });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);
   await dismissWelcome();
   await shot("qa-social-dashboard.png");
@@ -75,7 +68,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
 
   await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("heading", { name: "Integrations" }).waitFor({ timeout: 20000 });
+  await page.getByRole("heading", { name: "Add-on registry" }).waitFor({ timeout: 20000 });
   const settingsBody = await page.locator("body").innerText();
   notes.push({
     hasDaytonaCard: /Daytona \(Computer Use \/ Social\)/i.test(settingsBody),

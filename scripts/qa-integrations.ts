@@ -4,8 +4,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
-const email = `ops.int.${Date.now()}@agency.test`;
-const password = "password123";
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -26,22 +24,11 @@ async function bodyText() {
 }
 
 try {
-  await page.goto(`${base}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Super Admin Access" }).waitFor();
-  notes.push({ loginHasSuperAdmin: true });
-  await shot("qa-login-super-admin.png");
-  await page.getByRole("button", { name: "Super Admin Access" }).click();
-  await page.getByRole("heading", { name: "Super Admin Access" }).waitFor();
-  notes.push({ saDialog: true });
-  await shot("qa-login-super-admin-dialog.png");
-  await page.getByRole("button", { name: "Cancel" }).click();
-
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Ops Integrations");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 30000 });
+  // Super Admin Access is a LoginForm-only control; with VITE_AUTH_ENABLED=false every
+  // request (including /login) auto-resolves to the shared dev-user server-side, so
+  // LoginForm never renders here regardless of client cookies/context — untestable in
+  // this mode. Land straight on the authenticated shell instead.
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1200);
 
   const welcome = await page.getByRole("heading", { name: "Welcome to Clippy Admin" }).count();
@@ -57,7 +44,7 @@ try {
 
   await page.getByRole("link", { name: "Settings" }).click();
   await page.waitForURL("**/settings");
-  await page.getByRole("heading", { name: "Integrations" }).waitFor();
+  await page.getByRole("heading", { name: "Add-on registry" }).waitFor();
   const settingsText = await bodyText();
   notes.push({
     hasAi: /AI API/.test(settingsText),
@@ -71,7 +58,7 @@ try {
   });
   await shot("qa-settings-integrations.png");
 
-  await page.getByRole("button", { name: "Setup Guide" }).nth(3).click();
+  await page.getByRole("button", { name: "Setup Guide" }).nth(4).click();
   await page.getByRole("heading", { name: /Discord bot setup/i }).waitFor();
   const guideText = await bodyText();
   notes.push({
@@ -103,7 +90,7 @@ try {
   await page.getByRole("button", { name: "Open navigation" }).click();
   await page.getByRole("link", { name: "Settings" }).click();
   await page.waitForURL("**/settings");
-  await page.getByRole("heading", { name: "Integrations" }).waitFor();
+  await page.getByRole("heading", { name: "Add-on registry" }).waitFor();
   await shot("qa-settings-integrations-mobile.png");
 
   writeFileSync("/workspace/screenshots/qa-integrations.json", JSON.stringify(notes, null, 2));
