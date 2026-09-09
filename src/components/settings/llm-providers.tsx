@@ -143,6 +143,12 @@ export function LlmProvidersPanel() {
           health={snap.providers["openai-compat"].health}
           baseUrl={snap.providers["openai-compat"].baseUrl}
         />
+        <KeyProviderCard
+          id="anthropic-api"
+          canEdit={canEditKeys}
+          last4={snap.providers["anthropic-api"].last4}
+          health={snap.providers["anthropic-api"].health}
+        />
         <GlassCard>
           <div className="flex items-start gap-3">
             <span className="grid size-10 place-items-center rounded-control bg-secondary-surface">
@@ -270,7 +276,7 @@ function KeyProviderCard({
   health,
   baseUrl,
 }: {
-  id: "xai-api" | "openai-compat";
+  id: "xai-api" | "openai-compat" | "anthropic-api";
   canEdit: boolean;
   last4: string | null;
   health: string;
@@ -343,7 +349,7 @@ function KeyProviderCard({
             autoComplete="off"
             value={key}
             onChange={(event) => setKey(event.target.value)}
-            placeholder={id === "xai-api" ? "xai-…" : "sk-or-…"}
+            placeholder={id === "xai-api" ? "xai-…" : id === "anthropic-api" ? "sk-ant-…" : "sk-or-…"}
           />
           {id === "openai-compat" ? (
             <>
@@ -366,9 +372,9 @@ function KeyProviderCard({
               type="submit"
               disabled={
                 save.isPending ||
-                (id === "xai-api"
-                  ? key.trim().length < 8
-                  : key.trim().length < 8 && base.trim() === (baseUrl ?? "").trim())
+                (id === "openai-compat"
+                  ? key.trim().length < 8 && base.trim() === (baseUrl ?? "").trim()
+                  : key.trim().length < 8)
               }
             >
               {save.isPending ? "Saving…" : id === "openai-compat" ? "Save" : "Save key"}
