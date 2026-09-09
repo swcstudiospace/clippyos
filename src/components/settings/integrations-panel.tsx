@@ -496,7 +496,7 @@ function IntegrationCard({
                 type="text"
                 value={fields.size ?? ""}
                 onChange={(value) => setFields((cur) => ({ ...cur, size: value }))}
-                placeholder="daytona-vm-medium (default) or windows-large"
+                placeholder="daytona-medium (default) or windows-large"
               />
               <Field
                 id="dtn-stop"
@@ -546,11 +546,12 @@ function IntegrationCard({
                 placeholder="••••"
               />
               <p className="text-caption text-muted">
-                Social Machine defaults to the Linux snapshot daytona-vm-medium (Windows
-                snapshots need a Daytona plan that includes them). Hibernate pauses a hot
-                snapshot (logins persist). Clock is Australia/Sydney. Start auto-provisions a
+                Social Machine defaults to the Linux container snapshot daytona-medium (Windows
+                snapshots need a Daytona plan that includes them). Hibernate auto-stops the
+                sandbox after idle minutes (container class has no hot pause; the filesystem
+                persists across stop). Clock is Australia/Sydney. Start auto-provisions a
                 free country-matched HTTP proxy; paste a paid residential URL if you have one.
-                Test Connection and Test proxy never start a VM.
+                Test Connection and Test proxy never start a sandbox.
               </p>
             </>
           ) : null}

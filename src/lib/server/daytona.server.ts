@@ -35,6 +35,7 @@ import {
   idlePolicy,
   instagramGeoWarning,
   isUnsupportedPauseClassError,
+  isHotSnapshot,
   isWindowsSnapshot,
   linuxProxyScript,
   listWindowsCommand,
@@ -50,6 +51,7 @@ import {
   parseSocialMachineOs,
   parseSocialMachineRegion,
   parseSocialMachineSize,
+  sandboxClassForSize,
   shouldResizeWindows,
   snapshotCandidates,
   socialMachineDomainAllowList,
@@ -58,6 +60,7 @@ import {
   machineDropPath,
   windowsLocaleScript,
   windowsProxyScript,
+  type SandboxClass,
   type SocialMachineOs,
   type SocialMachineRegion,
   type SocialMachineSize,
@@ -411,17 +414,23 @@ async function captureHotSnapshot(sandbox: Sandbox): Promise<string | null> {
   return null;
 }
 
-async function applyIdleIntervals(sandbox: Sandbox, minutes: number): Promise<void> {
-  const policy = idlePolicy(minutes);
+async function applyIdleIntervals(
+  sandbox: Sandbox,
+  minutes: number,
+  sandboxClass: SandboxClass,
+): Promise<void> {
+  const policy = idlePolicy(minutes, sandboxClass);
   try {
     await sandbox.setAutostopInterval(policy.autoStopInterval);
   } catch {
     /* older runners */
   }
-  try {
-    await sandbox.setAutoPauseInterval(policy.autoPauseInterval);
-  } catch {
-    /* applies on next create */
+  if (sandboxClass !== "container") {
+    try {
+      await sandbox.setAutoPauseInterval(policy.autoPauseInterval);
+    } catch {
+      /* applies on next create */
+    }
   }
   try {
     await sandbox.setAutoDeleteInterval(policy.autoDeleteInterval);
@@ -488,40 +497,54 @@ async function socialMachineNetworkSettings(): Promise<{ domainAllowList?: strin
 
 async function createSocialSandbox(daytona: Daytona, config: DaytonaConfig): Promise<Sandbox> {
   const region = parseSocialMachineRegion(config.target);
-  const policy = idlePolicy(config.autoStopMinutes);
+  const sandboxClass = sandboxClassForSize(config.size);
+  const policy = idlePolicy(config.autoStopMinutes, sandboxClass);
+  const containerSafePolicy =
+    sandboxClass === "container" ? policy : idlePolicy(config.autoStopMinutes, "container");
   const storedSnap = (await readAppSetting(SNAPSHOT_KEY))?.trim() || "";
   const candidates = snapshotCandidates(config.size, storedSnap);
   let lastError: unknown = null;
   for (const snapshot of candidates) {
     const sandboxOs: SocialMachineOs = isWindowsSnapshot(snapshot) ? "windows" : "linux";
-    try {
-      const sandbox = await daytona.create(
-        {
-          name: "clippy-os-social",
-          snapshot,
-          labels: { ...SOCIAL_LABELS, os: sandboxOs, region },
-          autoStopInterval: policy.autoStopInterval,
-          autoPauseInterval: policy.autoPauseInterval,
-          autoArchiveInterval: policy.autoArchiveInterval,
-          autoDeleteInterval: policy.autoDeleteInterval,
-          public: false,
-          ...(await socialMachineNetworkSettings()),
-          envVars: {
-            TZ: DEFAULT_SOCIAL_TIMEZONE,
-            LANG: "en_AU.UTF-8",
-            LC_ALL: "en_AU.UTF-8",
-            CLIPPY_LOCALE: DEFAULT_SOCIAL_LOCALE,
+    const attempts = sandboxClass === "container" ? [policy] : [policy, containerSafePolicy];
+    for (const attemptPolicy of attempts) {
+      try {
+        const sandbox = await daytona.create(
+          {
+            name: "clippy-os-social",
+            snapshot,
+            labels: { ...SOCIAL_LABELS, os: sandboxOs, region },
+            autoStopInterval: attemptPolicy.autoStopInterval,
+            autoPauseInterval: attemptPolicy.autoPauseInterval,
+            autoArchiveInterval: attemptPolicy.autoArchiveInterval,
+            autoDeleteInterval: attemptPolicy.autoDeleteInterval,
+            public: false,
+            ...(await socialMachineNetworkSettings()),
+            envVars: {
+              TZ: DEFAULT_SOCIAL_TIMEZONE,
+              LANG: "en_AU.UTF-8",
+              LC_ALL: "en_AU.UTF-8",
+              CLIPPY_LOCALE: DEFAULT_SOCIAL_LOCALE,
+            },
+            ...(config.proxyUrl ? { outboundProxyUrl: config.proxyUrl } : {}),
           },
-          ...(config.proxyUrl ? { outboundProxyUrl: config.proxyUrl } : {}),
-        },
-        { timeout: 240 },
-      );
-      await writeAppSetting(OS_KEY, sandboxOs);
-      await writeAppSetting(SIZE_KEY, sandboxOs === "linux" ? "daytona-vm-medium" : config.size);
-      await writeAppSetting(SNAPSHOT_KEY, snapshot);
-      return sandbox;
-    } catch (error) {
-      lastError = error;
+          { timeout: 240 },
+        );
+        await writeAppSetting(OS_KEY, sandboxOs);
+        await writeAppSetting(
+          SIZE_KEY,
+          sandboxOs === "linux"
+            ? isHotSnapshot(snapshot)
+              ? config.size
+              : parseSocialMachineSize(snapshot)
+            : config.size,
+        );
+        await writeAppSetting(SNAPSHOT_KEY, snapshot);
+        return sandbox;
+      } catch (error) {
+        lastError = error;
+        if (!(error instanceof Error && isUnsupportedPauseClassError(error.message))) break;
+      }
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Couldn’t create the Social Machine.");
@@ -775,7 +798,8 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
     await deleteAppSetting(LAST_ERROR_KEY);
     await writeAppSetting(OS_KEY, os);
 
-    await applyIdleIntervals(sandbox, config.autoStopMinutes);
+    const resolvedSize = parseSocialMachineSize(await readAppSetting(SIZE_KEY));
+    await applyIdleIntervals(sandbox, config.autoStopMinutes, sandboxClassForSize(resolvedSize));
     if (os === "windows") {
       await maybeResizeWindows(sandbox);
       await applyWindowsDesktop(sandbox);
@@ -829,7 +853,7 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
       state: "running",
       configured: true,
       sandboxId: sandbox.id,
-      autoStopMinutes: sandbox.autoPauseInterval || config.autoStopMinutes,
+      autoStopMinutes: sandbox.autoPauseInterval || sandbox.autoStopInterval || config.autoStopMinutes,
       startedAt: await readAppSetting(STARTED_AT_KEY),
       runningMs: 0,
       longRunning: false,
@@ -841,7 +865,7 @@ export async function startSocialMachine(): Promise<SocialMachineStatus> {
       displayWidth: display?.width ?? null,
       displayHeight: display?.height ?? null,
       os,
-      size: config.size,
+      size: resolvedSize,
       region: parseSocialMachineRegion(config.target),
       snapshotName: sandbox.snapshot ?? (await readAppSetting(SNAPSHOT_KEY)),
       geoWarning: instagramGeoWarning(parseSocialMachineRegion(config.target)),
@@ -1108,7 +1132,7 @@ export async function setSocialAutoStopMinutes(minutes: number): Promise<SocialM
       try {
         const daytona = createClient(config);
         const sandbox = await daytona.get(status.sandboxId);
-        await applyIdleIntervals(sandbox, rounded);
+        await applyIdleIntervals(sandbox, rounded, sandboxClassForSize(config.size));
       } catch {
         /* setting is persisted; applies on next start */
       }
