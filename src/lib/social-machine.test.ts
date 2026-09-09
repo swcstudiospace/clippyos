@@ -21,6 +21,7 @@ import {
   ipfsGatewayUrl,
   ipfsStrategyNote,
   isHotSnapshot,
+  isUnsupportedPauseClassError,
   isWindowsSnapshot,
   libraryBackendNote,
   listWindowsCommand,
@@ -102,6 +103,18 @@ test("hibernate plan snapshots while running then pauses — never after pause, 
   assert.equal(plan.snapshotWhileRunning, true);
   assert.equal(plan.neverDelete, true);
   assert.equal(plan.snapshotAfterPause, false);
+});
+
+test("isUnsupportedPauseClassError matches Daytona's class-mismatch text and nothing else", () => {
+  assert.equal(
+    isUnsupportedPauseClassError(
+      "Auto-pause is not supported for sandbox class 'container'. Supported classes: linux-vm, windows.",
+    ),
+    true,
+  );
+  assert.equal(isUnsupportedPauseClassError("Auto-Pause Is Not Supported For Sandbox Class 'android'."), true);
+  assert.equal(isUnsupportedPauseClassError("Request timed out"), false);
+  assert.equal(isUnsupportedPauseClassError("Sandbox not found"), false);
 });
 
 test("snapshot candidates prefer linux default and fall back off Windows quota", () => {

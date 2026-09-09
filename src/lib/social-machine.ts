@@ -148,6 +148,15 @@ export function stopActionForOs(os: SocialMachineOs): StopAction {
   return os === "windows" ? "pause" : "stop";
 }
 
+/** Daytona assigns sandbox class (container/linux-vm/windows) server-side from
+ * the account's snapshot config — ClippyOS never requests or reads it back
+ * (the SDK's Sandbox wrapper doesn't expose a class field). When pause() is
+ * rejected for this reason specifically, a cold stop is safe: the hot named
+ * snapshot is always captured before pause is attempted. */
+export function isUnsupportedPauseClassError(message: string): boolean {
+  return /auto-pause is not supported for sandbox class/i.test(message);
+}
+
 export type HibernatePlan = {
   primary: "pause";
   snapshotWhileRunning: true;
