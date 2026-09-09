@@ -54,3 +54,16 @@ test("request Host clippyos.grok.me does not win over canonical fallback", () =>
     CANONICAL_APP_ORIGIN,
   );
 });
+
+test("a Vercel deployment advertises the host it was hit on", () => {
+  const env = { VERCEL_PROJECT_PRODUCTION_URL: "clippyos.vercel.app", VERCEL_URL: "clippyos-abc.vercel.app" };
+  assert.equal(
+    resolvePublicAppOrigin({ env, request: requestWithHost("clippyos-abc.vercel.app") }),
+    "https://clippyos-abc.vercel.app",
+  );
+  assert.equal(resolvePublicAppOrigin({ env }), "https://clippyos.vercel.app");
+  assert.equal(
+    resolvePublicAppOrigin({ env: { ...env, BETTER_AUTH_URL: GROK_APP_ORIGIN } }),
+    "https://clippyos.vercel.app",
+  );
+});

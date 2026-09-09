@@ -31,7 +31,7 @@ export function resolvePublicAppOrigin(input: {
   const env = input.env ?? (typeof process !== "undefined" ? process.env : {});
   if (envProvidesPublicOrigin(env)) return authFallbackBaseURL(env);
   if (input.request) {
-    const origin = originFromRequest(input.request);
+    const origin = originFromRequest(input.request, env);
     const host = hostnameOf(origin);
     if (host && !isGrokMeHost(host)) return origin;
   }

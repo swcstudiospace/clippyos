@@ -163,7 +163,7 @@ Set in Vercel (or your host) — never commit a `.env`. Names are documented in
 | `DATABASE_URL` | Managed Postgres connection (unset ⇒ local PGLite) |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase Storage for the clip library |
 | `BETTER_AUTH_SECRET` | Session signing |
-| `CRON_SECRET` | Protects `/api/cron/ops` (every 15 min; sweeps queues, never starts the VM) |
+| `CRON_SECRET` | Protects `/api/cron/ops` (every 15 min; sweeps queues, never starts the VM). Vercel Hobby only allows daily crons — use Pro or a daily schedule there |
 | `LIBRARY_S3_*`, `PINATA_JWT`, `LIBRARY_IPFS_GATEWAY` | Optional S3 overflow + IPFS pin layer |
 | `TELEGRAM_BOT_TOKEN`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` | Optional liaison channels |
 | `XAI_API_KEY`, `RESEND_API_KEY`, `DISCORD_BOT_TOKEN`, `YOUTUBE_API_KEY`, `DAYTONA_API_KEY`, `HIGGSFIELD_*` | Optional provider keys |
