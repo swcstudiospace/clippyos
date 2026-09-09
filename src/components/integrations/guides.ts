@@ -262,16 +262,16 @@ export const GUIDES: Record<IntegrationId, GuideDef> = {
     title: "Daytona (Computer Use / Social)",
     time: "~5 min",
     intro:
-      "Powers the on-demand Social Machine (Linux daytona-vm-medium by default). The machine stays off until you press Start. Hibernate pauses a hot snapshot. Test Connection only checks the API — it never starts a VM.",
+      "Powers the on-demand Social Machine (Linux container daytona-medium by default). The machine stays off until you press Start. Hibernate auto-stops after idle (filesystem persists; container class has no hot pause). Test Connection only checks the API — it never starts a sandbox.",
     steps: [
       {
         title: "Create a Daytona API key",
-        body: "Open the Daytona dashboard, create an API key, and copy it. Default snapshot is daytona-vm-medium (Linux). Windows snapshots need a plan that includes them.",
+        body: "Open the Daytona dashboard, create an API key, and copy it. Default snapshot is daytona-medium (Linux container). Windows snapshots need a plan that includes them.",
         copy: { label: "Daytona", value: "https://app.daytona.io" },
       },
       {
         title: "Paste into ClippyOS",
-        body: "Settings → Integrations → Daytona. Paste the API key. Optional: US or EU region, snapshot (daytona-vm-medium default), idle hibernate minutes. Start auto-provisions a free country proxy; paste a paid residential URL if you have one.",
+        body: "Settings → Integrations → Daytona. Paste the API key. Optional: US or EU region, snapshot (daytona-medium default), idle minutes before auto-stop. Start auto-provisions a free country proxy; paste a paid residential URL if you have one.",
       },
       {
         title: "Test Connection (and Test proxy)",

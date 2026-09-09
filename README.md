@@ -75,7 +75,7 @@ paused, not destroyed.
 | Database | Managed Postgres (Supabase / Neon) via `DATABASE_URL`; embedded **PGLite** fallback locally | RLS-enabled schema; migrations apply automatically |
 | Clip files | **Supabase Storage** (`clippy-library` bucket) or S3-compatible overflow (Filebase / Storj / R2) | Survives deploys. Never the Windows VM. |
 | IPFS | Pinata pin / Filebase CID | Pin layer only — never the write backend |
-| Social Machine | Daytona **daytona-vm-medium** Linux VM (Windows snapshots optional) | Computer Use only: platform logins, uploads. Pause = pause; hibernate snapshots while running. Never started by cron or Test Connection. Start auto-provisions a free country proxy. |
+| Social Machine | Daytona **daytona-medium** Linux container (Windows/Linux-VM snapshots optional) | Computer Use only: platform logins, uploads. Hibernate = auto-stop after idle (filesystem persists; container class has no hot pause). Never started by cron or Test Connection. Start auto-provisions a free country proxy. |
 | Render / sandboxes | Short-lived Linux jobs (`ffmpeg`/`ffprobe`, skill sandboxes) | Isolated from browser profiles |
 
 Key source trees: `src/routes/_app` (operator screens), `src/routes/api`
