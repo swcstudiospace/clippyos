@@ -639,9 +639,9 @@ export function explainAgentToolError(code: string): string {
   const key = code.trim().split(/\s/)[0] ?? code;
   switch (key) {
     case "MISSING":
-      return "Crayo isn’t on this server yet. The key lives in Vercel Production as CRAYO_API_KEY — it only applies after the next deploy. This tab cannot mint videos until then.";
+      return "Crayo isn’t connected. Paste your Crayo API key in Settings → Integrations → Crayo.ai and run Test. This tab cannot mint videos until then.";
     case "UNAUTHORIZED":
-      return "Crayo rejected the API key. Rotate it in Crayo, update Vercel CRAYO_API_KEY, and redeploy. Never paste the key into chat.";
+      return "Crayo rejected the API key. Create a new key on crayo.ai/developers and paste it in Settings → Integrations → Crayo.ai. Never paste the key into chat.";
     case "VALIDATION":
       return "This step needed a topic, spoken script, voice_id, or https URL. Use /short, /voice, /image, or /autoclip — the specialty card collects the fields.";
     case "INSUFFICIENT_CREDITS":
@@ -654,6 +654,40 @@ export function explainAgentToolError(code: string): string {
       return "Library ingest only accepts Crayo CDN https files. The export URL wasn’t a trusted host.";
     case "CRAYO_FAILED":
       return "Crayo returned an error. Check credits and the source URL. No file was stored.";
+    case "CRAYO_SOURCE_NOT_MEDIA":
+      return "This link can’t be fetched automatically (sign-in or share-token wall). Paste a YouTube/TikTok/Vimeo link, a direct video file URL, or upload the file to the Library and use that URL.";
+    case "DAYTONA_UNAVAILABLE":
+      return "Fetching a YouTube/TikTok link runs yt-dlp in a Daytona sandbox, and Daytona isn’t connected. Add the Daytona API key in Settings → Social Machine, or paste a direct video file URL instead.";
+    case "MEDIA_FETCH_FAILED":
+      return "The sandbox could not download this page link. The provider message is shown with the step (age/sign-in walls and bot checks are the usual cause). A residential proxy in Settings → Social Machine helps with YouTube.";
+    case "MEDIA_LENGTH_OUT_OF_RANGE":
+      return "Crayo AutoClip only takes videos between 1 minute and 3 hours.";
+    case "MEDIA_TOO_LARGE":
+      return "The download is over Crayo’s 1GB upload cap even at 720p. Pick a shorter video or trim it first.";
+    case "MEDIA_FETCH_PENDING":
+      return "The video is being fetched in the background (sandbox download → Crayo upload → AutoClip). Long streams are split into ≤3 h segments. Keep this tab open for fastest progress; the ops cron also advances it.";
+    case "MEDIA_SEGMENT_FAILED":
+      return "One segment of the stream could not be downloaded. The provider message is shown with the step; retry, or set a residential proxy in Settings → Social Machine if YouTube is blocking the sandbox.";
+    case "MEDIA_FETCH_TIMEOUT":
+      return "The background fetch ran past its 4-hour ceiling. Retry with a shorter stream, or run it again — segments already in Crayo are still on your account.";
+    case "MEDIA_UPLOAD_FAILED":
+      return "The video downloaded but the upload to Crayo’s signed URL failed. Retry; if it keeps failing, check Crayo storage headroom on crayo.ai.";
+    case "UPLOAD_NOT_FOUND":
+      return "Crayo never received the bytes on its signed upload URL. Retry the run.";
+    case "VALIDATION_ERROR":
+      return "Crayo rejected the request: the URL could not be fetched, is not a public https media file, or the video is too short/long (AutoClip needs 1 min–3 h). No credits were spent on a rejected request.";
+    case "UNSUPPORTED_MEDIA_TYPE":
+      return "Crayo fetched the URL but it is not an image, audio, or video file (a YouTube page link, for example). Use a direct media file URL.";
+    case "FILE_TOO_LARGE":
+      return "The source file is over Crayo’s 100MB import ceiling. Trim or re-encode it, then retry.";
+    case "STORAGE_LIMIT_EXCEEDED":
+      return "Crayo storage is full. Delete assets on crayo.ai or upgrade, then retry.";
+    case "NOT_FOUND":
+      return "Crayo could not find that asset or job on this account.";
+    case "JOB_LIMIT_REACHED":
+      return "Crayo already has 3 AutoClip jobs running. Wait for one to finish, then retry.";
+    case "FAILED":
+      return "Crayo returned an error for this step. The provider message is shown with the step.";
     case "INGEST_FAILED":
       return "The video rendered, but Filebase/library ingest failed. The Crayo URL may still be in the step output.";
     case "GROK_BOT_NOT_CONNECTED":
@@ -676,6 +710,20 @@ export function isFatalAgentToolError(code: string): boolean {
     key === "INSUFFICIENT_CREDITS" ||
     key === "UNTRUSTED_URL" ||
     key === "CRAYO_FAILED" ||
+    key === "CRAYO_SOURCE_NOT_MEDIA" ||
+    key === "VALIDATION_ERROR" ||
+    key === "UNSUPPORTED_MEDIA_TYPE" ||
+    key === "FILE_TOO_LARGE" ||
+    key === "STORAGE_LIMIT_EXCEEDED" ||
+    key === "NOT_FOUND" ||
+    key === "JOB_LIMIT_REACHED" ||
+    key === "MEDIA_FETCH_FAILED" ||
+    key === "MEDIA_LENGTH_OUT_OF_RANGE" ||
+    key === "MEDIA_TOO_LARGE" ||
+    key === "MEDIA_UPLOAD_FAILED" ||
+    key === "MEDIA_SEGMENT_FAILED" ||
+    key === "MEDIA_FETCH_TIMEOUT" ||
+    key === "UPLOAD_NOT_FOUND" ||
     key === "AI_TIER_GATED" ||
     key === "AUTOMATION_DISABLED"
   );

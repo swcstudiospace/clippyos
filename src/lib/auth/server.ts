@@ -29,6 +29,7 @@
  * components read the user via `@/lib/auth/use-current-user`; server functions get
  * a verified id via `@/lib/auth/middleware`.
  */
+import { preferTransactionPooler } from "@/lib/db-url";
 import { betterAuth } from "better-auth";
 import { bearer, genericOAuth } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
@@ -126,7 +127,7 @@ const baseURL = {
 const trustedOrigins = (request?: Request) =>
   collectAppOrigins({ request, betterAuthUrl: explicitBaseURL });
 
-const databaseUrl = env("DATABASE_URL");
+const databaseUrl = preferTransactionPooler(env("DATABASE_URL") ?? "") || undefined;
 
 // Static broker OAuth endpoints (skip OIDC discovery on every sign-in / callback).
 // Discovery would cost an extra network hop to the broker before the popup can
@@ -143,7 +144,14 @@ const grokUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 // schema from `migrations/auth/0001_auth.sql`, copied into `migrations/` when
 // the app turns sign-in on.
 const database = databaseUrl
-  ? new Pool({ connectionString: databaseUrl })
+  ? // Same session-mode pooler as src/lib/db.ts — keep this pool small too (15-client cap).
+    new Pool({
+      connectionString: databaseUrl,
+      max: 2,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 15_000,
+      allowExitOnIdle: true,
+    })
   : { dialect: pgliteDialect(() => getPglite()), type: "postgres" as const };
 
 /** Session token cookie name — also read by the live-preview popup completion page. */

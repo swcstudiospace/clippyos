@@ -1,5 +1,6 @@
 export const INTEGRATION_IDS = [
   "ai",
+  "crayo",
   "higgsfield",
   "youtube",
   "discord",
@@ -66,6 +67,12 @@ export const INTEGRATION_COPY: Record<
     name: "AI API",
     purpose: "Ideation, thumbnails, channel analysis, and the Discord agent.",
     required: true,
+    time: "~2 min",
+  },
+  crayo: {
+    name: "Crayo.ai",
+    purpose: "Agent shorts, AutoClip, voiceovers, images, and exports via the Crayo API.",
+    required: false,
     time: "~2 min",
   },
   higgsfield: {
@@ -142,6 +149,7 @@ export const BANNER_BY_PATH: Array<{
       path.startsWith("/clients"),
     id: "ai",
   },
+  { match: (path) => path.startsWith("/agent") || path.startsWith("/library"), id: "crayo" },
   { match: (path) => path.startsWith("/thumbnails") || path.startsWith("/agent"), id: "higgsfield" },
   { match: (path) => path.startsWith("/analytics"), id: "youtube" },
   { match: (path) => path.startsWith("/social") || path.startsWith("/agent") || path.startsWith("/health"), id: "daytona" },

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  autoclipSourceProblem,
   buildCrayoAutoclipGoal,
   buildCrayoExportGoal,
   buildCrayoImageGoal,
@@ -77,4 +78,21 @@ test("only Crayo CDN hosts count as ingestable media", () => {
   assert.equal(isCrayoMediaUrl("https://uploads.crayo.ai/a.png"), true);
   assert.equal(isCrayoMediaUrl("https://example.com/video.mp4"), false);
   assert.equal(isCrayoMediaUrl("http://cdn-crayo.com/x.mp4"), false);
+});
+
+test("autoclipSourceProblem refuses only what nothing can fetch unattended", () => {
+  assert.match(autoclipSourceProblem("https://drive.google.com/file/d/abc/view") ?? "", /drive\.google\.com/);
+  assert.match(autoclipSourceProblem("https://www.dropbox.com/s/abc/x.mp4?dl=0") ?? "", /dropbox\.com/);
+  assert.match(autoclipSourceProblem("http://cdn.example.com/a.mp4") ?? "", /https/);
+  assert.match(autoclipSourceProblem("not a url") ?? "", /valid https/);
+  assert.match(autoclipSourceProblem("") ?? "", /Paste/);
+});
+
+test("autoclipSourceProblem accepts direct file links and fetchable page links", () => {
+  assert.equal(autoclipSourceProblem("https://cdn-crayo.com/user-uploads/x/long.mp4"), null);
+  assert.equal(autoclipSourceProblem("https://os.swcstudio.space/api/library/file?t=abc"), null);
+  assert.equal(autoclipSourceProblem("https://files.example.com/podcast-episode.mov"), null);
+  assert.equal(autoclipSourceProblem("https://www.youtube.com/watch?v=4GcCFZs9ZrA"), null);
+  assert.equal(autoclipSourceProblem("https://youtu.be/4GcCFZs9ZrA"), null);
+  assert.equal(autoclipSourceProblem("https://www.tiktok.com/@a/video/1"), null);
 });

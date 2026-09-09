@@ -144,9 +144,10 @@ async function writeSetting(key: string, value: string): Promise<void> {
 }
 
 export async function persistCrayoCreds(creds: CrayoCreds): Promise<void> {
-  if (!creds.key || !creds.secret) return;
+  if (!creds.key) return;
+  // Crayo authenticates with the single Bearer key; the secret is optional legacy input.
   await writeSetting("CRAYO_API_KEY", creds.key);
-  await writeSetting("CRAYO_API_SECRET", creds.secret);
+  await writeSetting("CRAYO_API_SECRET", creds.secret ?? "");
   credsCache = { at: Date.now(), creds };
 }
 
@@ -167,15 +168,14 @@ export function clearCrayoCredsCache(): void {
   persistAttempted = false;
 }
 
+/**
+ * Operator-saved key (Settings → Integrations → Crayo.ai) wins over the deploy's CRAYO_API_KEY,
+ * so a rotation in Settings takes effect without a redeploy. Env is the fallback and is copied
+ * into Settings once so the card shows it as configured.
+ */
 export async function loadCrayoCreds(): Promise<CrayoCreds | null> {
   const now = Date.now();
   if (credsCache && now - credsCache.at < CREDS_TTL_MS) return credsCache.creds;
-  const fromEnv = envPair();
-  if (fromEnv) {
-    credsCache = { at: now, creds: fromEnv };
-    void persistPreviewIfNeeded(fromEnv);
-    return fromEnv;
-  }
   try {
     const map = await readSettingsMap();
     const fromSettings = credsFromSettings(map);
@@ -184,7 +184,13 @@ export async function loadCrayoCreds(): Promise<CrayoCreds | null> {
       return fromSettings;
     }
   } catch {
-    /* fall through — no credentials configured */
+    /* fall through — env may still be configured */
+  }
+  const fromEnv = envPair();
+  if (fromEnv) {
+    credsCache = { at: now, creds: fromEnv };
+    void persistPreviewIfNeeded(fromEnv);
+    return fromEnv;
   }
   credsCache = { at: now, creds: null };
   return null;
@@ -245,6 +251,11 @@ function detailText(payload: unknown): string {
       (payload as { message?: unknown }).message ??
       (payload as { error?: unknown }).error;
     if (typeof detail === "string") return detail;
+    // Crayo envelope: { success:false, error:{ code, message } }
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message.trim();
+    }
     try {
       return JSON.stringify(detail);
     } catch {
@@ -252,6 +263,15 @@ function detailText(payload: unknown): string {
     }
   }
   return "";
+}
+
+/** Crayo's own error code (UPPER_SNAKE) from its `{ error: { code } }` envelope, if present. */
+function crayoErrorCode(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || !("error" in payload)) return null;
+  const error = (payload as { error?: unknown }).error;
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,60}$/.test(code) ? code : null;
 }
 
 function mapHttpError(status: number, _payload?: unknown): CrayoVideoResult {
@@ -456,7 +476,9 @@ async function crayoJson(
   if (response.status === 402) throw new CrayoApiError("INSUFFICIENT_CREDITS", "Crayo credits or storage are exhausted.", 402);
   if (!response.ok) {
     const message = detailText(payload) || `Crayo returned ${response.status}.`;
-    throw new CrayoApiError("FAILED", message.slice(0, 280), response.status);
+    // Keep Crayo's documented code (VALIDATION_ERROR, UNSUPPORTED_MEDIA_TYPE, FILE_TOO_LARGE,
+    // NOT_FOUND, JOB_LIMIT_REACHED, …) so the run can explain what actually went wrong.
+    throw new CrayoApiError(crayoErrorCode(payload) ?? "FAILED", message.slice(0, 280), response.status);
   }
   return payload;
 }
@@ -483,6 +505,61 @@ export async function crayoListAssets(input: { type?: string; limit?: number } =
 export async function crayoImportAsset(input: { url: string; name?: string }): Promise<unknown> {
   const creds = requireCredsOrThrow(await loadCrayoCreds());
   return crayoJson(creds, "POST", "/assets", { url: input.url, name: input.name });
+}
+
+export type CrayoUpload = {
+  id: string;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  expiresAt: string | null;
+};
+
+/**
+ * Direct upload, step one (docs: POST /v1/uploads). Returns a single-use signed PUT URL that
+ * must start receiving bytes within 5 minutes. Video ≤ 1GB, audio ≤ 100MB, images ≤ 20MB.
+ */
+export async function crayoCreateUpload(input: {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}): Promise<CrayoUpload> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const payload = (await crayoJson(creds, "POST", "/uploads", {
+    filename: input.filename.slice(0, 100),
+    content_type: input.contentType,
+    size_bytes: Math.floor(input.sizeBytes),
+  })) as { upload?: Record<string, unknown> } | null;
+  const upload = payload?.upload;
+  const id = typeof upload?.id === "string" ? upload.id : "";
+  const url = typeof upload?.url === "string" ? upload.url : "";
+  if (!id || !url.startsWith("https://")) {
+    throw new CrayoApiError("FAILED", "Crayo did not return a signed upload URL.", 502);
+  }
+  const headers: Record<string, string> = {};
+  if (upload?.headers && typeof upload.headers === "object") {
+    for (const [key, value] of Object.entries(upload.headers as Record<string, unknown>)) {
+      if (typeof value === "string") headers[key.toLowerCase()] = value;
+    }
+  }
+  return {
+    id,
+    url,
+    method: typeof upload?.method === "string" ? upload.method : "PUT",
+    headers,
+    expiresAt: typeof upload?.expires_at === "string" ? upload.expires_at : null,
+  };
+}
+
+/** Direct upload, step three (docs: POST /v1/uploads/{id}/complete). Returns the new asset id. */
+export async function crayoCompleteUpload(uploadId: string): Promise<string> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const payload = (await crayoJson(creds, "POST", `/uploads/${encodeURIComponent(uploadId)}/complete`)) as
+    | { asset?: { id?: unknown } }
+    | null;
+  const id = typeof payload?.asset?.id === "string" ? payload.asset.id : "";
+  if (!id) throw new CrayoApiError("FAILED", "Crayo completed the upload without returning an asset id.", 502);
+  return id;
 }
 
 export async function crayoGenerateImage(input: {

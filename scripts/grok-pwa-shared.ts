@@ -224,14 +224,16 @@ export function renderWebManifest(hostHeader: MaybeString) {
           type: "image/png",
           purpose: "any",
         },
+        // Maskable icons keep the mark inside the 80% safe zone on a full-bleed
+        // background, so Android / launcher masks never crop the hexagon.
         {
-          src: "/__grok/icon-192.png",
+          src: "/__grok/icon-maskable-192.png",
           sizes: "192x192",
           type: "image/png",
           purpose: "maskable",
         },
         {
-          src: "/__grok/icon-512.png",
+          src: "/__grok/icon-maskable-512.png",
           sizes: "512x512",
           type: "image/png",
           purpose: "maskable",

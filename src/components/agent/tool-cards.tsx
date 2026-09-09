@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AgentPreset } from "@/lib/agent";
 import type { AgentSlashUi } from "@/lib/agent-slash";
 import {
+  autoclipSourceProblem,
   buildCrayoAutoclipGoal,
   buildCrayoExportGoal,
   buildCrayoImageGoal,
@@ -114,7 +115,7 @@ export function AgentToolCardView({
       ) : null}
       {!crayoReady && RUNNABLE.has(card.ui) ? (
         <p className="mt-2 text-caption text-warning">
-          Crayo isn’t live on this deploy yet. Production CRAYO_API_KEY applies after the next deploy.
+          Crayo isn’t connected. Paste your Crayo API key in Settings → Integrations → Crayo.ai (no redeploy needed).
         </p>
       ) : null}
     </GlassCard>
@@ -191,7 +192,8 @@ const CARD_COPY: Record<
 
 function canSubmit(ui: AgentSlashUi, draft: Record<string, string>): boolean {
   if (ui === "short") return Boolean(draft.topic?.trim() || draft.script?.trim());
-  if (ui === "autoclip" || ui === "import" || ui === "ingest") return Boolean(draft.url?.startsWith("https://"));
+  if (ui === "autoclip") return Boolean(draft.url?.trim()) && autoclipSourceProblem(draft.url ?? "") === null;
+  if (ui === "import" || ui === "ingest") return Boolean(draft.url?.startsWith("https://"));
   if (ui === "voiceover") return Boolean(draft.script?.trim() && draft.voiceId?.trim());
   if (ui === "image") return Boolean(draft.prompt?.trim());
   if (ui === "export") return Boolean(draft.projectId?.trim());
@@ -283,6 +285,8 @@ function AutoclipFields({
   draft: Record<string, string>;
   set: (partial: Record<string, string>) => void;
 }) {
+  const url = draft.url ?? "";
+  const problem = url.trim() ? autoclipSourceProblem(url) : null;
   return (
     <>
       <div className="flex flex-col gap-1.5">
@@ -290,10 +294,16 @@ function AutoclipFields({
         <Input
           id="card-long-url"
           type="url"
-          value={draft.url ?? ""}
+          value={url}
           onChange={(event) => set({ url: event.target.value })}
-          placeholder="https://…"
+          placeholder="https://www.youtube.com/watch?v=… or https://…/video.mp4"
+          aria-invalid={problem ? true : undefined}
+          aria-describedby="card-long-url-hint"
         />
+        <p id="card-long-url-hint" className={problem ? "text-caption text-warning" : "text-caption text-muted-foreground"} role={problem ? "alert" : undefined}>
+          {problem ??
+            "YouTube, TikTok, Vimeo, X or Twitch links are fetched in a sandbox at 720p and uploaded to Crayo. Streams over 3 h are split into ~70-min segments, each its own AutoClip job (clips and credits spread across them). Direct file links (mp4/mov ≤100MB) import straight away."}
+        </p>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="card-clip-count">How many clips</Label>

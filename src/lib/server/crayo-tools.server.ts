@@ -1,7 +1,8 @@
 /**
  * crayo.* tools for Agent / MCP. Never returns API keys.
  */
-import { isCrayoMediaUrl } from "@/lib/agent-crayo";
+import { autoclipSourceProblem, isCrayoMediaUrl } from "@/lib/agent-crayo";
+import { mediaSourceKind } from "@/lib/media-fetch";
 import { sanitizeText } from "@/lib/sanitize";
 import {
   CrayoApiError,
@@ -73,16 +74,28 @@ function firstHttps(value: unknown): string {
   return "";
 }
 
+/**
+ * Tool-level error: `message` is the machine code the agent loop keys on, `detail` is the
+ * provider's human message (never a credential) so operators see why a step failed.
+ */
+export class CrayoToolError extends Error {
+  detail: string;
+  constructor(code: string, detail: string) {
+    super(code);
+    this.detail = detail;
+  }
+}
+
 async function wrap<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (error) {
-    if (error instanceof CrayoApiError) throw new Error(error.code);
+    if (error instanceof CrayoApiError) throw new CrayoToolError(error.code, error.message);
     throw error;
   }
 }
 
-async function ingestCrayoMedia(
+export async function ingestCrayoMedia(
   actorId: string,
   clientId: string | null,
   url: string,
@@ -192,18 +205,59 @@ async function runShort(payload: Record<string, unknown>, actorId: string): Prom
   };
 }
 
-async function runAutoclip(payload: Record<string, unknown>, actorId: string): Promise<unknown> {
+async function runAutoclip(
+  payload: Record<string, unknown>,
+  actorId: string,
+  onProgress?: (message: string) => Promise<void> | void,
+  runId?: string,
+): Promise<unknown> {
   const url = str(payload, "url");
   const clientId = str(payload, "clientId") || null;
   if (!url.startsWith("https://")) throw new Error("VALIDATION");
-  const imported = await wrap(() =>
-    crayoImportAsset({
-      url,
-      name: sanitizeText(str(payload, "name")).slice(0, 200) || undefined,
-    }),
-  );
-  const assetId = pickField(imported, "id") || pickField(imported, "asset_id");
+  // Crayo imports a *file* (POST /v1/assets downloads it). A YouTube/TikTok/Vimeo page is HTML,
+  // so those go through the Daytona sandbox fetch (yt-dlp → signed Crayo upload) instead.
+  const sourceProblem = autoclipSourceProblem(url);
+  if (sourceProblem) throw new CrayoToolError("CRAYO_SOURCE_NOT_MEDIA", sourceProblem);
+  const name = sanitizeText(str(payload, "name")).slice(0, 200) || undefined;
+  let assetId = "";
+  let fetched: { title: string; durationSec: number | null; bytes: number } | null = null;
+  if (mediaSourceKind(url) === "fetch" && runId) {
+    // Agent runs: hand the fetch to the background job (survives the function limit, splits
+    // long streams into Crayo-sized segments). The loop parks the run; ticks finish it.
+    const { startMediaFetchJob } = await import("@/lib/server/media-fetch-job.server");
+    try {
+      await startMediaFetchJob({
+        runId,
+        url,
+        actorId,
+        clientId,
+        clipCount: num(payload, "clipCount", 5, 2, 20),
+        clipLength: num(payload, "clipLength", 60, 30, 90),
+        editLevel: str(payload, "editLevel", "edit_level") || "full",
+        prompt: sanitizeText(str(payload, "prompt")).slice(0, 500) || null,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "MEDIA_FETCH_FAILED";
+      throw new CrayoToolError(/^[A-Z_]{3,60}$/.test(code) ? code : "MEDIA_FETCH_FAILED", error instanceof Error ? error.message : "");
+    }
+    throw new CrayoToolError("MEDIA_FETCH_PENDING", "Background fetch started.");
+  }
+  if (mediaSourceKind(url) === "fetch") {
+    const { fetchPageVideoToCrayoAsset, MediaFetchError } = await import("@/lib/server/media-fetch.server");
+    try {
+      const result = await fetchPageVideoToCrayoAsset({ url, name, onProgress });
+      assetId = result.assetId;
+      fetched = { title: result.title, durationSec: result.durationSec, bytes: result.bytes };
+    } catch (error) {
+      if (error instanceof MediaFetchError) throw new CrayoToolError(error.message, error.detail);
+      throw error;
+    }
+  } else {
+    const imported = await wrap(() => crayoImportAsset({ url, name }));
+    assetId = pickField(imported, "id") || pickField(imported, "asset_id");
+  }
   if (!assetId) throw new Error("CRAYO_FAILED");
+  await onProgress?.(`Crayo asset ${assetId} is ready. Starting AutoClip (credits are charged per requested clip).`);
 
   const job = await wrap(() =>
     crayoCreateAutoclip({
@@ -237,13 +291,15 @@ async function runAutoclip(payload: Record<string, unknown>, actorId: string): P
       library,
     });
   }
-  return { autoclipId, assetId, clips };
+  return { autoclipId, assetId, clips, ...(fetched ? { source: fetched } : {}) };
 }
 
 export async function handleCrayoAction(
   action: string,
   payload: Record<string, unknown>,
   actorId: string,
+  onProgress?: (message: string) => Promise<void> | void,
+  runId?: string,
 ): Promise<unknown> {
   switch (action) {
     case "crayo.get_account":
@@ -357,7 +413,7 @@ export async function handleCrayoAction(
     case "crayo.run_short":
       return runShort(payload, actorId);
     case "crayo.run_autoclip":
-      return runAutoclip(payload, actorId);
+      return runAutoclip(payload, actorId, onProgress, runId);
     default:
       return undefined;
   }

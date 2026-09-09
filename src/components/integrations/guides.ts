@@ -43,6 +43,33 @@ export const GUIDES: Record<IntegrationId, GuideDef> = {
       "Test Connection returns Connected",
     ],
   },
+  crayo: {
+    id: "crayo",
+    title: "Crayo.ai",
+    time: "~2 min",
+    intro:
+      "The Agent's /short, /autoclip, /voice, /image and export commands call the Crayo API. One secret key (crayo_sk_…) is all it needs.",
+    steps: [
+      {
+        title: "Create a Crayo API key",
+        body: "On crayo.ai open Developer API and create a key. Crayo only shows it once — copy it straight away.",
+        copy: { label: "Crayo Developer API", value: "https://crayo.ai/developers" },
+      },
+      {
+        title: "Paste the key",
+        body: "ClippyOS → Settings → Integrations → Crayo.ai. Paste the key and Save. A key saved here wins over any CRAYO_API_KEY in the deploy environment, so rotating it needs no redeploy.",
+      },
+      {
+        title: "Test connection",
+        body: "Run Test Connection. It calls GET /v1/account, which is free and shows your plan and credit balance. Disconnect removes the stored key.",
+      },
+    ],
+    checklist: [
+      "Key created on crayo.ai/developers",
+      "Key saved in Settings and Test Connection is green",
+      "Agent card no longer says “Crayo isn’t live on this deploy”",
+    ],
+  },
   higgsfield: {
     id: "higgsfield",
     title: "Higgsfield",
