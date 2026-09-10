@@ -325,7 +325,7 @@ async function buildPlan(input: {
       messages: [
         {
           role: "system",
-          content: `${SYSTEM}\nReturn ONLY JSON {"steps":[{"id","tool","args","purpose","successCriteria"}]}. Allowed tools: ${allowList}. Max 12 steps. Never include computer.start.`,
+          content: `${SYSTEM}\nReturn ONLY JSON {"steps":[{"id","tool","args","purpose","successCriteria"}]} where each successCriteria is observable from the step's own output or a cheap follow-up read. Allowed tools: ${allowList}. Max 12 steps, ordered so earlier outputs feed later inputs. Never include computer.start.`,
         },
         { role: "user", content: `Goal: ${input.goal}\nClient: ${input.clientId ?? "none"}` },
       ],
