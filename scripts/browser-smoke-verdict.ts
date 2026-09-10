@@ -177,16 +177,26 @@ export function exitCodeFor(viewports?: Record<string, ViewportResult> | null): 
 }
 
 // Platform chrome mandates the grok.com extensions.js tag in every page head
-// (scripts/grok-pwa-shared.ts, GROK_EXTENSIONS_SCRIPT_SRC), and grok.com serves
-// it with `Cross-Origin-Resource-Policy: same-origin` plus `COEP: require-corp`,
-// so Chromium deterministically refuses to run it cross-origin. That block is
-// expected chrome behavior, not an app defect — the smoke gate ignores exactly
-// this error and still fails on every other console/page error.
+// (scripts/grok-pwa-shared.ts, GROK_EXTENSIONS_SCRIPT_SRC). Depending on how the
+// response headers land, Chromium refuses to run it two different ways: a COEP/CORP
+// cross-origin block (`ERR_BLOCKED_BY_RESPONSE`) or the app's own
+// `Content-Security-Policy: script-src` header rejecting the cross-origin script tag
+// (src/lib/security-headers.ts) before COEP/CORP is ever evaluated. Both are expected
+// chrome behavior, not an app defect — the smoke gate ignores exactly this error
+// (either form) and still fails on every other console/page error.
 export const GROK_EXTENSIONS_SCRIPT_URL =
   "https://grok.com/grok-app-builder/extensions.js";
 
 export function isExpectedPlatformChromeBlock(errorText: string, sourceUrl: string): boolean {
+  // COEP/CORP cross-origin block: Chromium reports the blocked resource itself as the
+  // console message's source, so sourceUrl reliably identifies it.
+  if (sourceUrl === GROK_EXTENSIONS_SCRIPT_URL && errorText.includes("ERR_BLOCKED_BY_RESPONSE")) {
+    return true;
+  }
+  // CSP `script-src` block: Chromium reports the *document* as the console message's
+  // source (not the blocked script), so sourceUrl is useless here — match on the
+  // violation text itself, which always names the exact blocked URL.
   return (
-    errorText.includes("ERR_BLOCKED_BY_RESPONSE") && sourceUrl === GROK_EXTENSIONS_SCRIPT_URL
+    errorText.includes("Content Security Policy") && errorText.includes(GROK_EXTENSIONS_SCRIPT_URL)
   );
 }

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { TypingAnimation } from "@/components/magicui/typing-animation";
 import { usePrefersReducedMotion } from "@/lib/use-prefers-reduced-motion";
 import { LinearIssueActions } from "@/components/linear/issue-actions";
+import { AgentResults } from "@/components/agent/results";
 
 export function AgentTimeline({
   detail,
@@ -54,6 +55,11 @@ export function AgentTimeline({
             {rateLimitMessage}
           </p>
         ) : null}
+        {detail.run.status === "failed" && detail.run.summary ? (
+          <p className="mt-3 rounded-control bg-danger/10 px-3 py-2 text-caption text-danger" role="status">
+            {detail.run.summary}
+          </p>
+        ) : null}
         {detail.run.status === "waiting_human" ? (
           <p className="mt-3 text-caption text-warning">
             Waiting on a human — login wall, CAPTCHA, or skill approval. Open Social if this is a session.
@@ -61,7 +67,9 @@ export function AgentTimeline({
         ) : null}
         {detail.run.status === "waiting_resource" ? (
           <p className="mt-3 text-caption text-warning">
-            Waiting on a resource — Social Machine stopped, or Grok Bot hasn’t claimed this run yet.
+            {detail.run.errorCode === "MEDIA_FETCH"
+              ? "Fetching in the background — a Daytona sandbox downloads the stream in ≤3 h segments and uploads each to Crayo, then AutoClip runs per segment. Progress lines appear below; keep this tab open for the fastest updates."
+              : "Waiting on a resource — Social Machine stopped, or Grok Bot hasn’t claimed this run yet."}
           </p>
         ) : null}
         {plan.length > 0 ? (
@@ -150,12 +158,7 @@ export function AgentTimeline({
         ) : null}
       </ol>
 
-      {detail.run.summary && !running ? (
-        <GlassCard>
-          <p className="text-caption text-muted">Summary</p>
-          <p className={cn("mt-1 text-body")}>{detail.run.summary}</p>
-        </GlassCard>
-      ) : null}
+      {!running ? <AgentResults detail={detail} /> : null}
     </div>
   );
 }

@@ -100,6 +100,12 @@ export const ADDON_META: Record<IntegrationId, AddonMeta> = {
       "content_ideation_cadence",
     ],
   },
+  crayo: {
+    id: "crayo",
+    layer: "addon",
+    requiredFor: "Crayo video pipeline: /short, /autoclip, /voice, /image, exports",
+    usedBy: ["Agent", "Library generate", "crayo_run_autoclip (MCP)"],
+  },
   higgsfield: {
     id: "higgsfield",
     layer: "addon",

@@ -1,6 +1,6 @@
 /** LLM provider catalog — client-safe. Tokens never live here. */
 
-export const LLM_PROVIDER_IDS = ["xai-oauth", "xai-api", "openai-compat"] as const;
+export const LLM_PROVIDER_IDS = ["xai-oauth", "xai-api", "openai-compat", "anthropic-api"] as const;
 export type LlmProviderId = (typeof LLM_PROVIDER_IDS)[number];
 
 export const LLM_FEATURES = [
@@ -17,7 +17,41 @@ export type LlmFeature = (typeof LLM_FEATURES)[number];
 export const LLM_MODELS = [
   { id: "grok-4.6", label: "Grok 4.6", provider: "xai", class: "flagship" },
   { id: "grok-4.5", label: "Grok 4.5", provider: "xai", class: "flagship" },
+  { id: "z-ai/glm-5.3-flash", label: "GLM 5.3 Flash (OpenRouter)", provider: "openrouter", class: "fast" },
+  { id: "claude-opus-5", label: "Claude Opus 5", provider: "anthropic", class: "flagship" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5", provider: "anthropic", class: "fast" },
 ] as const;
+
+export const DEFAULT_OPENAI_COMPAT_BASE = "https://openrouter.ai/api/v1";
+export const ANTHROPIC_API_BASE = "https://api.anthropic.com/v1";
+
+export function modelsForProvider(provider: LlmProviderId) {
+  if (provider === "openai-compat") {
+    return LLM_MODELS.filter((row) => row.provider === "openrouter");
+  }
+  if (provider === "anthropic-api") {
+    return LLM_MODELS.filter((row) => row.provider === "anthropic");
+  }
+  return LLM_MODELS.filter((row) => row.provider === "xai");
+}
+
+/** https anywhere; http only on loopback. Empty → null (caller uses the default). */
+export function normalizeOpenAiCompatBase(raw: string): string | null {
+  const value = raw.trim().replace(/\/+$/, "");
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+  if (url.protocol === "http:") {
+    const host = url.hostname.toLowerCase();
+    if (host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]") return null;
+  }
+  return value;
+}
 
 export type LlmRouterConfig = {
   defaultProvider: LlmProviderId;
@@ -49,8 +83,13 @@ export const LLM_PROVIDER_COPY: Record<
   },
   "openai-compat": {
     name: "OpenAI-compatible API",
-    purpose: "Existing Claude / OpenAI-style key (AI_API_KEY) for continuity.",
-    billing: "Whatever that provider bills. Kept until you migrate defaults to Grok.",
+    purpose: "OpenRouter or any other OpenAI-style base URL + key (AI_API_KEY + OPENAI_COMPAT_BASE).",
+    billing: "Whatever that provider bills. Set the base URL to https://openrouter.ai/api/v1 for GLM 5.3 Flash.",
+  },
+  "anthropic-api": {
+    name: "Anthropic API (metered)",
+    purpose: "Claude Opus 5 / Sonnet 5 via the native Messages API, billed against console.anthropic.com credits.",
+    billing: "Metered per-token API key, not a Claude Pro/Max subscription — Anthropic restricts subscription OAuth to Claude Code and Claude.ai only. Key stored in AppSetting (ANTHROPIC_API_KEY).",
   },
 };
 
@@ -73,6 +112,7 @@ export type LlmProviderStatus = {
   last4: string | null;
   email: string | null;
   models: string[];
+  baseUrl?: string | null;
 };
 
 export type LlmRateLimitState = {

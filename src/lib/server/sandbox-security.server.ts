@@ -2,13 +2,14 @@
  * Daytona sandbox security — env allowlist, artifact scan, short-lived run tokens.
  * Skill sandboxes never receive Daytona / xAI / webhook secrets.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import {
   SKILL_ARTIFACT_EXTS,
   SKILL_ARTIFACT_MAX_BYTES,
   SKILL_ENV_ALLOWLIST,
   SKILL_ENV_DENY,
+  shellEnvAssignment,
 } from "@/lib/sandbox";
 
 const TOKEN_KEY = "SKILL_RUN_TOKENS_JSON";
@@ -51,7 +52,8 @@ export function buildSkillSandboxEnv(input: {
 
 export function formatEnvExports(env: Record<string, string>): string {
   return Object.entries(env)
-    .map(([key, value]) => `${key}='${value.replace(/'/g, "")}'`)
+    .map(([key, value]) => shellEnvAssignment(key, value))
+    .filter((item): item is string => Boolean(item))
     .join(" ");
 }
 
@@ -94,6 +96,13 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+function hashesEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 async function readTokens(): Promise<SkillRunToken[]> {
   const raw = await readAppSetting(TOKEN_KEY);
   if (!raw) return [];
@@ -127,7 +136,7 @@ export async function mintSkillRunToken(input: {
 export async function consumeSkillRunToken(token: string): Promise<SkillRunToken | null> {
   const hash = hashToken(token);
   const existing = await readTokens();
-  const found = existing.find((row) => row.hash === hash) ?? null;
+  const found = existing.find((row) => hashesEqual(row.hash, hash)) ?? null;
   if (!found) return null;
   await writeAppSetting(
     TOKEN_KEY,

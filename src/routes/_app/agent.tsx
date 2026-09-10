@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Bot, PanelLeft, PanelRight, Play, Square } from "lucide-react";
+import { Bot, PanelLeft, PanelRight, Square } from "lucide-react";
 import {
   AGENT_PRESETS,
   AGENT_PRESET_COPY,
   AGENT_QUERY_KEY,
+  CRAYO_AGENT_PRESETS,
   agentRunQueryKey,
   agentStatusLabel,
   agentStatusTone,
@@ -23,8 +24,11 @@ import {
   startAgentRunFn,
 } from "@/lib/server/agent-fns";
 import { getLlmSnapshot } from "@/lib/server/llm-fns";
-import { LLM_QUERY_KEY } from "@/lib/llm";
+import { LLM_PROVIDER_COPY, LLM_PROVIDER_IDS, LLM_QUERY_KEY } from "@/lib/llm";
 import { AgentTimeline } from "@/components/agent/timeline";
+import { AgentChatComposer } from "@/components/agent/composer";
+import { HermesCrayoRail } from "@/components/agent/hermes-rail";
+import { AgentToolCardView, type AgentToolCard } from "@/components/agent/tool-cards";
 import { AIFallbackPanel } from "@/components/ui/ai-fallback-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,7 +38,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
-import { ShineBorder } from "@/components/magicui/shine-border";
 import { SparklesText } from "@/components/magicui/sparkles-text";
 import { Particles } from "@/components/magicui/particles";
 import {
@@ -43,20 +46,14 @@ import {
   SheetDescription,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import { userFacingErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import { GROK_BOT_QUERY_KEY } from "@/lib/grok-bot";
 import { getGrokBotStatusFn } from "@/lib/server/grok-bot-fns";
-import { getTeamSnapshotFn, TEAM_QUERY_KEY } from "@/lib/server/team-fns";
-import { automationDisplayName, isActiveAutomation } from "@/lib/team";
+import { crayoAccountFn, hermesConnectFn } from "@/lib/server/studio-fns";
+import { HERMES_CONNECT_QUERY_KEY } from "@/lib/connect";
+import type { AgentSlashUi } from "@/lib/agent-slash";
 
 type AgentSearch = { run?: string };
 
@@ -67,21 +64,34 @@ export const Route = createFileRoute("/_app/agent")({
   component: AgentPage,
 });
 
+function nextCardId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `card-${Date.now()}`;
+}
+
 function AgentPage() {
   const { run: runId } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const queryClient = useQueryClient();
-  const [preset, setPreset] = useState<AgentPreset>("clipping-full-package");
-  const [goal, setGoal] = useState(AGENT_PRESET_COPY["clipping-full-package"].goal);
+  const [preset, setPreset] = useState<AgentPreset>("crayo-short");
+  const [goal, setGoal] = useState(AGENT_PRESET_COPY["crayo-short"].goal);
   const [clientId, setClientId] = useState<string>("");
   const [skillId, setSkillId] = useState<string>("");
   const [runsOpen, setRunsOpen] = useState(false);
   const [ctxOpen, setCtxOpen] = useState(false);
   const [runner, setRunner] = useState<"local" | "grok_bot">("local");
-  const [seatId, setSeatId] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [cards, setCards] = useState<AgentToolCard[]>([]);
 
   const grokQuery = useQuery({ queryKey: GROK_BOT_QUERY_KEY, queryFn: () => getGrokBotStatusFn() });
-  const teamQuery = useQuery({ queryKey: TEAM_QUERY_KEY, queryFn: () => getTeamSnapshotFn() });
+  const crayoQuery = useQuery({
+    queryKey: ["agent-crayo-account"],
+    queryFn: () => crayoAccountFn(),
+    refetchInterval: 60_000,
+  });
+  const hermesQuery = useQuery({
+    queryKey: HERMES_CONNECT_QUERY_KEY,
+    queryFn: () => hermesConnectFn(),
+  });
   const llmQuery = useQuery({ queryKey: LLM_QUERY_KEY, queryFn: () => getLlmSnapshot() });
   const clientsQuery = useQuery({ queryKey: ["clients"], queryFn: () => listClients() });
   const skillsQuery = useQuery({ queryKey: ["skills"], queryFn: () => listSkillsFn() });
@@ -101,20 +111,21 @@ function AgentPage() {
   });
 
   const start = useMutation({
-    mutationFn: () => {
-      const trimmedGoal = goal.trim();
+    mutationFn: (override?: { preset: AgentPreset; goal: string }) => {
+      const nextPreset = override?.preset ?? preset;
+      const trimmedGoal = (override?.goal ?? goal).trim();
       const grokGoal =
         runner === "grok_bot"
-          ? `${trimmedGoal}\n\nOnly use these tools: ${[...allowlistForPreset(preset)].join(", ")}`
+          ? `${trimmedGoal}\n\nOnly use these tools: ${[...allowlistForPreset(nextPreset)].join(", ")}`
           : trimmedGoal;
       return startAgentRunFn({
         data: {
           goal: grokGoal,
-          preset,
+          preset: nextPreset,
           clientId: clientId || null,
-          skillId: skillId || null,
+          skillId: nextPreset === "custom" ? skillId || null : skillId || null,
           runner,
-          triggeredByTeamMemberId: seatId || null,
+          triggeredByTeamMemberId: null,
         },
       });
     },
@@ -140,37 +151,66 @@ function AgentPage() {
       llmQuery.data?.providers["openai-compat"].configured,
   );
   const model = llmQuery.data?.router.defaultModel ?? "grok-4.6";
+  const plannerId = llmQuery.data?.router.features.agent ?? llmQuery.data?.router.defaultProvider ?? "xai-oauth";
+  const planner = LLM_PROVIDER_COPY[plannerId];
   const clients = useMemo(
     () => (clientsQuery.data ?? []).filter((row) => row.status === "ACTIVE" && !row.deletedAt),
     [clientsQuery.data],
   );
   const skills = (skillsQuery.data ?? []).filter((row) => row.enabled && row.status === "active");
   const selectedClient = clients.find((row) => row.id === clientId) ?? null;
-  const selectedSkill = skills.find((row) => row.id === skillId) ?? null;
   const rateLimit = llmQuery.data?.rateLimit;
-  const aiSeats = useMemo(
-    () => (teamQuery.data?.teamMembers ?? []).filter(isActiveAutomation),
-    [teamQuery.data],
-  );
+  const crayoReady = Boolean(crayoQuery.data?.configured);
+
+  function openCard(ui: AgentSlashUi, draft: Record<string, string>) {
+    setCards((current) => {
+      const existing = current.find((card) => card.ui === ui);
+      if (existing) {
+        return current.map((card) => (card.id === existing.id ? { ...card, draft: { ...card.draft, ...draft } } : card));
+      }
+      return [...current, { id: nextCardId(), ui, draft }];
+    });
+  }
+
+  function submitRun(input: { preset: AgentPreset; goal: string }) {
+    setPreset(input.preset);
+    setGoal(input.goal);
+    const match = skills.find((row) => row.slug === input.preset);
+    setSkillId(match?.id ?? "");
+    start.mutate(input);
+  }
 
   const contextPanel = (
     <div className="flex flex-col gap-3 p-4">
-      <p className="text-caption text-muted">Context</p>
+      <HermesCrayoRail
+        connect={hermesQuery.data}
+        crayo={crayoQuery.data}
+        plannerName={planner.name}
+        model={model}
+      />
+      <p className="text-caption text-muted">Who actually runs what</p>
+      <ul className="flex flex-col gap-1.5">
+        {LLM_PROVIDER_IDS.map((id) => {
+          const row = llmQuery.data?.providers[id];
+          const active = id === plannerId;
+          return (
+            <li key={id} className="text-caption">
+              <span className="font-medium">{LLM_PROVIDER_COPY[id].name}</span>
+              {active ? " · this run’s planner" : ""}
+              <span className="text-muted">
+                {" "}
+                — {row?.configured ? "connected" : "not configured"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
       <div>
         <p className="text-body font-medium">{selectedClient?.name ?? "No client selected"}</p>
-        <p className="text-caption text-muted">
-          {selectedClient?.currentStage ?? "Stage unknown"} · pin a skill if you want a custom run
-        </p>
+        <p className="text-caption text-muted">{selectedClient?.currentStage ?? "Optional — shorts don’t require a client."}</p>
       </div>
-      {selectedSkill ? (
-        <p className="text-caption">
-          Skill: {selectedSkill.name} v{selectedSkill.version}
-        </p>
-      ) : (
-        <p className="text-caption text-muted">No skill pinned.</p>
-      )}
       <p className="text-caption text-muted">
-        Social Machine is on-demand. Presets never start it on login. Draft social jobs wait if the VM is stopped.
+        Crayo runs never start the Social Machine. Leave Grok Bot off unless a computer should claim the job.
       </p>
     </div>
   );
@@ -212,13 +252,16 @@ function AgentPage() {
       <Particles className="pointer-events-none absolute inset-0 -z-10 opacity-40" quantity={20} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-caption text-muted">AI Clipping Agent</p>
+          <p className="text-caption text-muted">Hermes Agent · general + Crayo specialities</p>
           <h1 className="flex min-w-0 items-center gap-2 text-page font-semibold tracking-tight">
             <Bot className="size-6 shrink-0" aria-hidden="true" />
             <SparklesText className="text-page font-semibold tracking-tight">Agent</SparklesText>
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <Badge tone={crayoQuery.data?.configured ? "green" : "orange"}>
+            {crayoQuery.isPending ? "Crayo…" : crayoQuery.data?.configured ? "Crayo live" : "Crayo off"}
+          </Badge>
           <Badge tone="purple">{model}</Badge>
           <Button
             size="sm"
@@ -244,7 +287,7 @@ function AgentPage() {
       </div>
 
       {!llmQuery.isPending && !llmReady ? (
-        <AIFallbackPanel title="Connect Grok or an API key to run the clipping agent" />
+        <AIFallbackPanel title="Connect Grok or an API key so free-text and /ideas can plan. Crayo slash commands still mint without a planner." />
       ) : null}
 
       {rateLimit?.retrying || rateLimit?.recent429 ? (
@@ -253,162 +296,161 @@ function AgentPage() {
         </p>
       ) : null}
 
-      <div className="relative rounded-card">
-        <ShineBorder borderWidth={1} />
-        <GlassCard className="p-4">
-          <div className="flex flex-wrap gap-2" role="list" aria-label="Presets">
-            {AGENT_PRESETS.map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  setPreset(id);
-                  if (id === "custom") {
-                    setSkillId("");
-                    return;
-                  }
-                  setGoal(AGENT_PRESET_COPY[id].goal);
-                  const match = skills.find((row) => row.slug === id);
-                  setSkillId(match?.id ?? "");
-                }}
-                className={cn(
-                  "min-h-11 rounded-full px-3 text-caption",
-                  preset === id ? "bg-accent text-accent-fg" : "bg-secondary-surface text-fg",
-                )}
-              >
-                {AGENT_PRESET_COPY[id].label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-2 text-caption text-muted">{AGENT_PRESET_COPY[preset].hint}</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="agent-client">Client</Label>
-              <Select value={clientId || "none"} onValueChange={(value) => setClientId(value === "none" ? "" : value)}>
-                <SelectTrigger id="agent-client">
-                  <SelectValue placeholder="Select a client" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No client</SelectItem>
-                  {clients.map((client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="agent-skill">Pinned skill</Label>
-              <Select value={skillId || "none"} onValueChange={(value) => setSkillId(value === "none" ? "" : value)}>
-                <SelectTrigger id="agent-skill">
-                  <SelectValue placeholder="Optional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {skills.map((skill) => (
-                    <SelectItem key={skill.id} value={skill.id}>
-                      {skill.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="mt-3 flex flex-col gap-1.5">
-            <Label htmlFor="agent-goal">Goal</Label>
-            <Textarea
-              id="agent-goal"
-              value={goal}
-              onChange={(event) => setGoal(event.target.value)}
-              rows={3}
-              className="min-h-20"
-            />
-          </div>
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-control bg-secondary-surface/50 px-3 py-3">
-            <div>
-              <Label htmlFor="agent-runner">Run on Grok Bot</Label>
-              <p className="text-caption text-muted">
-                {grokQuery.data?.hasKey
-                  ? "Premium computer. Hermes stays the default in-OS runner."
-                  : "Connect Grok Bot in Settings to hand long jobs to the Bot."}
-              </p>
-            </div>
-            <Switch
-              id="agent-runner"
-              checked={runner === "grok_bot"}
-              disabled={!grokQuery.data?.hasKey || !grokQuery.data.enabled}
-              onCheckedChange={(on) => setRunner(on ? "grok_bot" : "local")}
-            />
-          </div>
-          {aiSeats.length > 0 ? (
-            <div className="mt-3 flex flex-col gap-1.5">
-              <Label htmlFor="agent-seat">AI teammate</Label>
-              <Select value={seatId || "none"} onValueChange={(value) => setSeatId(value === "none" ? "" : value)}>
-                <SelectTrigger id="agent-seat">
-                  <SelectValue placeholder="Optional seat" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Operator (no seat)</SelectItem>
-                  {aiSeats.map((seat) => (
-                    <SelectItem key={seat.id} value={seat.id}>
-                      {automationDisplayName(seat)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-caption text-muted">
-                Audit only. Does not log the bot in or count as human load.
-              </p>
-            </div>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              onClick={() => start.mutate()}
-              disabled={start.isPending || !llmReady || !goal.trim()}
-              className="min-h-11"
-            >
-              <Play className="size-4" aria-hidden="true" />
-              Run agent
-            </Button>
-            {detailQuery.data &&
-            (isAgentBusy(detailQuery.data.run.status) ||
-              detailQuery.data.run.status === "waiting_human" ||
-              detailQuery.data.run.status === "waiting_resource") ? (
-              <Button
-                variant="secondary"
-                onClick={() => cancel.mutate()}
-                disabled={cancel.isPending}
-                className="min-h-11"
-              >
-                <Square className="size-4" aria-hidden="true" />
-                Cancel
-              </Button>
-            ) : null}
-          </div>
-        </GlassCard>
-      </div>
+      {!crayoQuery.isPending && !crayoQuery.data?.configured ? (
+        <p className="rounded-control bg-warning/10 px-3 py-2 text-caption text-warning" role="status">
+          Crayo isn’t connected. Paste your Crayo API key in Settings → Add-ons → Crayo.ai and run Test.
+        </p>
+      ) : null}
+
+      {detailQuery.data &&
+      (isAgentBusy(detailQuery.data.run.status) ||
+        detailQuery.data.run.status === "waiting_human" ||
+        detailQuery.data.run.status === "waiting_resource") ? (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => cancel.mutate()} disabled={cancel.isPending} className="min-h-11">
+            <Square className="size-4" aria-hidden="true" />
+            Cancel run
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(16rem,18rem)_minmax(0,1fr)_minmax(14rem,16rem)]">
         <aside className="hidden min-w-0 max-h-[70vh] overflow-y-auto rounded-card border border-border/60 bg-secondary-surface/30 lg:block">
           {runsQuery.isPending ? <Skeleton className="h-40" /> : runsPanel}
         </aside>
-        <section>
-          {!runId ? (
-            <GlassCard className="grid min-h-48 place-items-center">
-              <p className="text-body text-muted">Set a goal and run the agent. Iterations appear here.</p>
-            </GlassCard>
-          ) : detailQuery.isPending ? (
-            <Skeleton className="h-64 w-full rounded-card" />
-          ) : detailQuery.isError || !detailQuery.data ? (
-            <ErrorState
-              title="Couldn’t load this run"
-              description="Retry in a moment."
-              onRetry={() => void detailQuery.refetch()}
+        <section className="flex min-w-0 flex-col gap-3">
+          {cards.map((card) => (
+            <AgentToolCardView
+              key={card.id}
+              card={card}
+              clientName={selectedClient?.name}
+              crayoReady={crayoReady}
+              starting={start.isPending}
+              onChange={(draft) =>
+                setCards((current) => current.map((row) => (row.id === card.id ? { ...row, draft } : row)))
+              }
+              onDismiss={() => setCards((current) => current.filter((row) => row.id !== card.id))}
+              onRun={(input) => {
+                setCards((current) => current.filter((row) => row.id !== card.id));
+                submitRun(input);
+              }}
             />
-          ) : (
-            <AgentTimeline detail={detailQuery.data} rateLimitMessage={rateLimit?.message} />
-          )}
+          ))}
+          {!runId && cards.length === 0 ? (
+            <GlassCard className="grid min-h-48 place-items-center p-6">
+              <div className="max-w-md text-center">
+                <p className="text-body">Hermes Agent</p>
+                <p className="mt-1 text-caption text-muted">
+                  General clipping operator with Crayo specialities. Type /short, /voice, /image, or /autoclip — a
+                  specialty card pops in. Free text uses the planner.
+                </p>
+              </div>
+            </GlassCard>
+          ) : null}
+          {runId ? (
+            detailQuery.isPending ? (
+              <Skeleton className="h-64 w-full rounded-card" />
+            ) : detailQuery.isError || !detailQuery.data ? (
+              <ErrorState
+                title="Couldn’t load this run"
+                description="Retry in a moment."
+                onRetry={() => void detailQuery.refetch()}
+              />
+            ) : (
+              <AgentTimeline detail={detailQuery.data} rateLimitMessage={rateLimit?.message} />
+            )
+          ) : null}
+          <div>
+            <button
+              type="button"
+              className="text-caption text-muted underline-offset-2 hover:underline"
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              {moreOpen ? "Hide clipping presets" : "More clipping presets"}
+            </button>
+            {moreOpen ? (
+              <GlassCard className="mt-2 p-4">
+                <div className="flex flex-wrap gap-2" role="list" aria-label="Clipping presets">
+                  {AGENT_PRESETS.filter((id) => !(CRAYO_AGENT_PRESETS as readonly string[]).includes(id)).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        setPreset(id);
+                        if (id === "custom") {
+                          setSkillId("");
+                          return;
+                        }
+                        setGoal(AGENT_PRESET_COPY[id].goal);
+                        const match = skills.find((row) => row.slug === id);
+                        setSkillId(match?.id ?? "");
+                      }}
+                      className={cn(
+                        "min-h-11 rounded-full px-3 text-caption",
+                        preset === id ? "bg-accent text-accent-fg" : "bg-secondary-surface text-fg",
+                      )}
+                    >
+                      {AGENT_PRESET_COPY[id].label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-col gap-1.5">
+                  <Label htmlFor="agent-goal">Goal</Label>
+                  <Textarea
+                    id="agent-goal"
+                    value={goal}
+                    onChange={(event) => setGoal(event.target.value)}
+                    rows={6}
+                    className="min-h-28"
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-control bg-secondary-surface/50 px-3 py-3">
+                  <div>
+                    <Label htmlFor="agent-runner-more">Run on Grok Bot</Label>
+                    <p className="text-caption text-muted">
+                      {grokQuery.data?.hasKey
+                        ? "Optional. Crayo API does not need the Bot computer."
+                        : "Connect Grok Bot in Settings if you want the Bot computer."}
+                    </p>
+                  </div>
+                  <Switch
+                    id="agent-runner-more"
+                    checked={runner === "grok_bot"}
+                    disabled={!grokQuery.data?.hasKey || !grokQuery.data.enabled}
+                    onCheckedChange={(on) => setRunner(on ? "grok_bot" : "local")}
+                  />
+                </div>
+                <Button
+                  className="mt-3 min-h-11"
+                  disabled={start.isPending || !llmReady || !goal.trim()}
+                  onClick={() => start.mutate({ preset, goal })}
+                >
+                  Run clipping goal
+                </Button>
+              </GlassCard>
+            ) : null}
+          </div>
+          <AgentChatComposer
+            clientId={clientId}
+            onClientId={setClientId}
+            clients={clients}
+            llmReady={llmReady}
+            crayoReady={crayoReady}
+            starting={start.isPending}
+            cancelling={cancel.isPending}
+            canCancel={Boolean(
+              detailQuery.data &&
+                (isAgentBusy(detailQuery.data.run.status) ||
+                  detailQuery.data.run.status === "waiting_human" ||
+                  detailQuery.data.run.status === "waiting_resource"),
+            )}
+            grokAvailable={Boolean(grokQuery.data?.hasKey && grokQuery.data.enabled)}
+            runner={runner}
+            onRunner={setRunner}
+            onSubmit={submitRun}
+            onCancel={() => cancel.mutate()}
+            onOpenCard={openCard}
+          />
         </section>
         <aside className="hidden min-w-0 max-h-[70vh] overflow-y-auto rounded-card border border-border/60 bg-secondary-surface/30 lg:block">
           {contextPanel}
@@ -425,7 +467,7 @@ function AgentPage() {
       <Sheet open={ctxOpen} onOpenChange={setCtxOpen}>
         <SheetContent side="right" className="p-0">
           <SheetTitle className="sr-only">Run context</SheetTitle>
-          <SheetDescription className="sr-only">Selected client and skill</SheetDescription>
+          <SheetDescription className="sr-only">Planner, Crayo credits, and client</SheetDescription>
           {contextPanel}
         </SheetContent>
       </Sheet>

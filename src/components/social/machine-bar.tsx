@@ -70,11 +70,7 @@ export function MachineBar({
   });
 
   function requestStart() {
-    if (resume || machine.proxyConfigured) {
-      onStart();
-      return;
-    }
-    setGeoOpen(true);
+    onStart();
   }
 
   return (
@@ -114,6 +110,15 @@ export function MachineBar({
           >
             <Play className="size-4" aria-hidden="true" />
             {starting || provision.isPending ? "Starting…" : resume ? "Resume" : "Start Social Machine"}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={!canStart || provision.isPending}
+            onClick={() => setGeoOpen(true)}
+            aria-label="Match location then start"
+          >
+            <Globe className="size-4" aria-hidden="true" />
+            Match location
           </Button>
           <Button
             variant={canStop ? "destructive" : "ghost"}

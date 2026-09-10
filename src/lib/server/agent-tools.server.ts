@@ -67,6 +67,10 @@ export async function executeAgentTool(input: {
   name: string;
   payload: Record<string, unknown>;
   actorId: string;
+  /** Long tools (sandbox fetch, Crayo polls) report human-readable milestones here. */
+  onProgress?: (message: string) => Promise<void> | void;
+  /** Agent run id, when called from the agent loop — lets tools park the run in a background job. */
+  runId?: string;
 }): Promise<ToolResult> {
   const { name, payload, actorId } = input;
   switch (name) {
@@ -433,6 +437,12 @@ export async function executeAgentTool(input: {
         const { handleLibraryAction } = await import("@/lib/server/library-tools.server");
         return { data: await handleLibraryAction(name, payload, actorId) };
       }
+      if (name.startsWith("crayo.")) {
+        const { handleCrayoAction } = await import("@/lib/server/crayo-tools.server");
+        const data = await handleCrayoAction(name, payload, actorId, input.onProgress, input.runId);
+        if (data === undefined) throw new Error("UNKNOWN_ACTION");
+        return { data };
+      }
       if (name.startsWith("stream.") || name.startsWith("bridge.")) {
         const { handleStreamAction } = await import("@/lib/server/stream-tools.server");
         const data = await handleStreamAction(name, payload, actorId);
@@ -758,6 +768,104 @@ export const AGENT_LLM_TOOLS = [
           linkTo: { type: "object", properties: { type: { type: "string" }, id: { type: "string" } } },
         },
       },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.run_short",
+      description: "Make a 9:16 Crayo short (image + voice + export) and ingest the mp4 into the Filebase library.",
+      parameters: {
+        type: "object",
+        required: ["prompt"],
+        properties: {
+          prompt: { type: "string" },
+          script: { type: "string" },
+          title: { type: "string" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.run_autoclip",
+      description: "Import a long-form https URL, AutoClip it, ingest thumbnails into the Filebase library.",
+      parameters: {
+        type: "object",
+        required: ["url"],
+        properties: {
+          url: { type: "string" },
+          clipCount: { type: "number" },
+          clipLength: { type: "number" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.ingest_to_library",
+      description: "Copy a Crayo CDN https file into the Filebase library (source=AGENT). Rejects non-Crayo hosts.",
+      parameters: {
+        type: "object",
+        required: ["url"],
+        properties: { url: { type: "string" }, title: { type: "string" }, clientId: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.generate_voiceover",
+      description: "Generate spoken audio from a script and Crayo voice_id. Credits per second.",
+      parameters: {
+        type: "object",
+        required: ["script", "voiceId"],
+        properties: {
+          script: { type: "string" },
+          voiceId: { type: "string" },
+          title: { type: "string" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.generate_image",
+      description: "Generate a still. Prefer aspectRatio=9:16. 1 image credit.",
+      parameters: {
+        type: "object",
+        required: ["prompt"],
+        properties: {
+          prompt: { type: "string" },
+          aspectRatio: { type: "string" },
+          clientId: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.list_voices",
+      description: "List Crayo voices. Use voice_id with generate_voiceover. Never returns the API key.",
+      parameters: {
+        type: "object",
+        properties: { search: { type: "string" }, limit: { type: "number" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "crayo.get_account",
+      description: "Crayo plan and remaining export/voice/image/video credits. Never returns the API key.",
+      parameters: { type: "object", properties: {} },
     },
   },
   {

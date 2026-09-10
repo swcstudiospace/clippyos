@@ -14,6 +14,7 @@ import {
   Youtube,
   BookOpen,
   PlugZap,
+  Clapperboard,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -69,6 +70,7 @@ function XMarkIcon({ className }: { className?: string }) {
 
 const ICONS: Record<IntegrationId, typeof Sparkles> = {
   ai: Sparkles,
+  crayo: Clapperboard,
   higgsfield: Image,
   youtube: Youtube,
   discord: Bot,
@@ -212,6 +214,7 @@ function IntegrationCard({
   const [reveal, setReveal] = useState(false);
   const [pendingDisconnect, setPendingDisconnect] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
+  const configured = health !== "not_configured";
 
   useEffect(() => {
     if (id !== "x") return;
@@ -233,8 +236,15 @@ function IntegrationCard({
   const save = useMutation({
     mutationFn: () => saveIntegration({ data: { id, values: fields } }),
     onSuccess: async () => {
+      const secretReplaced = SECRET_FIELD_KEYS.some((key) => (fields[key] ?? "").trim());
       setFields({});
-      toast.success(`${copy.name} saved`);
+      toast.success(
+        secretReplaced
+          ? `${copy.name} key replaced. Run Test to confirm the new key works.`
+          : configured
+            ? `${copy.name} settings saved — the stored key was kept.`
+            : `${copy.name} saved`,
+      );
       await queryClient.invalidateQueries({ queryKey: INTEGRATIONS_QUERY_KEY });
       await queryClient.invalidateQueries({ queryKey: ["ai-status"] });
       await queryClient.invalidateQueries({ queryKey: PUBLISHERS_QUERY_KEY });
@@ -314,8 +324,6 @@ function IntegrationCard({
     save.mutate();
   }
 
-  const configured = health !== "not_configured";
-
   return (
     <GlassCard>
       <div className="flex items-start justify-between gap-3">
@@ -381,6 +389,21 @@ function IntegrationCard({
               onChange={(value) => setFields({ key: value })}
               placeholder={configured ? "•••• stored on the server" : "Paste the xAI / Grok API key"}
             />
+          ) : null}
+          {id === "crayo" ? (
+            <>
+              <Field
+                id="crayo-key"
+                label="API key"
+                value={fields.key ?? ""}
+                onChange={(value) => setFields((cur) => ({ ...cur, key: value }))}
+                placeholder={configured ? "•••• stored on the server" : "crayo_sk_…"}
+              />
+              <p className="text-caption text-muted">
+                From crayo.ai → Developer API. A key saved here is used ahead of the deploy’s
+                CRAYO_API_KEY, so you can rotate it without a redeploy. Test calls GET /v1/account (free).
+              </p>
+            </>
           ) : null}
           {id === "higgsfield" ? (
             <>
@@ -469,11 +492,11 @@ function IntegrationCard({
               />
               <Field
                 id="dtn-size"
-                label="Windows size"
+                label="Snapshot / size"
                 type="text"
                 value={fields.size ?? ""}
                 onChange={(value) => setFields((cur) => ({ ...cur, size: value }))}
-                placeholder="windows-large (4 vCPU / 16 GiB) or windows-medium"
+                placeholder="daytona-medium (default) or windows-large"
               />
               <Field
                 id="dtn-stop"
@@ -523,10 +546,12 @@ function IntegrationCard({
                 placeholder="••••"
               />
               <p className="text-caption text-muted">
-                Social Machine is a Windows VM. Hibernate pauses a hot snapshot (logins persist).
-                Clock is Australia/Sydney. Daytona only offers US and EU IPs — Instagram Graph API
-                is the reliable AU publish path; a residential HTTPS proxy is optional for browser
-                login. Test Connection and Test proxy never start a VM.
+                Social Machine defaults to the Linux container snapshot daytona-medium (Windows
+                snapshots need a Daytona plan that includes them). Hibernate auto-stops the
+                sandbox after idle minutes (container class has no hot pause; the filesystem
+                persists across stop). Clock is Australia/Sydney. Start auto-provisions a
+                free country-matched HTTP proxy; paste a paid residential URL if you have one.
+                Test Connection and Test proxy never start a sandbox.
               </p>
             </>
           ) : null}
@@ -715,8 +740,19 @@ function IntegrationCard({
               </p>
             </>
           ) : null}
-          <Button type="submit" variant="secondary" disabled={save.isPending}>
-            {save.isPending ? "Saving…" : "Save"}
+          {configured ? (
+            <p className="text-caption text-muted" id={`${id}-rotate-hint`}>
+              A key is already stored{last4 ? ` (ends …${last4})` : ""}. Paste a new one above and Save to
+              replace it; fields you leave blank keep their current values. Disconnect removes it.
+            </p>
+          ) : null}
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={save.isPending}
+            aria-describedby={configured ? `${id}-rotate-hint` : undefined}
+          >
+            {save.isPending ? "Saving…" : configured ? "Save changes" : "Save"}
           </Button>
         </form>
       ) : (
@@ -817,6 +853,9 @@ function IntegrationCard({
     </GlassCard>
   );
 }
+
+/** Field names that carry a secret; any non-empty one on Save means the stored key was replaced. */
+const SECRET_FIELD_KEYS = ["key", "apiKey", "secret", "token", "keyId", "clientSecret", "proxyPassword"] as const;
 
 function Field({
   id,

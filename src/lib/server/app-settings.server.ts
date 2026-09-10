@@ -11,9 +11,27 @@ import {
   secretWriteTarget,
   writeOperatorSecret,
 } from "@/lib/server/secret-scope.server";
+import {
+  decryptSecret,
+  encryptSecret,
+  isEncryptedSettingKey,
+} from "@/lib/server/secret-crypto.server";
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function decodeSetting(key: string, value: string): string | null {
+  if (!isEncryptedSettingKey(key)) return value;
+  try {
+    return decryptSecret(value);
+  } catch {
+    return null;
+  }
+}
+
+function encodeSetting(key: string, value: string): string {
+  return isEncryptedSettingKey(key) ? encryptSecret(value) : value;
 }
 
 async function readWorkspaceSettingsMap(): Promise<Map<string, string>> {
@@ -24,7 +42,10 @@ async function readWorkspaceSettingsMap(): Promise<Map<string, string>> {
     if (!error) {
       for (const row of data ?? []) {
         const record = row as { key?: string; value?: string | null };
-        if (record.key && record.value) map.set(record.key, record.value);
+        if (record.key && record.value) {
+          const plain = decodeSetting(record.key, record.value);
+          if (plain) map.set(record.key, plain);
+        }
       }
       return map;
     }
@@ -36,7 +57,10 @@ async function readWorkspaceSettingsMap(): Promise<Map<string, string>> {
       "select key, value from app_settings",
     );
     for (const row of rows) {
-      if (row.key && row.value) map.set(row.key, row.value);
+      if (row.key && row.value) {
+        const plain = decodeSetting(row.key, row.value);
+        if (plain) map.set(row.key, plain);
+      }
     }
   } catch {
     /* empty */
@@ -52,13 +76,14 @@ async function readWorkspaceSetting(key: string): Promise<string | null> {
 async function writeWorkspaceSetting(key: string, value: string): Promise<void> {
   const now = nowIso();
   const id = crypto.randomUUID();
+  const stored = encodeSetting(key, value);
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("app_settings").upsert(
       {
         id,
         key,
-        value,
+        value: stored,
         created_at: now,
         updated_at: now,
         created_by: null,
@@ -70,13 +95,13 @@ async function writeWorkspaceSetting(key: string, value: string): Promise<void> 
       if (existing.data && typeof (existing.data as { id?: string }).id === "string") {
         await admin
           .from("app_settings")
-          .update({ value, updated_at: now })
+          .update({ value: stored, updated_at: now })
           .eq("id", (existing.data as { id: string }).id);
       } else if (!existing.error || isMissingTable(existing.error)) {
         await admin.from("app_settings").insert({
           id,
           key,
-          value,
+          value: stored,
           created_at: now,
           updated_at: now,
           created_by: null,
@@ -90,7 +115,7 @@ async function writeWorkspaceSetting(key: string, value: string): Promise<void> 
       `insert into app_settings (id, key, value, created_at, updated_at, created_by)
        values ($1, $2, $3, $4, $5, null)
        on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at`,
-      [id, key, value, now, now],
+      [id, key, stored, now, now],
     );
   } catch {
     /* local store may be unavailable */

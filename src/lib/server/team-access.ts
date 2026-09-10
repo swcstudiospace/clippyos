@@ -340,6 +340,8 @@ export const setSuperAdminPassword = createServerFn({ method: "POST" })
     await requireAdmin(context.userId);
     const hash = await hashSecret(data.password);
     await (await load_app_settings()).writeAppSetting("SUPER_ADMIN_PASSWORD_HASH", hash);
+    const ownerId = await ensureOwnerUser();
+    await setCredentialPassword(ownerId, data.password);
     try {
       const { onAuthEvent } = await import("@/lib/server/safety-hooks.server");
       await onAuthEvent({
@@ -532,17 +534,13 @@ async function createSessionToken(userId: string): Promise<{ token: string; maxA
 }
 
 function writeSessionCookie(token: string, maxAge: number): void {
-  try {
-    setCookie(SESSION_TOKEN_COOKIE, token, {
-      path: "/",
-      secure: true,
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge,
-    });
-  } catch {
-    /* no request context */
-  }
+  setCookie(SESSION_TOKEN_COOKIE, token, {
+    path: "/",
+    secure: true,
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge,
+  });
 }
 
 export const unlockSuperAdmin = createServerFn({ method: "POST" })
@@ -559,6 +557,7 @@ export const unlockSuperAdmin = createServerFn({ method: "POST" })
       throw new Error("SUPER_ADMIN_INVALID");
     }
     const userId = await ensureOwnerUser();
+    await setCredentialPassword(userId, data.password);
     const session = await createSessionToken(userId);
     writeSessionCookie(session.token, session.maxAge);
     return { ok: true as const, token: session.token };
