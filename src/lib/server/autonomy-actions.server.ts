@@ -351,6 +351,7 @@ function mapError(code: string): ActionResult {
     DATA_UNAVAILABLE: { status: 503, message: "Workspace data isn’t reachable." },
     AUTOMATION_PAUSED: { status: 503, message: "Automation is paused. Human UI is still live." },
     HUMAN_REQUIRED: { status: 403, message: "That change needs a human operator." },
+    EVIDENCE_REQUIRED: { status: 400, message: "Stage changes need a short note unless the evidence policy is on." },
     MACHINE_STOPPED: { status: 409, message: "Start the Social Machine first. It stays off until started." },
     DAYTONA_UNAVAILABLE: { status: 503, message: "Daytona isn’t connected yet." },
     UPLOAD_IN_PROGRESS: { status: 409, message: "Another social upload is already running." },
@@ -584,6 +585,8 @@ async function execute(
       if (!need(actor, "write:payments")) return deny();
       const id = String(payload.id ?? payload.paymentId ?? "");
       if (!id) return mapError("VALIDATION");
+      const paymentPolicies = await readPlaybookPolicies();
+      if (!paymentPolicies.autoMarkPayments) return mapError("HUMAN_REQUIRED");
       const result = await internalMarkPaymentPaid(id);
       void emitAutonomyEvent({
         type: "payment.collected",
@@ -623,6 +626,10 @@ async function execute(
         return mapError("VALIDATION");
       }
       const notes = typeof payload.notes === "string" ? payload.notes : null;
+      const stagePolicies = await readPlaybookPolicies();
+      if (!stagePolicies.autoAdvanceStageWithoutEvidence && !String(notes ?? "").trim()) {
+        return mapError("EVIDENCE_REQUIRED");
+      }
       const written = await internalSetClientStage({
         clientId,
         stage: stage as ProgressStage,
@@ -975,7 +982,7 @@ async function execute(
         actorId: `agent:${actor.keyId ?? actor.source}`,
         decision,
         note: typeof payload.note === "string" ? payload.note : null,
-        hermesAdmin: adminScope,
+        hermesAdmin: false,
       });
       return { ok: true, data: { id: item.id, status: item.status } };
     }
@@ -1035,7 +1042,7 @@ async function execute(
       const { createSkillInternal } = await import("@/lib/server/skills.server");
       const { readPlaybookPolicies } = await import("@/lib/server/autonomy-policy.server");
       const policies = await readPlaybookPolicies();
-      const provenance = payload.provenance === "human" ? "human" : "agent";
+      const provenance = "agent";
       const scripts =
         payload.scripts && typeof payload.scripts === "object"
           ? (payload.scripts as Record<string, string>)
@@ -1045,7 +1052,7 @@ async function execute(
         scripts,
         provenance,
         createdBy: actor.label,
-        autoPublish: provenance === "agent" ? policies.skillsAutoPublishAgent === true : true,
+        autoPublish: policies.skillsAutoPublishAgent === true,
       });
       return { ok: true, data: skill };
     }
@@ -1226,8 +1233,8 @@ async function execute(
           banner: snap.banner,
           slos: snap.slos,
           costGuards: {
-            daytonaRunning: snap.costGuards.daytona.running,
-            recommendStop: snap.costGuards.daytona.recommendStop,
+            daytonaRunning: snap.costGuards.daytona?.running ?? false,
+            recommendStop: snap.costGuards.daytona?.recommendStop ?? false,
             agentActive: snap.costGuards.agentActive,
             agentMax: snap.costGuards.agentMax,
             automationPaused: snap.costGuards.automationPaused,
@@ -1317,9 +1324,9 @@ async function execute(
         try {
           if (action === "skill_manage.create") {
             const skill = await skills.skillManageCreate({
-              payload,
+              payload: { ...payload, provenance: "agent" },
               actor: actor.label,
-              autoPublish: payload.provenance === "human" ? true : policies.skillsAutoPublishAgent === true,
+              autoPublish: policies.skillsAutoPublishAgent === true,
             });
             return { ok: true, data: skill };
           }
@@ -1413,7 +1420,7 @@ async function execute(
           action === "clipping.generate_thumbnail";
         if (writeSocial && !need(actor, "write:social")) return deny();
         if (writeProgress && !need(actor, "write:progress")) return deny();
-        if (ai && !need(actor, "actions:ai") && !need(actor, "read")) return deny();
+        if (ai && !need(actor, "actions:ai")) return deny();
         if (action === "clipping.run_skill" && !need(actor, "skills:execute")) return deny();
         if (action === "clipping.propose_skill" && !need(actor, "skills:execute")) return deny();
         if (action === "clipping.research_channel" && !need(actor, "read")) return deny();
@@ -1446,6 +1453,17 @@ async function execute(
         if (!write && !need(actor, "read")) return deny();
         const { handleStreamAction } = await import("@/lib/server/stream-tools.server");
         const data = await handleStreamAction(action, payload, `agent:${actor.keyId ?? actor.source}`);
+        if (data === undefined) {
+          return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };
+        }
+        return { ok: true, data };
+      }
+      if (action.startsWith("crayo.")) {
+        const write = !(action.startsWith("crayo.get_") || action.startsWith("crayo.list_"));
+        if (write && !need(actor, "actions:ai")) return deny();
+        if (!write && !need(actor, "read")) return deny();
+        const { handleCrayoAction } = await import("@/lib/server/crayo-tools.server");
+        const data = await handleCrayoAction(action, payload, `agent:${actor.keyId ?? actor.source}`);
         if (data === undefined) {
           return { ok: false, status: 404, code: "UNKNOWN_ACTION", message: "Unknown action." };
         }

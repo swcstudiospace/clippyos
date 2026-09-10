@@ -1,4 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { parseJsonObject } from "@/lib/safe-json";
+import { publicErrorCode } from "@/lib/safe-error";
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -16,7 +18,7 @@ export const Route = createFileRoute("/api/demo")({
       POST: async ({ request }) => {
         let payload: Record<string, unknown> = {};
         try {
-          payload = (await request.json()) as Record<string, unknown>;
+          payload = parseJsonObject(await request.text());
         } catch {
           return json(400, { error: "VALIDATION" });
         }
@@ -33,7 +35,7 @@ export const Route = createFileRoute("/api/demo")({
           });
           return json(200, result);
         } catch (error) {
-          const code = error instanceof Error ? error.message : "DATA_UNAVAILABLE";
+          const code = publicErrorCode(error);
           const status = code === "DEMO_RATE_LIMIT" ? 429 : code === "VALIDATION" ? 400 : 500;
           return json(status, { error: code });
         }

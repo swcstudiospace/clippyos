@@ -8,6 +8,7 @@ import { open, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isTrustedImageUrl } from "@/lib/thumbnails";
+import { isLibraryFileUrl } from "@/lib/server/library-storage.server";
 import type {
   ChunkProgress,
   ResumableUploadSession,
@@ -68,6 +69,7 @@ function jitterWait(baseMs: number): number {
 function isTrustedSource(url: string): boolean {
   if (!url) return false;
   if (url.startsWith("data:")) return /^data:(video|image)\//i.test(url) || isTrustedImageUrl(url);
+  if (isLibraryFileUrl(url)) return true;
   return isTrustedImageUrl(url);
 }
 
@@ -92,27 +94,21 @@ async function probeSource(
     if (bytes > maxBytes) throw new Error("MEDIA_TOO_LARGE");
     return { totalBytes: bytes, mime: match[1] };
   }
-  const probe = await fetch(url, {
-    method: "HEAD",
-    signal: AbortSignal.timeout(15000),
-    redirect: "follow",
-  }).catch(() => null);
-  if (probe?.ok) {
-    const mime = probe.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
-    const totalBytes = Number(probe.headers.get("content-length")) || 0;
-    if (totalBytes > maxBytes) throw new Error("MEDIA_TOO_LARGE");
-    if (totalBytes) return { totalBytes, mime };
-  }
   const range = await fetch(url, {
     headers: { Range: "bytes=0-0" },
     signal: AbortSignal.timeout(20000),
     redirect: "follow",
   });
-  if (!range.ok && range.status !== 206) throw new Error("MEDIA_FETCH_FAILED");
+  if (range.status !== 206) {
+    await range.body?.cancel().catch(() => undefined);
+    if (!range.ok) throw new Error("MEDIA_FETCH_FAILED");
+    const mime = range.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+    return { totalBytes: 0, mime };
+  }
+  const probeBytes = new Uint8Array(await range.arrayBuffer());
+  if (probeBytes.byteLength !== 1) throw new Error("MEDIA_FETCH_FAILED");
   const mime = range.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
-  const rangeTotal = range.headers.get("content-range")?.split("/")[1];
-  const totalBytes = Number(rangeTotal) || Number(range.headers.get("content-length")) || 0;
-  await range.arrayBuffer().catch(() => undefined);
+  const totalBytes = Number(range.headers.get("content-range")?.split("/")[1]) || 0;
   if (totalBytes > maxBytes) throw new Error("MEDIA_TOO_LARGE");
   return { totalBytes, mime };
 }
@@ -146,34 +142,39 @@ async function createSourceReader(
     signal: AbortSignal.timeout(20000),
     redirect: "follow",
   });
-  if (!probe.ok && probe.status !== 206) throw new Error("MEDIA_FETCH_FAILED");
   const mime = probe.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
-  const contentRange = probe.headers.get("content-range");
-  const rangeTotal = contentRange?.split("/")[1];
-  const lengthHeader = Number(probe.headers.get("content-length"));
-  const totalBytes = Number(rangeTotal) || (probe.status === 206 ? 0 : lengthHeader) || 0;
-  const supportsRange = probe.status === 206 && totalBytes > 0;
-  if (totalBytes > maxBytes) throw new Error("MEDIA_TOO_LARGE");
-  await probe.arrayBuffer().catch(() => undefined);
-
-  if (supportsRange) {
-    return {
-      totalBytes,
-      mime,
-      async read(offset, length) {
-        const end = Math.min(offset + length, totalBytes) - 1;
-        const res = await fetch(url, {
-          headers: { Range: `bytes=${offset}-${end}` },
-          signal: AbortSignal.timeout(120000),
-          redirect: "follow",
-        });
-        if (!res.ok && res.status !== 206) throw new Error("MEDIA_FETCH_FAILED");
-        return new Uint8Array(await res.arrayBuffer());
-      },
-      async close() {
-        /* ranged */
-      },
-    };
+  if (probe.status === 206) {
+    const probeBytes = new Uint8Array(await probe.arrayBuffer());
+    if (probeBytes.byteLength !== 1) throw new Error("MEDIA_FETCH_FAILED");
+    const rangeTotal = Number(probe.headers.get("content-range")?.split("/")[1]) || 0;
+    if (rangeTotal > maxBytes) throw new Error("MEDIA_TOO_LARGE");
+    if (rangeTotal > 0) {
+      return {
+        totalBytes: rangeTotal,
+        mime,
+        async read(offset, length) {
+          const remaining = Math.max(0, rangeTotal - offset);
+          const capped = Math.min(length, remaining, maxBytes);
+          if (capped <= 0) return new Uint8Array(0);
+          const end = offset + capped - 1;
+          const res = await fetch(url, {
+            headers: { Range: `bytes=${offset}-${end}` },
+            signal: AbortSignal.timeout(120000),
+            redirect: "follow",
+          });
+          if (res.status !== 206) throw new Error("MEDIA_FETCH_FAILED");
+          const chunk = new Uint8Array(await res.arrayBuffer());
+          if (chunk.byteLength !== capped) throw new Error("MEDIA_FETCH_FAILED");
+          return chunk;
+        },
+        async close() {
+          /* ranged */
+        },
+      };
+    }
+  } else {
+    await probe.body?.cancel().catch(() => undefined);
+    if (!probe.ok) throw new Error("MEDIA_FETCH_FAILED");
   }
 
   const full = await fetch(url, { signal: AbortSignal.timeout(180000), redirect: "follow" });
@@ -205,8 +206,11 @@ async function createSourceReader(
     async read(offset, length) {
       const handle = await open(tmp, "r");
       try {
-        const buf = Buffer.alloc(length);
-        const result = await handle.read(buf, 0, length, offset);
+        const remaining = Math.max(0, written - offset);
+        const capped = Math.min(length, remaining, maxBytes);
+        if (capped <= 0) return new Uint8Array(0);
+        const buf = Buffer.alloc(capped);
+        const result = await handle.read(buf, 0, capped, offset);
         return new Uint8Array(buf.subarray(0, result.bytesRead));
       } finally {
         await handle.close();

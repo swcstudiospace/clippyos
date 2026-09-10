@@ -4,8 +4,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
-const email = `ops.team.${Date.now()}@agency.test`;
-const password = "password123";
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -14,7 +12,9 @@ const notes = [];
 const errors: string[] = [];
 page.on("pageerror", (err) => errors.push(String(err)));
 page.on("console", (msg) => {
-  if (msg.type() === "error") errors.push(msg.text());
+  if (msg.type() === "error" && !msg.text().includes("grok-app-builder/extensions.js")) {
+    errors.push(msg.text());
+  }
 });
 
 async function shot(name: string) {
@@ -23,15 +23,8 @@ async function shot(name: string) {
 }
 
 try {
-  await page.goto(`${base}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Ops QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Continue to checkout" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 25000 });
   await page.goto(`${base}/team`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { name: "Team" }).waitFor();
+  await page.getByRole("heading", { name: "Team", exact: true }).waitFor();
   const body = await page.locator("body").innerText();
   notes.push({
     hasHumans: /Humans/i.test(body),

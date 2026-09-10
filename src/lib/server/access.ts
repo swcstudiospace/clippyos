@@ -7,7 +7,10 @@ export const OWNER_EMAILS = ["oveshen.govender@gmail.com"] as const;
 
 export function isOwnerEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return OWNER_EMAILS.includes(email.trim().toLowerCase() as (typeof OWNER_EMAILS)[number]);
+  const normalized = email.trim().toLowerCase();
+  if (OWNER_EMAILS.includes(normalized as (typeof OWNER_EMAILS)[number])) return true;
+  const extra = process.env.OWNER_EMAIL ?? "";
+  return extra.split(",").some((part) => part.trim().toLowerCase() === normalized);
 }
 
 export class ForbiddenError extends Error {
@@ -29,7 +32,7 @@ async function bootstrapProfile(
     if (admin) {
       await admin.from("app_profiles").upsert(
         { user_id: userId, role, status: "ACTIVE", updated_at: now },
-        { onConflict: "user_id" },
+        { onConflict: "user_id", ignoreDuplicates: true },
       );
     }
   } catch {
@@ -64,28 +67,49 @@ function isMissingStatusColumn(error: { code?: string; message?: string } | null
   return (
     error.code === "42703" ||
     error.code === "PGRST204" ||
-    /column .*status.* does not exist/i.test(message)
+    /column .* does not exist/i.test(message)
   );
 }
 
-async function readUserEmail(userId: string): Promise<string | null> {
+async function readUserIdentity(
+  userId: string,
+): Promise<{ email: string | null; emailVerified: boolean | null }> {
   try {
     const sql = await getSql();
     try {
-      const rows = await sql.query<{ email: string | null }>(
-        `select email from "user" where id = $1`,
-        [userId],
-      );
-      return rows[0]?.email ?? null;
-    } catch {
-      const rows = await sql.query<{ email: string | null }>(
-        `select email from "user" where id = $1`,
-        [userId],
-      );
-      return rows[0]?.email ?? null;
+      const rows = await sql.query<{
+        email: string | null;
+        emailVerified?: boolean | number | string | null;
+      }>(`select email, "emailVerified" from "user" where id = $1`, [userId]);
+      const raw = rows[0]?.emailVerified;
+      return {
+        email: rows[0]?.email ?? null,
+        emailVerified: raw === true || raw === "t" || raw === "true" || raw === 1,
+      };
+    } catch (error) {
+      const fields =
+        error && typeof error === "object"
+          ? {
+              code: "code" in error && typeof error.code === "string" ? error.code : undefined,
+              message: "message" in error && typeof error.message === "string" ? error.message : undefined,
+            }
+          : null;
+      const missingVerified = isMissingStatusColumn(fields);
+      try {
+        const rows = await sql.query<{ email: string | null }>(
+          `select email from "user" where id = $1`,
+          [userId],
+        );
+        return {
+          email: rows[0]?.email ?? null,
+          emailVerified: missingVerified ? null : false,
+        };
+      } catch {
+        return { email: null, emailVerified: null };
+      }
     }
   } catch {
-    return null;
+    return { email: null, emailVerified: null };
   }
 }
 
@@ -93,7 +117,7 @@ async function roleFromSupabase(userId: string): Promise<AppRole | "REVOKED" | n
   try {
     const { tryCreateAdminClient } = await import("@/lib/supabase/clients.server");
     const admin = tryCreateAdminClient();
-    if (!admin) return undefined;
+    if (!admin) return null;
     const withStatus = await admin
       .from("app_profiles")
       .select("role,status")
@@ -121,7 +145,9 @@ async function roleFromSupabase(userId: string): Promise<AppRole | "REVOKED" | n
 }
 
 export async function getUserRole(userId: string): Promise<AppRole | null> {
-  const owner = isOwnerEmail(await readUserEmail(userId));
+  const identity = await readUserIdentity(userId);
+  const owner =
+    isOwnerEmail(identity.email) && identity.emailVerified !== false;
   const remote = await roleFromSupabase(userId);
   if (remote === "REVOKED" && !owner) return null;
   if (owner) {
@@ -130,28 +156,40 @@ export async function getUserRole(userId: string): Promise<AppRole | null> {
   }
   if (remote === "admin" || remote === "member") return remote;
 
+  let local: AppRole | "REVOKED" | null | undefined;
   try {
     const sql = await getSql();
     try {
       const rows = await sql<{ role: AppRole; status?: string }>`
         select role, status from app_profiles where user_id = ${userId}
       `;
-      if (rows[0]?.status === "REVOKED") return null;
-      if (rows[0]?.role === "admin" || rows[0]?.role === "member") return rows[0].role;
+      if (rows[0]?.status === "REVOKED") local = "REVOKED";
+      else if (rows[0]?.role === "admin" || rows[0]?.role === "member") local = rows[0].role;
+      else local = null;
     } catch {
-      const rows = await sql<{ role: AppRole }>`
-        select role from app_profiles where user_id = ${userId}
-      `;
-      if (rows[0]?.role === "admin" || rows[0]?.role === "member") return rows[0].role;
+      try {
+        const rows = await sql<{ role: AppRole }>`
+          select role from app_profiles where user_id = ${userId}
+        `;
+        if (rows[0]?.role === "admin" || rows[0]?.role === "member") local = rows[0].role;
+        else local = null;
+      } catch {
+        local = undefined;
+      }
     }
   } catch {
-    /* empty */
+    local = undefined;
   }
 
-  // Self-serve sign-up and newly created logins are isolated members.
-  // Owners are the listed emails (and Super Admin, which signs in as that owner).
-  await bootstrapProfile(userId, "member");
-  return "member";
+  if (local === "REVOKED") return null;
+  if (local === "admin" || local === "member") return local;
+
+  // Bootstrap only when both backends agree there is no profile — never on read errors.
+  if (remote === null && local === null) {
+    await bootstrapProfile(userId, "member");
+    return "member";
+  }
+  return null;
 }
 
 export async function readInheritWorkspaceApis(userId: string): Promise<boolean> {
@@ -189,7 +227,7 @@ export async function getOperatorAccess(userId: string): Promise<SecretScope> {
 }
 
 export async function isOperatorRevoked(userId: string): Promise<boolean> {
-  if (isOwnerEmail(await readUserEmail(userId))) return false;
+  if (isOwnerEmail((await readUserIdentity(userId)).email)) return false;
   try {
     const { tryCreateAdminClient } = await import("@/lib/supabase/clients.server");
     const admin = tryCreateAdminClient();
@@ -199,8 +237,8 @@ export async function isOperatorRevoked(userId: string): Promise<boolean> {
         .select("status")
         .eq("user_id", userId)
         .maybeSingle<{ status?: string }>();
-      if (!error) return data?.status === "REVOKED";
-      if (error && isMissingStatusColumn(error)) return false;
+      if (!error && data) return data.status === "REVOKED";
+      // No row, missing status column, or remote error: fall through to local SQL.
     }
   } catch {
     /* fall through */
@@ -212,7 +250,7 @@ export async function isOperatorRevoked(userId: string): Promise<boolean> {
     `;
     return rows[0]?.status === "REVOKED";
   } catch {
-    return false;
+    return true;
   }
 }
 

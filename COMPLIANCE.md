@@ -144,7 +144,7 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 | Control | ClippyOS Implementation | Status |
 |---------|------------------------|--------|
 | RA-3 | Risk Assessment | ✅ `/health` endpoint surfaces missing secrets, integration status, DLQ depth |
-| RA-5 | Vulnerability Scanning | ✅ `npm audit` in CI, Dependabot, `scripts/brand-check.ts` for supply chain |
+| RA-5 | Vulnerability Scanning | ✅ `npm audit --audit-level=high --omit=dev` in CI, Dependabot, `scripts/brand-check.ts` for supply chain |
 
 ### SA — System & Services Acquisition
 
@@ -159,9 +159,9 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 | Control | ClippyOS Implementation | Status |
 |---------|------------------------|--------|
 | SC-1 | SC Policy | ✅ All external calls via typed server functions; no client-side secrets |
-| SC-7 | Boundary Protection | ✅ Nitro preset=vercel, middleware order locks auth popup, PWA injector |
+| SC-7 | Boundary Protection | ✅ Nitro preset=vercel, middleware order locks auth popup, PWA injector, security headers (CSP/HSTS/COOP), Social Machine `domainAllowList` |
 | SC-8 | Transmission Confidentiality | ✅ TLS 1.2+ everywhere; signed URLs for assets |
-| SC-13 | Cryptographic Protection | ✅ Better Auth (bcrypt/scrypt), Supabase (AES-256 at rest), UUIDv7 |
+| SC-13 | Cryptographic Protection | ✅ Better Auth (bcrypt/scrypt), Supabase (AES-256 at rest), AES-256-GCM envelope for `operator_secrets`, UUIDv7 |
 | SC-15 | Collaborative Computing Devices | ✅ Social Machine (Daytona VM) isolated; no persistent state |
 | SC-28 | Protection of Information at Rest | ✅ PostgreSQL TDE (provider), PGLite in-memory only |
 
@@ -191,10 +191,13 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 
 | Finding | Severity | Remediation | Target |
 |---------|----------|-------------|--------|
-| Hardcoded constants in `constants.ts` | Low | Migrate to `config.ts` with app_settings override | Q3 2026 |
-| Missing encryption for operator secrets at rest | Medium | Implement envelope encryption in `secret-scope.server.ts` | Q4 2026 |
-| No formal incident response runbook | Medium | Document in `SECURITY.md` with playbook | Q3 2026 |
-| Daytona VM network egress not restricted | High | Add egress allowlist in `daytona.server.ts` | Q3 2026 |
+| Hardcoded constants in `constants.ts` | Low | Migrate to `config.ts` with app_settings override | Open — Q3 2026 |
+| Operator secrets stored plaintext | Medium | **Done 2026-08-30** — AES-256-GCM envelope in `secret-crypto.server.ts` keyed by `OPERATOR_SECRETS_KEY` / `BETTER_AUTH_SECRET`. Legacy plaintext rows decrypt as-is and re-encrypt on write. | Closed |
+| No formal incident response runbook | Medium | **Done 2026-08-30** — Detect → contain → eradicate → recover in `SECURITY.md`. | Closed |
+| Daytona VM network egress not restricted | High | **Done 2026-08-30** — Social Machine `domainAllowList` (publisher + CDN + Google OAuth). Override via `SOCIAL_MACHINE_DOMAIN_ALLOWLIST`; `unrestricted` disables. Skill sandboxes stay `networkBlockAll` unless network is on, then published-host allowlist. | Closed |
+| Cron auth accepted spoofable `x-vercel-cron` | High | **Done 2026-08-30** — Bearer `CRON_SECRET` required; fail closed if unset. | Closed |
+| Missing HTTP security headers | Medium | **Done 2026-08-30** — CSP, HSTS, nosniff, Permissions-Policy, COOP via `vercel.json` + Vite plugin. | Closed |
+| Library URL ingest lacked private-IP deny | Medium | **Done 2026-08-30** — `net-guard.ts` blocks loopback, RFC1918, link-local, metadata, raw IP literals. | Closed |
 
 ### Supply Chain Risk Management (SCRM)
 
@@ -217,6 +220,11 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 | `scripts/check-auth-invariant.ts` | `/scripts` | CM-4, AC-3 |
 | `src/lib/server/autonomy-audit.server.ts` | `/src/lib/server` | AU-2, AU-3, AU-9, AU-12 |
 | `src/lib/server/secret-scope.server.ts` | `/src/lib/server` | AC-3, AC-6, MP-4, SC-13 |
+| `src/lib/server/secret-crypto.server.ts` | `/src/lib/server` | SC-13, SC-28, IA-5 |
+| `src/lib/security-headers.ts` | `/src/lib` | SC-7, SC-8, SI-10 |
+| `src/lib/net-guard.ts` | `/src/lib` | SC-7, SI-10 |
+| `src/lib/server/cron-auth.server.ts` | `/src/lib/server` | AC-3, IA-5 |
+| `vercel.json` | Root | SC-7, SC-8 |
 | `src/routes/api/v1.$.ts` | `/src/routes/api` | AC-17, IA-8, AU-12, SI-10 |
 | `src/lib/config.ts` | `/src/lib` | CM-2, CM-7, RA-3 |
 
@@ -226,8 +234,8 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 
 | Framework | Status | Notes |
 |-----------|--------|-------|
-| NIST 800-53 Rev. 5 (Moderate) | **Substantial** | 18/20 control families addressed; 2 require operational process (IR, CP) |
-| FedRAMP Moderate Baseline | **In Progress** | ConMon artifacts generated; POA&M tracked above |
+| NIST 800-53 Rev. 5 (Moderate) | **Substantial** | Technical controls in this repo; IR/CP operational processes still need tabletop + backups evidence |
+| FedRAMP Moderate Baseline | **Not authorized** | This mapping and the code controls are prerequisites. Authorization requires a 3PAO, SSP, and ConMon — it is not something a code change confers |
 | SOC 2 Type II (Provider) | **Inherited** | Vercel, Supabase, Daytona — all SOC 2 Type II |
 
 ---
@@ -243,6 +251,6 @@ This document maps ClippyOS security controls to NIST SP 800-53 Rev. 5 and FedRA
 
 ---
 
-*Last Updated: 2026-08-24*
-*Version: 1.0*
+*Last Updated: 2026-08-30*
+*Version: 1.1*
 *Classification: CONTROLLED UNCLASSIFIED INFORMATION (CUI)*

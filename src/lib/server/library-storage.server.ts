@@ -228,6 +228,14 @@ export function makeStorageKey(assetId: string, versionId: string, ext: string):
   return `${assetId}/${versionId}.${clean}`;
 }
 
+async function spoolLocal(key: string, bytes: Buffer): Promise<string> {
+  await ensureLibraryDir();
+  const path = storagePath(key);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, bytes);
+  return path;
+}
+
 export async function writeLibraryBytes(key: string, bytes: Buffer): Promise<string> {
   const client = await storageClient();
   if (client && (await ensureLibraryBucket())) {
@@ -238,6 +246,7 @@ export async function writeLibraryBytes(key: string, bytes: Buffer): Promise<str
     if (!error) {
       await writeAppSetting(BACKEND_KEY, "supabase");
       void maybePinAfterWrite(key, bytes);
+      await spoolLocal(key, bytes);
       return `supabase:${key}`;
     }
   }
@@ -248,17 +257,14 @@ export async function writeLibraryBytes(key: string, bytes: Buffer): Promise<str
       await s3Put(s3, key, bytes);
       await writeAppSetting(BACKEND_KEY, "s3");
       void maybePinAfterWrite(key, bytes);
+      await spoolLocal(key, bytes);
       return `s3:${key}`;
     } catch {
       /* fall through to local preview disk */
     }
   }
-  await ensureLibraryDir();
-  const path = storagePath(key);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, bytes);
   await writeAppSetting(BACKEND_KEY, "local");
-  return path;
+  return spoolLocal(key, bytes);
 }
 
 export async function readLibraryBytes(key: string): Promise<Buffer> {
@@ -425,6 +431,6 @@ export function sniffMime(bytes: Buffer, fallback: string, filename?: string): s
   if (name.endsWith(".webm")) return "video/webm";
   if (name.endsWith(".png")) return "image/png";
   if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
-  if (fallback && fallback !== "application/octet-stream") return fallback;
+  void fallback;
   return "application/octet-stream";
 }

@@ -38,8 +38,8 @@ function looksRedacted(value: string): boolean {
 
 function envPair(): CrayoCreds | null {
   const key = process.env.CRAYO_API_KEY?.trim() || process.env.CRAYO_KEY?.trim() || "";
-  const secret = process.env.CRAYO_API_SECRET?.trim() || process.env.CRAYO_SECRET?.trim() || "";
-  if (key && secret && !looksRedacted(key) && !looksRedacted(secret)) {
+  if (key && !looksRedacted(key)) {
+    const secret = process.env.CRAYO_API_SECRET?.trim() || process.env.CRAYO_SECRET?.trim() || "";
     return { key, secret };
   }
   return null;
@@ -81,16 +81,16 @@ function credsFromSettings(map: Map<string, string>): CrayoCreds | null {
     const idx = combined.indexOf(":");
     const key = combined.slice(0, idx).trim();
     const secret = combined.slice(idx + 1).trim();
+    if (key && key.startsWith("crayo_sk_")) return { key, secret };
     if (key && secret) return { key, secret };
   }
   const keyId = SETTING_KEY_IDS.find((id) => map.get(id)?.trim());
-  const secretId = SETTING_SECRET_IDS.find((id) => map.get(id)?.trim());
-  if (keyId && secretId) {
+  if (keyId) {
     const key = map.get(keyId)!.trim();
-    const secret = map.get(secretId)!.trim();
-    if (key && secret && !looksRedacted(key) && !looksRedacted(secret)) {
-      return { key, secret };
-    }
+    if (!key || looksRedacted(key)) return null;
+    const secretId = SETTING_SECRET_IDS.find((id) => map.get(id)?.trim());
+    const secret = secretId ? map.get(secretId)!.trim() : "";
+    return { key, secret };
   }
   return null;
 }
@@ -144,9 +144,10 @@ async function writeSetting(key: string, value: string): Promise<void> {
 }
 
 export async function persistCrayoCreds(creds: CrayoCreds): Promise<void> {
-  if (!creds.key || !creds.secret) return;
+  if (!creds.key) return;
+  // Crayo authenticates with the single Bearer key; the secret is optional legacy input.
   await writeSetting("CRAYO_API_KEY", creds.key);
-  await writeSetting("CRAYO_API_SECRET", creds.secret);
+  await writeSetting("CRAYO_API_SECRET", creds.secret ?? "");
   credsCache = { at: Date.now(), creds };
 }
 
@@ -167,15 +168,14 @@ export function clearCrayoCredsCache(): void {
   persistAttempted = false;
 }
 
+/**
+ * Operator-saved key (Settings → Integrations → Crayo.ai) wins over the deploy's CRAYO_API_KEY,
+ * so a rotation in Settings takes effect without a redeploy. Env is the fallback and is copied
+ * into Settings once so the card shows it as configured.
+ */
 export async function loadCrayoCreds(): Promise<CrayoCreds | null> {
   const now = Date.now();
   if (credsCache && now - credsCache.at < CREDS_TTL_MS) return credsCache.creds;
-  const fromEnv = envPair();
-  if (fromEnv) {
-    credsCache = { at: now, creds: fromEnv };
-    void persistPreviewIfNeeded(fromEnv);
-    return fromEnv;
-  }
   try {
     const map = await readSettingsMap();
     const fromSettings = credsFromSettings(map);
@@ -184,7 +184,13 @@ export async function loadCrayoCreds(): Promise<CrayoCreds | null> {
       return fromSettings;
     }
   } catch {
-    /* fall through — no credentials configured */
+    /* fall through — env may still be configured */
+  }
+  const fromEnv = envPair();
+  if (fromEnv) {
+    credsCache = { at: now, creds: fromEnv };
+    void persistPreviewIfNeeded(fromEnv);
+    return fromEnv;
   }
   credsCache = { at: now, creds: null };
   return null;
@@ -195,7 +201,12 @@ export async function crayoAvailable(): Promise<boolean> {
 }
 
 function authHeader(creds: CrayoCreds): string {
-  return `Bearer ${creds.key}:${creds.secret}`;
+  const token = creds.key.startsWith("crayo_sk_")
+    ? creds.key
+    : creds.key.includes(":")
+      ? creds.key.slice(0, creds.key.indexOf(":")).trim()
+      : creds.key;
+  return `Bearer ${token}`;
 }
 
 function requestHeaders(creds: CrayoCreds): Record<string, string> {
@@ -240,6 +251,11 @@ function detailText(payload: unknown): string {
       (payload as { message?: unknown }).message ??
       (payload as { error?: unknown }).error;
     if (typeof detail === "string") return detail;
+    // Crayo envelope: { success:false, error:{ code, message } }
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim()) return message.trim();
+    }
     try {
       return JSON.stringify(detail);
     } catch {
@@ -249,9 +265,17 @@ function detailText(payload: unknown): string {
   return "";
 }
 
-function mapHttpError(status: number, payload?: unknown): CrayoVideoResult {
+/** Crayo's own error code (UPPER_SNAKE) from its `{ error: { code } }` envelope, if present. */
+function crayoErrorCode(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || !("error" in payload)) return null;
+  const error = (payload as { error?: unknown }).error;
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,60}$/.test(code) ? code : null;
+}
+
+function mapHttpError(status: number, _payload?: unknown): CrayoVideoResult {
   if (status === 429) return { ok: false, error: "rate_limit" };
-  const detail = detailText(payload).toLowerCase();
   if (status === 401 || status === 403) return { ok: false, error: "missing" };
   if (status === 402) return { ok: false, error: "failed" }; // insufficient credits
   if (status >= 500) return { ok: false, error: "failed" };
@@ -408,4 +432,221 @@ export function crayoErrorMessage(
   if (error === "missing") return "This tool will be available once you connect your Crayo.ai API key.";
   if (error === "processing") return "Video is still being generated. Check back shortly.";
   return "The video didn't come through. Retry.";
+}
+
+export class CrayoApiError extends Error {
+  code: string;
+  status: number;
+  constructor(code: string, message: string, status = 400) {
+    super(message);
+    this.code = code;
+    this.status = status;
+  }
+}
+
+async function crayoJson(
+  creds: CrayoCreds,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: Record<string, unknown>,
+): Promise<unknown> {
+  const url = path.startsWith("http") ? path : `${CRAYO_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: requestHeaders(creds),
+      body: body && method !== "GET" && method !== "DELETE" ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(method === "GET" ? 20000 : 45000),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") throw new CrayoApiError("TIMEOUT", "Crayo request timed out.", 504);
+    throw new CrayoApiError("FAILED", "Couldn’t reach Crayo.", 502);
+  }
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new CrayoApiError("UNAUTHORIZED", "Crayo API key is missing or revoked.", response.status);
+  }
+  if (response.status === 429) throw new CrayoApiError("RATE_LIMIT", "Crayo rate limit. Retry shortly.", 429);
+  if (response.status === 402) throw new CrayoApiError("INSUFFICIENT_CREDITS", "Crayo credits or storage are exhausted.", 402);
+  if (!response.ok) {
+    const message = detailText(payload) || `Crayo returned ${response.status}.`;
+    // Keep Crayo's documented code (VALIDATION_ERROR, UNSUPPORTED_MEDIA_TYPE, FILE_TOO_LARGE,
+    // NOT_FOUND, JOB_LIMIT_REACHED, …) so the run can explain what actually went wrong.
+    throw new CrayoApiError(crayoErrorCode(payload) ?? "FAILED", message.slice(0, 280), response.status);
+  }
+  return payload;
+}
+
+function requireCredsOrThrow(creds: CrayoCreds | null): CrayoCreds {
+  if (!creds) throw new CrayoApiError("MISSING", crayoErrorMessage("missing"), 503);
+  return creds;
+}
+
+export async function crayoGetAccount(): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "GET", "/account");
+}
+
+export async function crayoListAssets(input: { type?: string; limit?: number } = {}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const params = new URLSearchParams();
+  if (input.type) params.set("type", input.type);
+  if (input.limit) params.set("limit", String(Math.min(100, Math.max(1, input.limit))));
+  const q = params.toString();
+  return crayoJson(creds, "GET", `/assets${q ? `?${q}` : ""}`);
+}
+
+export async function crayoImportAsset(input: { url: string; name?: string }): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/assets", { url: input.url, name: input.name });
+}
+
+export type CrayoUpload = {
+  id: string;
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  expiresAt: string | null;
+};
+
+/**
+ * Direct upload, step one (docs: POST /v1/uploads). Returns a single-use signed PUT URL that
+ * must start receiving bytes within 5 minutes. Video ≤ 1GB, audio ≤ 100MB, images ≤ 20MB.
+ */
+export async function crayoCreateUpload(input: {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}): Promise<CrayoUpload> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const payload = (await crayoJson(creds, "POST", "/uploads", {
+    filename: input.filename.slice(0, 100),
+    content_type: input.contentType,
+    size_bytes: Math.floor(input.sizeBytes),
+  })) as { upload?: Record<string, unknown> } | null;
+  const upload = payload?.upload;
+  const id = typeof upload?.id === "string" ? upload.id : "";
+  const url = typeof upload?.url === "string" ? upload.url : "";
+  if (!id || !url.startsWith("https://")) {
+    throw new CrayoApiError("FAILED", "Crayo did not return a signed upload URL.", 502);
+  }
+  const headers: Record<string, string> = {};
+  if (upload?.headers && typeof upload.headers === "object") {
+    for (const [key, value] of Object.entries(upload.headers as Record<string, unknown>)) {
+      if (typeof value === "string") headers[key.toLowerCase()] = value;
+    }
+  }
+  return {
+    id,
+    url,
+    method: typeof upload?.method === "string" ? upload.method : "PUT",
+    headers,
+    expiresAt: typeof upload?.expires_at === "string" ? upload.expires_at : null,
+  };
+}
+
+/** Direct upload, step three (docs: POST /v1/uploads/{id}/complete). Returns the new asset id. */
+export async function crayoCompleteUpload(uploadId: string): Promise<string> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const payload = (await crayoJson(creds, "POST", `/uploads/${encodeURIComponent(uploadId)}/complete`)) as
+    | { asset?: { id?: unknown } }
+    | null;
+  const id = typeof payload?.asset?.id === "string" ? payload.asset.id : "";
+  if (!id) throw new CrayoApiError("FAILED", "Crayo completed the upload without returning an asset id.", 502);
+  return id;
+}
+
+export async function crayoGenerateImage(input: {
+  prompt: string;
+  aspectRatio?: string;
+  model?: string;
+}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/image-generator", {
+    prompt: input.prompt,
+    aspect_ratio: input.aspectRatio ?? "9:16",
+    model: input.model,
+  });
+}
+
+export async function crayoListVoices(input: { search?: string; limit?: number } = {}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  const params = new URLSearchParams();
+  if (input.search) params.set("search", input.search);
+  params.set("limit", String(input.limit ?? 20));
+  return crayoJson(creds, "GET", `/voices?${params.toString()}`);
+}
+
+export async function crayoGenerateVoiceover(input: {
+  script: string;
+  voiceId: string;
+  title?: string;
+}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/voiceover-generator", {
+    script: input.script,
+    voice_id: input.voiceId,
+    title: input.title,
+  });
+}
+
+export async function crayoCreateProject(input: Record<string, unknown>): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/projects", input);
+}
+
+export async function crayoExportProject(projectId: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", `/projects/${encodeURIComponent(projectId)}/export`);
+}
+
+export async function crayoGetExport(exportId: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "GET", `/exports/${encodeURIComponent(exportId)}`);
+}
+
+export async function crayoCreateAutoclip(input: {
+  assetId: string;
+  clipCount?: number;
+  clipLength?: number;
+  editLevel?: string;
+  prompt?: string;
+}): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "POST", "/autoclip", {
+    asset_id: input.assetId,
+    clip_count: input.clipCount ?? 5,
+    clip_length: input.clipLength ?? 60,
+    edit_level: input.editLevel ?? "full",
+    prompt: input.prompt,
+  });
+}
+
+export async function crayoGetAutoclip(id: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  return crayoJson(creds, "GET", `/autoclip/${encodeURIComponent(id)}`);
+}
+
+export async function crayoPollExport(exportId: string): Promise<unknown> {
+  const creds = requireCredsOrThrow(await loadCrayoCreds());
+  for (let i = 0; i < MAX_POLLS; i += 1) {
+    const payload = await crayoJson(creds, "GET", `/exports/${encodeURIComponent(exportId)}`);
+    const status = String(
+      (payload && typeof payload === "object" && "export" in payload
+        ? (payload as { export?: { status?: string } }).export?.status
+        : (payload as { status?: string }).status) ?? "",
+    ).toLowerCase();
+    if (status === "completed" || status === "complete" || status === "succeeded") return payload;
+    if (status === "failed" || status === "error") {
+      throw new CrayoApiError("FAILED", "Crayo export failed.", 400);
+    }
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  }
+  throw new CrayoApiError("TIMEOUT", "Crayo export is still processing.", 504);
 }

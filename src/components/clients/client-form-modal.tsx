@@ -13,6 +13,7 @@ import { PLAN_TYPES, type Client, type PlanType } from "@/lib/entities";
 import { DEFAULT_MONTHLY_FEE, DEFAULT_SETUP_FEE, PLAN_LABELS } from "@/lib/labels";
 import { parseYouTubeChannelUrl } from "@/lib/youtube";
 import { todayIsoDate } from "@/lib/format";
+import { editableTextToStrategy, strategyToEditableText } from "@/lib/strategy";
 import { analyzeChannel, saveClient } from "@/lib/server/clients";
 import { captureClientError, userFacingErrorMessage } from "@/lib/errors";
 import { toast } from "sonner";
@@ -52,6 +53,8 @@ function emptyValues(): ClientFormValues {
 }
 
 function fromClient(client: Client): ClientFormValues {
+  const setupFee = Number(client.setupFee ?? DEFAULT_SETUP_FEE);
+  const monthlyFee = Number(client.monthlyFee ?? DEFAULT_MONTHLY_FEE[client.planType]);
   return {
     id: client.id,
     name: client.name,
@@ -59,11 +62,11 @@ function fromClient(client: Client): ClientFormValues {
     channelThumbnail: client.channelThumbnail ?? "",
     channelSummary: client.channelSummary ?? "",
     offers: client.offers ?? "",
-    contentStrategy: client.contentStrategy ?? "",
+    contentStrategy: strategyToEditableText(client.contentStrategy),
     planType: client.planType,
     customPlanLabel: client.customPlanLabel ?? "",
-    setupFee: Number(client.setupFee) || DEFAULT_SETUP_FEE,
-    monthlyFee: Number(client.monthlyFee) || DEFAULT_MONTHLY_FEE[client.planType],
+    setupFee: Number.isFinite(setupFee) ? setupFee : DEFAULT_SETUP_FEE,
+    monthlyFee: Number.isFinite(monthlyFee) ? monthlyFee : DEFAULT_MONTHLY_FEE[client.planType],
     startDate: client.startDate ?? todayIsoDate(),
     notes: client.notes ?? "",
   };
@@ -172,7 +175,7 @@ export function ClientFormModal({
         channelThumbnail: result.channelThumbnail ?? "",
         channelSummary: result.channelSummary,
         offers: result.offers,
-        contentStrategy: result.contentStrategy,
+        contentStrategy: strategyToEditableText(result.contentStrategy),
       });
       setStep("review");
     } catch (error) {
@@ -219,7 +222,9 @@ export function ClientFormModal({
           channelThumbnail: values.channelThumbnail.trim() || null,
           channelSummary: values.channelSummary || null,
           offers: values.offers || null,
-          contentStrategy: values.contentStrategy || null,
+          contentStrategy: values.contentStrategy.trim()
+            ? editableTextToStrategy(values.contentStrategy)
+            : null,
           planType: values.planType,
           customPlanLabel: values.customPlanLabel.trim() || null,
           setupFee: values.setupFee,

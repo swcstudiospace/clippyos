@@ -21,6 +21,7 @@ import {
   ipfsGatewayUrl,
   ipfsStrategyNote,
   isHotSnapshot,
+  isUnsupportedPauseClassError,
   isWindowsSnapshot,
   libraryBackendNote,
   listWindowsCommand,
@@ -43,9 +44,14 @@ import {
   parseSocialMachineSize,
   pickLibraryBackend,
   proxyscrapeListUrl,
+  freeProxyListUrls,
+  osForSize,
+  linuxProxyScript,
+  sandboxClassForSize,
   shouldResizeWindows,
   snapshotCandidates,
   snapshotForSize,
+  socialMachineDomainAllowList,
   stopActionForOs,
   uploadPath,
   verifyMachineMountCommand,
@@ -54,21 +60,33 @@ import {
   windowsProxyScript,
 } from "./social-machine.ts";
 
-test("defaults to a large Windows Social Machine in Sydney locale", () => {
-  assert.equal(DEFAULT_SOCIAL_MACHINE_OS, "windows");
-  assert.equal(DEFAULT_SOCIAL_MACHINE_SIZE, "windows-large");
-  assert.equal(snapshotForSize("windows-large"), "windows-large");
+test("defaults to daytona-medium Linux container Social Machine in Sydney locale", () => {
+  assert.equal(DEFAULT_SOCIAL_MACHINE_OS, "linux");
+  assert.equal(DEFAULT_SOCIAL_MACHINE_SIZE, "daytona-medium");
+  assert.equal(snapshotForSize("daytona-medium"), "daytona-medium");
+  assert.equal(osForSize("daytona-medium"), "linux");
+  assert.equal(osForSize("windows-large"), "windows");
   assert.equal(DEFAULT_SOCIAL_TIMEZONE, "Australia/Sydney");
   assert.ok(isWindowsSnapshot("windows-large"));
-  assert.equal(isWindowsSnapshot("daytona-small"), false);
+  assert.equal(isWindowsSnapshot("daytona-medium"), false);
 });
 
-test("size parser never returns a linux or tiny snapshot", () => {
+test("size parser accepts linux default and still maps windows/vm aliases", () => {
   assert.equal(parseSocialMachineSize("windows-large"), "windows-large");
   assert.equal(parseSocialMachineSize("windows-medium"), "windows-medium");
   assert.equal(parseSocialMachineSize("windows-small"), "windows-medium");
-  assert.equal(parseSocialMachineSize("linux"), "windows-large");
-  assert.equal(parseSocialMachineSize(""), "windows-large");
+  assert.equal(parseSocialMachineSize("linux"), "daytona-medium");
+  assert.equal(parseSocialMachineSize(""), "daytona-medium");
+  assert.equal(parseSocialMachineSize("daytona-medium"), "daytona-medium");
+  assert.equal(parseSocialMachineSize("daytona-vm-medium"), "daytona-vm-medium");
+  assert.equal(parseSocialMachineSize("linux-vm"), "daytona-vm-medium");
+});
+
+test("sandbox class maps container, linux-vm, and windows sizes correctly", () => {
+  assert.equal(sandboxClassForSize("daytona-medium"), "container");
+  assert.equal(sandboxClassForSize("daytona-vm-medium"), "linux-vm");
+  assert.equal(sandboxClassForSize("windows-medium"), "windows");
+  assert.equal(sandboxClassForSize("windows-large"), "windows");
 });
 
 test("Daytona regions are us or eu — there is no Australia target", () => {
@@ -79,11 +97,22 @@ test("Daytona regions are us or eu — there is no Australia target", () => {
   assert.match(instagramGeoWarning("us"), /Graph API/i);
 });
 
-test("idle policy pauses instead of destroying", () => {
-  const policy = idlePolicy(20);
-  assert.equal(policy.autoStopInterval, 0);
-  assert.equal(policy.autoPauseInterval, 20);
-  assert.equal(policy.autoDeleteInterval, -1);
+test("idle policy auto-stops container class, hot-pauses VM/Windows classes instead of destroying", () => {
+  const containerPolicy = idlePolicy(20, "container");
+  assert.equal(containerPolicy.autoStopInterval, 20);
+  assert.equal(containerPolicy.autoPauseInterval, 0);
+  assert.equal(containerPolicy.autoDeleteInterval, -1);
+
+  const vmPolicy = idlePolicy(20, "linux-vm");
+  assert.equal(vmPolicy.autoStopInterval, 0);
+  assert.equal(vmPolicy.autoPauseInterval, 20);
+  assert.equal(vmPolicy.autoDeleteInterval, -1);
+
+  const windowsPolicy = idlePolicy(20, "windows");
+  assert.equal(windowsPolicy.autoStopInterval, 0);
+  assert.equal(windowsPolicy.autoPauseInterval, 20);
+  assert.equal(windowsPolicy.autoDeleteInterval, -1);
+
   assert.equal(stopActionForOs("windows"), "pause");
   assert.equal(stopActionForOs("linux"), "stop");
   assert.equal(HOT_SNAPSHOT_NAME, "clippy-os-social-hot");
@@ -97,19 +126,37 @@ test("hibernate plan snapshots while running then pauses — never after pause, 
   assert.equal(plan.snapshotAfterPause, false);
 });
 
-test("snapshot candidates prefer a stored hot snapshot then windows-large, never linux", () => {
+test("isUnsupportedPauseClassError matches Daytona's class-mismatch text and nothing else", () => {
+  assert.equal(
+    isUnsupportedPauseClassError(
+      "Auto-pause is not supported for sandbox class 'container'. Supported classes: linux-vm, windows.",
+    ),
+    true,
+  );
+  assert.equal(isUnsupportedPauseClassError("Auto-Pause Is Not Supported For Sandbox Class 'android'."), true);
+  assert.equal(isUnsupportedPauseClassError("Request timed out"), false);
+  assert.equal(isUnsupportedPauseClassError("Sandbox not found"), false);
+});
+
+test("snapshot candidates prefer linux default and fall back off Windows quota", () => {
+  assert.deepEqual(snapshotCandidates("daytona-vm-medium", null), [
+    "daytona-vm-medium",
+    "daytona-medium",
+  ]);
+  assert.deepEqual(snapshotCandidates("daytona-medium", null), [
+    "daytona-medium",
+    "daytona-vm-medium",
+  ]);
   assert.deepEqual(snapshotCandidates("windows-large", null), [
     "windows-large",
     "windows-medium",
+    "daytona-vm-medium",
   ]);
   assert.deepEqual(snapshotCandidates("windows-large", HOT_SNAPSHOT_NAME), [
     HOT_SNAPSHOT_NAME,
     "windows-large",
     "windows-medium",
-  ]);
-  assert.deepEqual(snapshotCandidates("windows-large", "linux-large"), [
-    "windows-large",
-    "windows-medium",
+    "daytona-vm-medium",
   ]);
   assert.ok(isHotSnapshot(HOT_SNAPSHOT_NAME));
   assert.equal(isHotSnapshot("windows-large"), false);
@@ -129,6 +176,9 @@ test("provider state maps pause/archive to paused so Resume works", () => {
   assert.equal(mapProviderState("archived"), "paused");
   assert.equal(mapProviderState("pausing"), "stopping");
   assert.equal(mapProviderState("pulling_snapshot"), "starting");
+  assert.equal(mapProviderState("snapshotting"), "stopping");
+  assert.notEqual(mapProviderState("snapshotting"), "starting");
+  assert.notEqual(mapProviderState("snapshotting"), "running");
 });
 
 test("Windows open-url never uses xdg-open", () => {
@@ -197,10 +247,10 @@ test("S3 config parser accepts Filebase-style endpoints and rejects blanks", () 
   assert.equal(parseS3Config({ endpoint: FILEBASE_ENDPOINT, bucket: "", accessKey: "k", secret: "s" }), null);
 });
 
-test("os parser treats unknown as windows", () => {
+test("os parser treats unknown as linux", () => {
   assert.equal(parseSocialMachineOs("windows"), "windows");
   assert.equal(parseSocialMachineOs("linux"), "linux");
-  assert.equal(parseSocialMachineOs("darwin"), "windows");
+  assert.equal(parseSocialMachineOs("darwin"), "linux");
 });
 
 test("residential proxy structured fields compose an https URL", () => {
@@ -239,8 +289,13 @@ test("location proxy list is country-scoped and parses ProxyScrape lines", () =>
   assert.equal(parseProxyCountry("au"), "AU");
   assert.equal(parseProxyCountry("mars"), "AU");
   assert.match(proxyscrapeListUrl("AU"), /country=AU/);
+  assert.match(proxyscrapeListUrl("AU", "https"), /protocol=https/);
+  const lists = freeProxyListUrls("AU");
+  assert.equal(lists.length, 3);
+  assert.match(lists[0] ?? "", /country=AU/);
   assert.match(parseProxyListLine("http://203.0.113.10:8080") ?? "", /203\.0\.113\.10:8080/);
   assert.equal(parseProxyListLine("socks5://nope"), null);
+  assert.match(linuxProxyScript("http://203.0.113.10:8080") ?? "", /proxy-applied/);
 });
 
 test("storage bridge paths map Windows drives and POSIX mounts to machine-drops keys", () => {
@@ -285,4 +340,15 @@ test("bridge verify + bootstrap commands are os-native and idempotent", () => {
   assert.match(bridgeStatusNote(true, true), /mounted/i);
   assert.match(bridgeStatusNote(true, false), /not mounted/i);
   assert.match(bridgeStatusNote(true, null), /unknown/i);
+});
+
+test("Social Machine egress defaults to a publisher domain allowlist", () => {
+  const def = socialMachineDomainAllowList();
+  assert.ok(def);
+  assert.match(def ?? "", /tiktok\.com/);
+  assert.match(def ?? "", /instagram\.com/);
+  assert.match(def ?? "", /youtube\.com/);
+  assert.equal(socialMachineDomainAllowList("unrestricted"), undefined);
+  assert.equal(socialMachineDomainAllowList("*"), undefined);
+  assert.equal(socialMachineDomainAllowList("example.com, *.tiktok.com"), "example.com,*.tiktok.com");
 });

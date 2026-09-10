@@ -121,6 +121,11 @@ export function ImageBubble({
         ) : failed ? (
           <div className="flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-card border border-border bg-secondary-surface/60 px-4">
             <p className="text-center text-body">The image didn’t come through.</p>
+            {message.metadata?.imageError ? (
+              <p className="max-w-[36rem] text-center text-caption text-muted-foreground" title={message.metadata.imageError}>
+                {message.metadata.imageError}
+              </p>
+            ) : null}
             {onRetry ? (
               <Button variant="secondary" size="sm" onClick={onRetry} disabled={busy}>
                 Retry

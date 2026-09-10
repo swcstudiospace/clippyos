@@ -353,8 +353,12 @@ export async function insertIteration(input: {
     kind: input.kind,
     step_id: input.stepId ?? null,
     tool_name: input.toolName ?? null,
-    args_summary: input.argsSummary ? sanitizeText(input.argsSummary).slice(0, 800) : null,
-    result_summary: input.resultSummary ? sanitizeText(input.resultSummary).slice(0, 2000) : null,
+    // argsSummary/resultSummary are diagnostic JSON.stringify() dumps of tool
+    // calls, rendered as plain text (timeline.tsx); sanitizeText would HTML-escape
+    // their structural quotes and corrupt the JSON, same class of bug as the
+    // client content_strategy field (see src/lib/server/clients.ts).
+    args_summary: input.argsSummary ? input.argsSummary.slice(0, 800) : null,
+    result_summary: input.resultSummary ? input.resultSummary.slice(0, 2000) : null,
     screenshot_ref: input.screenshotRef ?? null,
     screenshot_data_url: input.screenshotDataUrl
       ? input.screenshotDataUrl.slice(0, 180_000)

@@ -137,7 +137,14 @@ export async function isEligible(mode: SocialUploadMode): Promise<{
 
 function isTrustedTikTokMedia(url: string): boolean {
   if (!url) return false;
+  if (url.startsWith("/api/library/file")) return true;
   if (url.startsWith("data:")) return /^data:video\//i.test(url) || isTrustedImageUrl(url);
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/api/library/file") return true;
+  } catch {
+    /* */
+  }
   return isTrustedImageUrl(url);
 }
 
@@ -232,7 +239,10 @@ async function tiktokFetch(
   return response;
 }
 
-async function creatorPrivacy(onStatus?: TikTokPublishInput["onStatus"]): Promise<string> {
+async function creatorPrivacy(
+  mode: SocialUploadMode,
+  onStatus?: TikTokPublishInput["onStatus"],
+): Promise<string> {
   try {
     const response = await tiktokFetch(
       "/v2/post/publish/creator_info/query/",
@@ -244,6 +254,9 @@ async function creatorPrivacy(onStatus?: TikTokPublishInput["onStatus"]): Promis
       data?: { privacy_level_options?: string[] };
     };
     const options = json.data?.privacy_level_options ?? [];
+    if (mode !== "draft" && options.includes("PUBLIC_TO_EVERYONE")) {
+      return "PUBLIC_TO_EVERYONE";
+    }
     if (options.includes("SELF_ONLY")) return "SELF_ONLY";
     return options[0] ?? "SELF_ONLY";
   } catch {
@@ -334,7 +347,7 @@ export async function publish(input: TikTokPublishInput): Promise<TikTokPublishR
   const postInfo = useDirect
     ? {
         title: title || "Clip",
-        privacy_level: await creatorPrivacy(input.onStatus),
+        privacy_level: await creatorPrivacy(input.mode, input.onStatus),
         disable_duet: false,
         disable_comment: false,
         disable_stitch: false,
@@ -380,6 +393,16 @@ export async function publish(input: TikTokPublishInput): Promise<TikTokPublishR
     if (publishId) {
       const polled = await pollPublish(publishId, !useDirect, input.onStatus);
       if (polled === "failed") throw new Error("PUBLISHER_REJECTED");
+      if (polled === "timeout") {
+        return {
+          status: "needs_attention",
+          externalPostId: publishId,
+          externalUrl: null,
+          provider: "TIKTOK",
+          tiktokPostMode: postMode,
+          reason: "TikTok did not confirm the publish in time. Check TikTok and retry if it did not land.",
+        };
+      }
     }
   } else {
     if (!isTrustedTikTokMedia(input.mediaUrl)) throw new Error("UNTRUSTED_IMAGE");

@@ -12,13 +12,14 @@
  * No DATABASE_URL (local / preview builds) -> skip; the PGLite fallback applies
  * the same files at startup instead (see src/lib/db.ts).
  */
+import { preferTransactionPooler } from "../src/lib/db-url.ts";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
 import { pendingMigrations } from "./migration-plan.ts";
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = preferTransactionPooler(process.env.DATABASE_URL ?? "") || undefined;
 if (!databaseUrl) {
   console.log(
     "[migrate] DATABASE_URL not set — skipping (the PGLite fallback migrates itself).",

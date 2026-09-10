@@ -300,9 +300,9 @@ function canDecide(input: {
   }
   const isAdmin = input.role === "admin";
   const assigned = input.request.assignedTo && input.request.assignedTo === input.actorId;
-  if (!isAdmin && !assigned) return { ok: false, code: "APPROVAL_FORBIDDEN" };
   const self = input.request.requestedBy === input.actorId;
   if (self && !input.policy.allowSelfApprove) return { ok: false, code: "SELF_APPROVE_DENIED" };
+  if (!isAdmin && !assigned) return { ok: false, code: "APPROVAL_FORBIDDEN" };
   if (self && !isAdmin) return { ok: false, code: "SELF_APPROVE_DENIED" };
   return { ok: true };
 }
@@ -315,22 +315,34 @@ async function patchApproval(
     reviewed_at: string;
     decision_note: string | null;
   },
-): Promise<void> {
+): Promise<ApprovalRequest> {
+  let claimed: Record<string, unknown> | null = null;
   const admin = await getAgencyAdmin();
   if (admin) {
-    await admin.from("approval_requests").update(patch).eq("id", id);
+    const { data, error } = await admin
+      .from("approval_requests")
+      .update(patch)
+      .eq("id", id)
+      .eq("status", "PENDING")
+      .select("*")
+      .maybeSingle();
+    if (!error && data) claimed = data as Record<string, unknown>;
   }
   try {
     const sql = await localSql();
-    await sql.query(
+    const rows = await sql.query<Record<string, unknown>>(
       `update approval_requests
        set status = $2, reviewed_by = $3, reviewed_at = $4, decision_note = $5
-       where id = $1`,
+       where id = $1 and status = 'PENDING'
+       returning *`,
       [id, patch.status, patch.reviewed_by, patch.reviewed_at, patch.decision_note],
     );
+    if (rows[0] && !claimed) claimed = rows[0];
   } catch {
     /* ok */
   }
+  if (!claimed) throw new Error("APPROVAL_NOT_PENDING");
+  return mapApproval(claimed);
 }
 
 export async function decideApproval(input: {
@@ -348,25 +360,18 @@ export async function decideApproval(input: {
     portalActor || input.actorId.startsWith("agent:") ? null : await getUserRole(input.actorId);
   const gate = canDecide({ request, actorId: input.actorId, role, policy });
   if (!gate.ok) {
-    if (!(input.hermesAdmin && request.status === "PENDING" && gate.code !== "APPROVAL_EXPIRED")) {
+    if (!(input.hermesAdmin && gate.code === "APPROVAL_FORBIDDEN")) {
       throw new Error(gate.code);
     }
   }
   const stamp = nowIso();
   const note = input.note?.trim().slice(0, 400) || null;
-  await patchApproval(input.id, {
+  const next = await patchApproval(input.id, {
     status: input.decision,
     reviewed_by: input.actorId,
     reviewed_at: stamp,
     decision_note: note,
   });
-  const next = (await getApprovalRequest(input.id)) ?? {
-    ...request,
-    status: input.decision,
-    reviewedBy: input.actorId,
-    reviewedAt: stamp,
-    decisionNote: note,
-  };
 
   await writeAuditEvent({
     actorUserId: input.actorId,
@@ -469,11 +474,15 @@ export async function cancelApprovalsForResource(resourceType: string, resourceI
   const pending = await listApprovalRequests({ status: "PENDING", limit: 80 });
   const matches = pending.filter((row) => row.resourceType === resourceType && row.resourceId === resourceId);
   for (const row of matches) {
-    await patchApproval(row.id, {
-      status: "CANCELED",
-      reviewed_by: "system",
-      reviewed_at: nowIso(),
-      decision_note: "Resource canceled",
-    });
+    try {
+      await patchApproval(row.id, {
+        status: "CANCELED",
+        reviewed_by: "system",
+        reviewed_at: nowIso(),
+        decision_note: "Resource canceled",
+      });
+    } catch (error) {
+      if (!(error instanceof Error && error.message === "APPROVAL_NOT_PENDING")) throw error;
+    }
   }
 }

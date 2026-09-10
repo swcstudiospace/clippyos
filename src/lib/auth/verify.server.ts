@@ -1,4 +1,5 @@
 import { getRequest } from "@tanstack/react-start/server";
+import { isOperatorRevoked } from "@/lib/server/access";
 import { auth, authConfigured } from "./server";
 
 /**
@@ -66,7 +67,9 @@ export async function getSessionUser(
   }
   const session = await auth.api.getSession({ headers });
   if (!session?.user) return null;
-  return { id: session.user.id, email: session.user.email ?? null };
+  const user = { id: session.user.id, email: session.user.email ?? null };
+  if (await isOperatorRevoked(user.id)) return null;
+  return user;
 }
 
 /**

@@ -178,14 +178,27 @@ export function CalendarMonthView({
               const dayRows = cell.iso ? grouped.get(cell.iso) ?? [] : [];
               const visible = dayRows.slice(0, 2);
               const extra = dayRows.length - visible.length;
-              const CellTag = cell.inMonth ? "button" : "div";
+              // The cell hosts MarkerButtons, so it cannot itself be a <button>
+              // (nested buttons are invalid HTML and break hydration). A div
+              // with button semantics keeps the day sheet reachable by mouse
+              // and keyboard.
+              const openDay =
+                cell.inMonth && cell.iso ? () => setDaySheet(cell.iso) : undefined;
               return (
-                <CellTag
+                <div
                   key={`${cell.iso}-${index}`}
-                  type={cell.inMonth ? "button" : undefined}
-                  onClick={
-                    cell.inMonth && cell.iso
-                      ? () => setDaySheet(cell.iso)
+                  role={openDay ? "button" : undefined}
+                  tabIndex={openDay ? 0 : undefined}
+                  onClick={openDay}
+                  onKeyDown={
+                    openDay
+                      ? (event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openDay();
+                          }
+                        }
                       : undefined
                   }
                   className={cn(
@@ -242,7 +255,7 @@ export function CalendarMonthView({
                       </div>
                     </>
                   ) : null}
-                </CellTag>
+                </div>
               );
             })}
           </div>
@@ -373,7 +386,10 @@ function MarkerButton({
     <button
       type="button"
       disabled={paid || busy}
-      onClick={onCollect}
+      onClick={(event) => {
+        event.stopPropagation();
+        onCollect();
+      }}
       className={cn(
         "flex min-h-11 w-full flex-col items-start rounded-control px-2 py-1.5 text-left text-caption leading-tight transition-[background-color,transform] duration-(--motion-quick) ease-[var(--ease-out)] motion-safe:active:not-disabled:scale-[0.98]",
         tone === "green" && "bg-success/15 text-success",

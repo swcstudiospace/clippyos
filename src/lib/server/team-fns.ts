@@ -64,7 +64,7 @@ export const getTeamSnapshotFn = createServerFn({ method: "GET" })
       team.listLinkableTokens(),
       getUserRole(context.userId),
     ]);
-    return { clients, teamMembers: members, settings, tokens, role };
+    return { clients, teamMembers: members, settings, tokens: role === "admin" ? tokens : [], role };
   });
 
 export const saveTeamSettingsFn = createServerFn({ method: "POST" })

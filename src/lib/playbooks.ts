@@ -927,6 +927,50 @@ export const HERMES_PLAYBOOKS: readonly HermesPlaybook[] = [
     auditEvents: ["clipping.distribute_social"],
   },
   {
+    id: "crayo_short_to_library",
+    name: "Crayo 9:16 short → library",
+    summary: "Generate a vertical Crayo short via api.crayo.ai and ingest the mp4 into Filebase (source=AGENT).",
+    trigger: "manual",
+    triggerDetail: "Crayo tab Generate short, or Hermes crayo_run_short / skills.invoke clipping-crayo-short",
+    requiredScopes: ["read", "actions:ai"],
+    requiredIntegrations: ["Crayo API", "Filebase library"],
+    risk: "medium",
+    steps: [
+      "crayo.get_account — stop on MISSING / UNAUTHORIZED / INSUFFICIENT_CREDITS",
+      "crayo.run_short with prompt + optional script and clientId",
+      "Confirm library.assetId; if missing, crayo.ingest_to_library on the Crayo CDN url",
+      "library.search_assets tag=crayo",
+    ],
+    tools: ["crayo.get_account", "crayo.run_short", "crayo.ingest_to_library", "library.search_assets"],
+    success: "Library row with source AGENT and tag crayo, plus the video URL. No invented URLs.",
+    escalation: "MISSING, UNAUTHORIZED, INSUFFICIENT_CREDITS, TIMEOUT, RATE_LIMIT.",
+    guardrail: "Never start the Social Machine. Never echo the API key. Crayo CDN hosts only for ingest.",
+    humanStop: "Do not paste CRAYO_API_KEY into chat or source.",
+    auditEvents: ["crayo.run_short", "crayo.ingest_to_library"],
+  },
+  {
+    id: "crayo_autoclip_to_library",
+    name: "Crayo AutoClip → library",
+    summary: "Import a long-form https video, AutoClip it, ingest thumbnails into Filebase.",
+    trigger: "manual",
+    triggerDetail: "Crayo tab AutoClip, or Hermes crayo_run_autoclip / skills.invoke clipping-crayo-autoclip",
+    requiredScopes: ["read", "actions:ai"],
+    requiredIntegrations: ["Crayo API", "Filebase library"],
+    risk: "medium",
+    steps: [
+      "crayo.get_account",
+      "crayo.run_autoclip with public https url and clipCount 2–20",
+      "List clip title, project_id, thumbnail, library.assetId",
+      "Honest TIMEOUT if still processing — do not invent clips",
+    ],
+    tools: ["crayo.get_account", "crayo.run_autoclip", "crayo.ingest_to_library", "library.search_assets"],
+    success: "clips[] with project_id and library ids, or an honest gap.",
+    escalation: "TIMEOUT, INSUFFICIENT_CREDITS, UNTRUSTED_URL.",
+    guardrail: "Never start the Social Machine. Never invent video URLs.",
+    humanStop: "Do not export every AutoClip project unless the operator asked (credits).",
+    auditEvents: ["crayo.run_autoclip", "crayo.ingest_to_library"],
+  },
+  {
     id: "performance_after_upload",
     name: "Fetch performance after upload",
     summary:
@@ -1193,6 +1237,12 @@ export function playbookById(id: string): HermesPlaybook | undefined {
   return HERMES_PLAYBOOKS.find((row) => row.id === id);
 }
 
+export const CRAYO_HERMES_PLAYBOOK_IDS = ["crayo_short_to_library", "crayo_autoclip_to_library"] as const;
+
+export function crayoHermesPlaybooks(): HermesPlaybook[] {
+  return CRAYO_HERMES_PLAYBOOK_IDS.map((id) => playbookById(id)).filter((row): row is HermesPlaybook => Boolean(row));
+}
+
 export function formatPlaybookBrief(policies: PlaybookPolicies, enabled: boolean): string {
   const policyBlock = [
     `auto_mark_payments: ${policies.autoMarkPayments}`,
@@ -1344,8 +1394,10 @@ Builtin clipping presets (Agent chips = these skill ids)
 - clipping-pipeline-nudge
 - clipping-30d-guarantee-check (never invents analytics)
 - clipping-agent-self-improve (pending_review only)
+- clipping-crayo-short (api.crayo.ai → Filebase library)
+- clipping-crayo-autoclip (import + AutoClip → library thumbs)
 
-Starting a preset in the Agent tab creates an AgentRun with presetSkillId. Hermes may skills.invoke the same ids.
+Starting a preset in the Agent tab creates an AgentRun with presetSkillId. Hermes may skills.invoke the same ids. Crayo MCP: crayo_get_account, crayo_run_short, crayo_run_autoclip, crayo_ingest_to_library.
 
 MCP skills
 - social.get_publisher_status — per-platform API configured/connected/eligible. tiktok includes auditStatus, postModeDefault, eligibleDirectPost, eligibleInbox, openId. instagram includes igUserId, accountType, eligibleReelsPublish. youtube includes channelId, channelTitle, eligible. Never returns tokens. X includes username when connected.

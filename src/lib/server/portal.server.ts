@@ -210,6 +210,18 @@ export async function writeClientWorkingOn(clientId: string, note: string | null
   await writeAppSetting(`PORTAL_NOTE:${clientId}`, (note ?? "").trim().slice(0, 280));
 }
 
+function portalCookieSecure(): boolean {
+  try {
+    const req = getRequest();
+    if (!req) return true;
+    if (req.url.startsWith("https:")) return true;
+    const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+    return proto === "https";
+  } catch {
+    return true;
+  }
+}
+
 function setSessionCookie(token: string, maxAgeSec: number): void {
   try {
     setCookie(COOKIE, token, {
@@ -217,7 +229,7 @@ function setSessionCookie(token: string, maxAgeSec: number): void {
       sameSite: "lax",
       path: "/",
       maxAge: maxAgeSec,
-      secure: false,
+      secure: portalCookieSecure(),
     });
   } catch {
     /* no request context */
@@ -865,22 +877,36 @@ export async function loadClientPublic(clientId: string): Promise<PortalClientPu
 }
 
 async function loadStage(clientId: string): Promise<{ stage: ProgressStage | null; updatedAt: string | null }> {
-  try {
-    const sql = await localSql();
-    const rows = await sql.query<Record<string, unknown>>(
-      "select stage, created_at from client_progress where client_id = $1 order by created_at desc limit 1",
-      [clientId],
-    );
-    const rec = rows[0];
-    if (!rec) return { stage: null, updatedAt: null };
-    const stage = String(rec.stage ?? "");
-    return {
-      stage: (PROGRESS_STAGES as readonly string[]).includes(stage) ? (stage as ProgressStage) : null,
-      updatedAt: rec.created_at == null ? null : String(rec.created_at),
-    };
-  } catch {
-    return { stage: null, updatedAt: null };
+  const admin = await getAgencyAdmin();
+  let rec: Record<string, unknown> | null = null;
+  if (admin) {
+    const { data, error } = await admin
+      .from("client_progress")
+      .select("stage, created_at")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) rec = data as Record<string, unknown>;
   }
+  if (!rec) {
+    try {
+      const sql = await localSql();
+      const rows = await sql.query<Record<string, unknown>>(
+        "select stage, created_at from client_progress where client_id = $1 order by created_at desc limit 1",
+        [clientId],
+      );
+      rec = rows[0] ?? null;
+    } catch {
+      return { stage: null, updatedAt: null };
+    }
+  }
+  if (!rec) return { stage: null, updatedAt: null };
+  const stage = String(rec.stage ?? "");
+  return {
+    stage: (PROGRESS_STAGES as readonly string[]).includes(stage) ? (stage as ProgressStage) : null,
+    updatedAt: rec.created_at == null ? null : String(rec.created_at),
+  };
 }
 
 export async function loadPortalHome(session: PortalSession): Promise<PortalHome> {
@@ -989,10 +1015,38 @@ export async function loadPortalApprovals(
     clientId: session.clientId,
     limit: 80,
   });
-  return items.filter(
+  const visible = items.filter(
     (row) =>
       row.clientId === session.clientId &&
       (PORTAL_CLIENT_FACING_TYPES as readonly string[]).includes(row.type),
+  );
+  const { getAsset } = await import("@/lib/server/library.server");
+  return Promise.all(
+    visible.map(async (row) => {
+      const mediaAssetId =
+        typeof row.payload.mediaAssetId === "string" ? row.payload.mediaAssetId : null;
+      if (!mediaAssetId) return row;
+      try {
+        const asset = await getAsset(mediaAssetId);
+        if (!asset || asset.clientId !== session.clientId) return row;
+        let mediaUrl = asset.previewUrl;
+        if (!mediaUrl && asset.currentVersionId) {
+          const { signVersionUrl } = await import("@/lib/server/library-storage.server");
+          mediaUrl = await signVersionUrl(asset.currentVersionId);
+        }
+        if (!mediaUrl) return row;
+        return {
+          ...row,
+          payload: {
+            ...row.payload,
+            mediaUrl,
+            kind: asset.kind,
+          },
+        };
+      } catch {
+        return row;
+      }
+    }),
   );
 }
 

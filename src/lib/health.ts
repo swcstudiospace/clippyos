@@ -99,17 +99,17 @@ export type HealthSlo = {
   renderP50Ms: number | null;
   renderP95Ms: number | null;
   awaitingApproval: number;
-  needsLogin: number;
+  needsLogin: number | null;
   stalled: number;
   queueDepth: number;
   failRate24h: number | null;
 };
 
 export type HealthCostGuards = {
-  daytona: CostGuard;
+  daytona: CostGuard | null;
   agentActive: number;
   agentMax: number;
-  automationPaused: boolean;
+  automationPaused: boolean | null;
   socialAutoStart: boolean;
   xai: {
     recent429: number;
@@ -306,7 +306,8 @@ export function mapPerformanceStatus(status: string): HealthJobStatus {
 
 export function mapLinearStatus(input: { attempts: number; lastError: string | null; nextAttemptAt: string }, nowMs: number): HealthJobStatus {
   if (input.attempts >= HEALTH_LINEAR_DLQ_ATTEMPTS && input.lastError) return "FAILED";
-  if (input.lastError && Date.parse(input.nextAttemptAt) > nowMs) return "FAILED";
+  if (input.lastError && Date.parse(input.nextAttemptAt) > nowMs) return "QUEUED";
+  if (input.lastError) return "RUNNING";
   return "QUEUED";
 }
 
@@ -322,7 +323,7 @@ export function isDlqJob(job: Pick<HealthJob, "type" | "status" | "attempts">): 
   if (job.type === "DISCORD_STAGE") return false;
   if (job.status !== "FAILED" && job.status !== "STALLED") return false;
   if (job.type === "RENDER") return job.attempts >= HEALTH_RENDER_DLQ_ATTEMPTS;
-  if (job.type === "LINEAR_SYNC") return job.attempts >= HEALTH_LINEAR_DLQ_ATTEMPTS || job.status === "FAILED";
+  if (job.type === "LINEAR_SYNC") return job.attempts >= HEALTH_LINEAR_DLQ_ATTEMPTS;
   return true;
 }
 
@@ -449,7 +450,7 @@ export type SloSample = {
 export function computeSlos(input: {
   samples: readonly SloSample[];
   awaitingApproval: number;
-  needsLogin: number;
+  needsLogin: number | null;
   nowMs: number;
 }): HealthSlo {
   const start24 = input.nowMs - 24 * 60 * 60 * 1000;
@@ -505,11 +506,17 @@ export function publisherTone(status: Pick<PublisherStatus, "connected" | "eligi
   return "not_configured";
 }
 
+export function grokBotHealthTone(connection: GrokBotConnectionState | null | undefined): HealthIntegrationTone {
+  if (connection === "online" || connection === "working") return "connected";
+  if (connection === "oauth_ready" || connection === "waiting" || connection === "key_only") return "degraded";
+  return "not_configured";
+}
+
 export function deriveHealthBanner(input: {
   integrations: readonly HealthIntegrationCard[];
   mcpConfigured: boolean;
   activeTokenCount: number;
-  needsLogin: number;
+  needsLogin: number | null;
   stalled: number;
 }): HealthBanner {
   const publishers = input.integrations.filter((row) => row.group === "publisher");
@@ -532,7 +539,7 @@ export function deriveHealthBanner(input: {
       title: `${input.stalled} job${input.stalled === 1 ? "" : "s"} stalled (no progress for 10+ minutes).`,
     };
   }
-  if (input.needsLogin > 0) {
+  if (input.needsLogin != null && input.needsLogin > 0) {
     return {
       severity: "warning",
       title: `${input.needsLogin} platform${input.needsLogin === 1 ? "" : "s"} need a login.`,

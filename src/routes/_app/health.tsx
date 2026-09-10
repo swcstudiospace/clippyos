@@ -124,12 +124,12 @@ function HealthPage() {
               <Skeleton className="h-24 w-full rounded-card" />
             ) : (
               <CostGuardStrip
-                daytonaRunning={data.costGuards.daytona.running}
-                daytonaMs={data.costGuards.daytona.durationMs}
-                recommendStop={data.costGuards.daytona.recommendStop}
+                daytonaRunning={data.costGuards.daytona?.running ?? false}
+                daytonaMs={data.costGuards.daytona?.durationMs ?? null}
+                recommendStop={data.costGuards.daytona?.recommendStop ?? false}
                 agentActive={data.costGuards.agentActive}
                 agentMax={data.costGuards.agentMax}
-                automationPaused={data.costGuards.automationPaused}
+                automationPaused={Boolean(data.costGuards.automationPaused)}
                 xaiMessage={data.costGuards.xai.message}
               />
             )}

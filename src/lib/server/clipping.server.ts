@@ -1,6 +1,5 @@
 /**
  * Clipping tab backend — cockpit APIs around the existing Social Machine VM
- * for crayo.io login and clip capture into the IPFS-pinned S3 library.
  *
  * Pure composition over the audited modules: daytona.server.ts owns the VM,
  * social-ops.server.ts owns operator actions and their audit trail,
@@ -11,7 +10,16 @@ import {
   getRunningSocialSandbox,
   getSocialMachineStatus,
   loadDaytonaConfig,
+  machineOpenUrlCommand,
 } from "@/lib/server/daytona.server";
+import { browserGetPageSummary } from "@/lib/server/browser-use.server";
+import { writeAppSetting, readAppSetting } from "@/lib/server/app-settings.server";
+import {
+  executeBrowserProcedure,
+  type ExecuteBrowserProcedureResult,
+} from "@/lib/server/browser-procedure.server";
+import { getSkillById, listPublicSkills } from "@/lib/server/skills.server";
+import { classifyCrayoPage, parseBrowserProcedureFromScripts } from "@/lib/clipping";
 import { handleSocialAction } from "@/lib/server/social-ops.server";
 import {
   ingestMachineDrop,
@@ -21,16 +29,29 @@ import {
 import { crayoAvailable } from "@/lib/server/crayo.server";
 import {
   isWindowsSnapshot,
-  openUrlCommand,
   type SocialMachineOs,
 } from "@/lib/social-machine";
 import type { SocialMachineStatus } from "@/lib/social";
 
 const DEFAULT_CRAYO_URL = "https://crayo.io";
+/** Last known crayo.io session state, persisted for the cockpit + v1 surface. */
+export const CRAYO_LOGIN_STATE_KEY = "clipping.crayo_login_state";
+export const CRAYO_LOGIN_CHECKED_AT_KEY = "clipping.crayo_login_checked_at";
+export type CrayoLoginStatus = { state: "unknown" | "logged_in" | "login_wall"; checkedAt: string | null };
+
+async function readCrayoLoginStatus(): Promise<CrayoLoginStatus> {
+  const [state, checkedAt] = await Promise.all([
+    readAppSetting(CRAYO_LOGIN_STATE_KEY),
+    readAppSetting(CRAYO_LOGIN_CHECKED_AT_KEY),
+  ]);
+  const parsed = state === "logged_in" || state === "login_wall" ? state : "unknown";
+  return { state: parsed, checkedAt: checkedAt?.trim() || null };
+}
 
 export type ClippingSnapshot = {
   machine: SocialMachineStatus;
   crayoReady: boolean;
+  crayoLogin: CrayoLoginStatus;
   proxyConfigured: boolean;
   desktopPreviewUrl: string | null;
   drops: MachineDrop[];
@@ -43,9 +64,11 @@ async function assembleSnapshot(): Promise<ClippingSnapshot> {
     loadDaytonaConfig(),
     listMachineDrops(),
   ]);
+  const crayoLogin = await readCrayoLoginStatus();
   return {
     machine,
     crayoReady,
+    crayoLogin,
     proxyConfigured: config?.proxyUrl != null,
     // Same availability rule as socialGetDesktopPreview (social.get_desktop_preview).
     desktopPreviewUrl:
@@ -56,16 +79,17 @@ async function assembleSnapshot(): Promise<ClippingSnapshot> {
 
 /**
  * Open an arbitrary URL in the machine browser via the same command path
- * social.open_platform uses (openPlatformInMachine -> executeCommand with
- * openUrlCommand), reusing the daytona running-sandbox helper instead of
- * copying its status/config/client chain. Throws MACHINE_STOPPED and
- * DAYTONA_UNAVAILABLE verbatim when the machine is not usable.
+ * social.open_platform uses (openPlatformInMachine -> executeCommand with the
+ * proxy-pinned machineOpenUrlCommand), reusing the daytona running-sandbox
+ * helper instead of copying its status/config/client chain. Throws
+ * MACHINE_STOPPED and DAYTONA_UNAVAILABLE verbatim when the machine is not
+ * usable — this never starts a stopped VM.
  */
 async function openUrlInMachine(url: string): Promise<void> {
   const { sandbox } = await getRunningSocialSandbox();
   // resolveOs's sandbox branch: windows snapshot -> windows, otherwise linux.
   const os: SocialMachineOs = isWindowsSnapshot(sandbox.snapshot) ? "windows" : "linux";
-  await sandbox.process.executeCommand(openUrlCommand(os, url), undefined, undefined, 20);
+  await sandbox.process.executeCommand(await machineOpenUrlCommand(os, url), undefined, undefined, 20);
 }
 
 export async function startClippingSession(
@@ -105,4 +129,67 @@ export async function ingestDrop(
   // dropId is the drop name (object key minus the machine-drop prefix);
   // ingestMachineDrop rebuilds the full key itself.
   return ingestMachineDrop({ actorId, dropName: dropId, clientId: null });
+}
+
+export type CrayoLoginCheck = { state: "unknown" | "logged_in" | "login_wall"; checkedAt: string };
+
+/**
+ * Guided-login status probe: open crayo.io on the ALREADY-RUNNING machine,
+ * read the page through vision, classify, and persist the result. Never starts
+ * the VM — getRunningSocialSandbox/openUrlInMachine throw MACHINE_STOPPED.
+ */
+export async function checkCrayoLogin(): Promise<CrayoLoginCheck> {
+  await openUrlInMachine(DEFAULT_CRAYO_URL);
+  // Let navigation settle before the vision pass (same pattern as
+  // transferAndOpenUpload's post-open delay).
+  const settled = Promise.withResolvers<void>();
+  setTimeout(settled.resolve, 2500);
+  await settled.promise;
+  const summary = await browserGetPageSummary();
+  const state = classifyCrayoPage(summary.summary);
+  const checkedAt = new Date().toISOString();
+  await writeAppSetting(CRAYO_LOGIN_STATE_KEY, state);
+  await writeAppSetting(CRAYO_LOGIN_CHECKED_AT_KEY, checkedAt);
+  return { state, checkedAt };
+}
+
+export type ClippingProcedureSkillSummary = {
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  stepCount: number;
+};
+
+/** Active skills whose scripts file map contains a parseable BrowserProcedure. */
+export async function listClippingProcedureSkills(): Promise<ClippingProcedureSkillSummary[]> {
+  const skills = await listPublicSkills();
+  const summaries: ClippingProcedureSkillSummary[] = [];
+  for (const skill of skills) {
+    const procedure = parseBrowserProcedureFromScripts(skill.scripts);
+    if (!procedure) continue;
+    summaries.push({
+      slug: skill.slug,
+      name: skill.name,
+      description: skill.description,
+      version: skill.version,
+      stepCount: procedure.steps.length,
+    });
+  }
+  return summaries;
+}
+
+export async function runClippingProcedureSkill(input: {
+  slug: string;
+  actorId: string;
+}): Promise<ExecuteBrowserProcedureResult> {
+  const skill = await getSkillById(input.slug);
+  if (!skill || !skill.enabled || skill.status !== "active") throw new Error("SKILL_MISSING");
+  const procedure = parseBrowserProcedureFromScripts(skill.scripts);
+  if (!procedure) throw new Error("NOT_A_BROWSER_PROCEDURE");
+  return executeBrowserProcedure(procedure, {
+    requestId: crypto.randomUUID(),
+    actor: { source: "api", keyId: null, label: input.actorId },
+    skillSlug: skill.slug,
+  });
 }

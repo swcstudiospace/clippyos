@@ -404,7 +404,7 @@ export async function internalSetClientStage(input: {
   actorId: string;
   skipApproval?: boolean;
 }): Promise<{ ok: true; id: string; awaitingApproval?: boolean }> {
-  if (!input.skipApproval && input.source === "MANUAL") {
+  if (!input.skipApproval && (input.source === "MANUAL" || input.source === "AGENT")) {
     try {
       const { readApprovalPolicy, createApprovalRequest } = await import("@/lib/server/approvals.server");
       const policy = await readApprovalPolicy();
@@ -553,7 +553,10 @@ export async function internalSaveClient(
     channel_thumbnail: data.channelThumbnail,
     channel_summary: sanitizeNullable(data.channelSummary),
     offers: sanitizeNullable(data.offers),
-    content_strategy: sanitizeNullable(data.contentStrategy),
+    // content_strategy is serialized JSON whose leaf strings are already
+    // sanitized (analyze.server.ts, editableTextToStrategy); sanitizeNullable
+    // here would HTML-escape the JSON's own quotes and corrupt the structure.
+    content_strategy: data.contentStrategy?.trim() ? data.contentStrategy : null,
     plan_type: data.planType,
     custom_plan_label:
       data.planType === "CUSTOM" ? sanitizeNullable(data.customPlanLabel) : null,

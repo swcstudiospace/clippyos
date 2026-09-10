@@ -3,8 +3,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = "http://127.0.0.1:8080";
-const email = `ops.lib.${Date.now()}@agency.test`;
-const password = "password123";
 const errors: string[] = [];
 interface LibraryNotes {
   sidebar?: boolean;
@@ -21,7 +19,9 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultTimeout(45000);
 page.on("pageerror", (err) => errors.push("pageerror:" + String(err)));
 page.on("console", (msg) => {
-  if (msg.type() === "error") errors.push("console:" + msg.text());
+  if (msg.type() === "error" && !msg.text().includes("grok-app-builder/extensions.js")) {
+    errors.push("console:" + msg.text());
+  }
 });
 
 async function dismissWelcome() {
@@ -32,13 +32,7 @@ async function dismissWelcome() {
 }
 
 try {
-  await page.goto(base, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /Need an account\? Create one/i }).click();
-  await page.getByLabel("Name").fill("Library QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 28000 });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.getByText("Checking access", { exact: false }).waitFor({ state: "hidden", timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(1000);
   await dismissWelcome();
@@ -48,7 +42,7 @@ try {
 
   await page.goto(base + "/library", { waitUntil: "domcontentloaded" });
   await page.getByText("Checking access", { exact: false }).waitFor({ state: "hidden", timeout: 25000 }).catch(() => {});
-  await page.getByRole("heading", { name: "Library" }).waitFor({ timeout: 25000 });
+  await page.getByRole("heading", { name: "Library", exact: true }).waitFor({ timeout: 25000 });
   await page.waitForTimeout(800);
   const libBody = await page.locator("body").innerText();
   notes.library = {
@@ -91,13 +85,14 @@ try {
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(base + "/library", { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { name: "Library" }).waitFor({ timeout: 25000 });
+  await page.getByRole("heading", { name: "Library", exact: true }).waitFor({ timeout: 25000 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: "/workspace/screenshots/qa-library-mobile.png", fullPage: true });
   notes.mobile = true;
 } catch (error) {
   notes.fatal = String(error);
   await page.screenshot({ path: "/workspace/screenshots/qa-library-error.png", fullPage: true }).catch(() => {});
+  process.exitCode = 1;
 } finally {
   await browser.close();
 }

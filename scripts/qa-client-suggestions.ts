@@ -4,8 +4,6 @@ import { mkdirSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
-const email = `suggest.${Date.now()}@example.com`;
-const password = "password123";
 const clientName = `Northstar ${Date.now().toString().slice(-6)}`;
 
 const browser = await chromium.launch({ headless: true });
@@ -36,13 +34,7 @@ async function shot(name: string) {
 }
 
 try {
-  await page.goto(base, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Suggestions QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 25000 });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
 
   await page.getByRole("link", { name: "Clients" }).click();
   await page.waitForURL("**/clients");

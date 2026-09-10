@@ -49,6 +49,8 @@ function SocialPage() {
       SOCIAL_PLATFORMS.includes(item as SocialPlatform),
     );
   }, [search.platform, search.platforms]);
+  const initialMode =
+    search.mode === "publish" || search.mode === "draft" ? search.mode : undefined;
   const [uploadOpen, setUploadOpen] = useState(Boolean(mediaAssetId));
   const grokQuery = useQuery({
     queryKey: GROK_BOT_QUERY_KEY,
@@ -112,14 +114,20 @@ function SocialPage() {
       mode: "draft" | "publish";
       youtube?: YoutubeJobOptions;
     }) => queueSocialUpload({ data: input }),
-    onSuccess: (data) => {
+    onSuccess: (data, input) => {
       queryClient.setQueryData(SOCIAL_QUERY_KEY, data);
       setUploadOpen(false);
-      const waiting = data.jobs.some((job) => job.status === "awaiting_approval");
+      if (input.mode === "draft") {
+        toast.message("Upload queued as draft.");
+        return;
+      }
+      const created = data.jobs
+        .filter((job) => job.clientId === input.clientId && job.mode === "publish")
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
       toast.message(
-        waiting
+        created?.status === "awaiting_approval"
           ? "Waiting for approval before this goes live."
-          : "Upload queued — API posts publish now; Computer Use waits in the desktop.",
+          : "API publish started.",
       );
     },
     onError: (error) => toast.error(userFacingErrorMessage(error)),
@@ -239,6 +247,7 @@ function SocialPage() {
           pending={upload.isPending}
           initialMediaAssetId={mediaAssetId}
           initialPlatforms={initialPlatforms}
+          initialMode={initialMode}
           onUpload={(input) => upload.mutate(input)}
         />
       </div>
@@ -284,6 +293,8 @@ function SocialPage() {
               grokBotConnected={Boolean(grokQuery.data?.hasKey && grokQuery.data.enabled)}
               pending={upload.isPending}
               initialMediaAssetId={mediaAssetId}
+              initialPlatforms={initialPlatforms}
+              initialMode={initialMode}
               onUpload={(input) => upload.mutate(input)}
             />
           </div>

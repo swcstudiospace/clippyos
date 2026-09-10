@@ -1,7 +1,8 @@
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.ts";
-import { GROK_PROVIDERS } from "./providers";
+import { GROK_PROVIDERS } from "./providers.ts";
+import { assignOAuthUrl, oauthNavigationMode, readStandaloneDisplay } from "./oauth-navigation.ts";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -35,7 +36,8 @@ export const authClient = createAuthClient({
  * with the key removed, sign-in is real in preview (baked preview client) and
  * when deployed (injected per-app client).
  */
-export const authEnabled = import.meta.env.VITE_AUTH_ENABLED !== "false";
+export const authEnabled =
+  typeof import.meta.env === "undefined" || import.meta.env.VITE_AUTH_ENABLED !== "false";
 
 /** The upstream providers to render sign-in buttons for. */
 export { GROK_PROVIDERS };
@@ -91,6 +93,38 @@ function inLivePreview(): boolean {
 type PopupMessage = { source: "grok-auth-popup"; token: string | null; error?: string };
 
 /**
+ * Better Auth social/oauth2 calls can resolve with neither `error` nor `data.url`
+ * (empty 404 on an unconfigured provider). Returning then looks like a dead form.
+ */
+export function unconfiguredSocialMessage(providerId: string): string {
+  if (providerId === "twitter" || providerId === "grok-x") {
+    return "X sign-in is not configured on this host.";
+  }
+  if (providerId === "google" || providerId === "grok-google") {
+    return "Google sign-in is not configured on this host.";
+  }
+  return "Sign-in failed";
+}
+
+export function requireOAuthRedirectUrl(
+  providerId: string,
+  data: { url?: string | null } | null | undefined,
+  error?: { message?: string | null } | null,
+): string {
+  if (error) {
+    const message = error.message?.trim() || "Sign-in failed";
+    if (/provider not found/i.test(message)) {
+      throw new Error(unconfiguredSocialMessage(providerId));
+    }
+    throw new Error(message);
+  }
+  if (!data?.url) {
+    throw new Error(unconfiguredSocialMessage(providerId));
+  }
+  return data.url;
+}
+
+/**
  * Start sign-in with one upstream provider (`providerId` from `GROK_PROVIDERS`),
  * federating through the Grok auth broker.
  *
@@ -111,10 +145,18 @@ export async function signIn(
   const callbackURL = opts.callbackURL ?? "/";
   const errorCallbackURL = opts.errorCallbackURL ?? "/";
 
-  // Open the popup SYNCHRONOUSLY on the user gesture — before any await
-  // (including signOut). Awaiting first drops user-gesture privilege in some
-  // browsers when the opener is a cross-origin live-preview iframe.
-  const popup = inLivePreview() ? openSignInPopup(providerId) : null;
+  // Open any extra window SYNCHRONOUSLY on the user gesture — before any await
+  // (including signOut). Awaiting first drops user-gesture privilege.
+  const navMode =
+    typeof window === "undefined"
+      ? "same-window"
+      : oauthNavigationMode({
+          livePreview: inLivePreview(),
+          standalone: readStandaloneDisplay(window),
+          userAgent: window.navigator.userAgent,
+        });
+  const popup = navMode === "popup-preview" ? openSignInPopup(providerId) : null;
+  const oauthTab = navMode === "browser-tab" ? openBrowserOAuthTab() : null;
 
   // Clear any prior session so switching providers actually switches identity.
   // Bounded because the popup is already open — a request that never settles
@@ -133,9 +175,6 @@ export async function signIn(
     const token = await waitForPopupToken(popup);
     if (!token) throw new Error("Sign-in was cancelled or failed");
     setBearerToken(token);
-    // Refresh the client session store with the bearer attached (onRequest).
-    // Avoid a full iframe reload when we're already on the destination — that
-    // reload was the slow "still loading after the popup closed" feeling.
     try {
       await authClient.getSession();
     } catch {
@@ -151,13 +190,49 @@ export async function signIn(
     return;
   }
 
-  const { data, error } = await authClient.signIn.oauth2({
-    providerId,
-    callbackURL,
-    errorCallbackURL,
-  });
-  if (error) throw new Error(error.message ?? "Sign-in failed");
-  if (data?.url) window.location.href = data.url;
+  try {
+    if (navMode === "browser-tab" && (!oauthTab || oauthTab.closed)) {
+      throw new Error("Allow pop-ups so Google sign-in can stay in this browser instead of the system Google app.");
+    }
+    if (providerId === "google" || providerId === "twitter") {
+      const { data, error } = await authClient.signIn.social({
+        provider: providerId,
+        callbackURL,
+        errorCallbackURL,
+        disableRedirect: true,
+      });
+      navigateToAuthorizeUrl(requireOAuthRedirectUrl(providerId, data, error), oauthTab);
+      return;
+    }
+
+    const { data, error } = await authClient.signIn.oauth2({
+      providerId,
+      callbackURL,
+      errorCallbackURL,
+      disableRedirect: true,
+    });
+    navigateToAuthorizeUrl(requireOAuthRedirectUrl(providerId, data, error), oauthTab);
+  } catch (error) {
+    if (oauthTab && !oauthTab.closed) oauthTab.close();
+    throw error;
+  }
+}
+
+function openBrowserOAuthTab(): Window | null {
+  return window.open("about:blank", `clippy-oauth-${Date.now()}`);
+}
+
+function navigateToAuthorizeUrl(url: string, tab: Window | null): void {
+  if (tab && !tab.closed) {
+    assignOAuthUrl(tab, url);
+    try {
+      tab.focus();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  window.location.assign(url);
 }
 
 /**

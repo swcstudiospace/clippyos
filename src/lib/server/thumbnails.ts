@@ -37,6 +37,8 @@ export type ThumbnailSendResult = {
   pendingImageId: string | null;
   fallback: boolean;
   imageFallback: boolean;
+  /** Why the image step failed, when it did. Safe to show an operator. */
+  imageError?: string | null;
 };
 
 function newId(): string {
@@ -604,12 +606,16 @@ export const generateThumbnailImageFn = createServerFn({ method: "POST" })
     if (!message) throw new Error("SESSION_MISSING");
     const session = await readSession(message.sessionId);
     if (!session) throw new Error("SESSION_MISSING");
-    const { generateThumbnailImage, imageGenAvailable } = await import(
+    const { generateThumbnailImage, imageGenAvailable, imageErrorMessage } = await import(
       "@/lib/server/higgsfield.server"
     );
     const imageReady = await imageGenAvailable();
     if (!imageReady) {
-      const meta: ThumbnailMessageMeta = { ...(message.metadata ?? {}), imageFailed: true };
+      const meta: ThumbnailMessageMeta = {
+        ...(message.metadata ?? {}),
+        imageFailed: true,
+        imageError: "No image provider is connected (Higgsfield or xAI key).",
+      };
       await patchMessage(message.id, { metadata: meta, updated_at: nowIso() });
       return {
         ok: false,
@@ -618,6 +624,7 @@ export const generateThumbnailImageFn = createServerFn({ method: "POST" })
         pendingImageId: message.id,
         fallback: false,
         imageFallback: true,
+        imageError: meta.imageError ?? null,
       };
     }
     const basePrompt =
@@ -627,10 +634,16 @@ export const generateThumbnailImageFn = createServerFn({ method: "POST" })
     const prompt = data.variationHint ? `${basePrompt}\n${data.variationHint}` : basePrompt;
     const result = await generateThumbnailImage(prompt);
     const stamp = nowIso();
+    const imageError = result.ok
+      ? isTrustedImageUrl(result.url)
+        ? null
+        : "The provider returned an image URL that is not a public https link."
+      : result.detail || imageErrorMessage(result.error);
     if (result.ok && isTrustedImageUrl(result.url)) {
       const meta: ThumbnailMessageMeta = {
         ...(message.metadata ?? {}),
         imageFailed: undefined,
+        imageError: undefined,
         imagePrompt: basePrompt,
       };
       await patchMessage(message.id, {
@@ -639,17 +652,24 @@ export const generateThumbnailImageFn = createServerFn({ method: "POST" })
         updated_at: stamp,
       });
     } else {
-      const meta: ThumbnailMessageMeta = { ...(message.metadata ?? {}), imageFailed: true };
+      console.error("[thumbnails-image] failed", message.id, imageError);
+      const meta: ThumbnailMessageMeta = {
+        ...(message.metadata ?? {}),
+        imageFailed: true,
+        imageError: imageError ?? undefined,
+      };
       await patchMessage(message.id, { metadata: meta, updated_at: stamp });
     }
     await patchSession(session.id, { updated_at: stamp });
+    const stored = result.ok && !imageError;
     return {
-      ok: result.ok,
+      ok: stored,
       session: await decorate(session),
       messages: await readMessages(session.id),
-      pendingImageId: result.ok ? null : message.id,
+      pendingImageId: stored ? null : message.id,
       fallback: false,
       imageFallback: !result.ok && result.error === "missing",
+      imageError,
     };
   });
 

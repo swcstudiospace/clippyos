@@ -5,8 +5,10 @@ import { requireAdmin, requireSecretEditor } from "@/lib/server/access";
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import {
   DEFAULT_LLM_ROUTER,
+  DEFAULT_OPENAI_COMPAT_BASE,
   LLM_MODELS,
   LLM_PROVIDER_IDS,
+  modelsForProvider,
   type LlmFeature,
   type LlmProviderId,
   type LlmProviderStatus,
@@ -69,13 +71,17 @@ function last4(value: string | null): string | null {
 }
 
 export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
-  const [router, status, xaiKey, compatKey] = await Promise.all([
+  const [router, status, xaiKey, compatKey, compatBase, anthropicKey] = await Promise.all([
     readLlmRouter(),
     llmStatus(),
     readAppSetting("XAI_API_KEY"),
     readAppSetting("AI_API_KEY"),
+    readAppSetting("OPENAI_COMPAT_BASE"),
+    readAppSetting("ANTHROPIC_API_KEY"),
   ]);
-  const models = LLM_MODELS.map((row) => row.id);
+  const xaiModels = modelsForProvider("xai-api").map((row) => row.id);
+  const compatModels = modelsForProvider("openai-compat").map((row) => row.id);
+  const anthropicModels = modelsForProvider("anthropic-api").map((row) => row.id);
   const providers: Record<LlmProviderId, LlmProviderStatus> = {
     "xai-oauth": {
       id: "xai-oauth",
@@ -83,7 +89,7 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
       health: status.source === "oauth" ? "connected" : "not_configured",
       last4: null,
       email: status.email,
-      models,
+      models: xaiModels,
     },
     "xai-api": {
       id: "xai-api",
@@ -96,7 +102,7 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
             : "not_configured",
       last4: last4(xaiKey) ?? (status.source === "platform" ? "plat" : null),
       email: null,
-      models,
+      models: xaiModels,
     },
     "openai-compat": {
       id: "openai-compat",
@@ -104,7 +110,16 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
       health: compatKey?.trim() ? "connected" : "not_configured",
       last4: last4(compatKey),
       email: null,
-      models: [],
+      models: compatModels,
+      baseUrl: compatBase?.trim().replace(/\/+$/, "") || DEFAULT_OPENAI_COMPAT_BASE,
+    },
+    "anthropic-api": {
+      id: "anthropic-api",
+      configured: Boolean(anthropicKey?.trim()),
+      health: anthropicKey?.trim() ? "connected" : "not_configured",
+      last4: last4(anthropicKey),
+      email: null,
+      models: anthropicModels,
     },
   };
   return { router, providers, catalog: LLM_MODELS, rateLimit: xaiRateLimitSnapshot() };
@@ -146,11 +161,17 @@ export async function routedChat(input: {
     const code = error instanceof Error ? error.message : "";
     if (code === "AI_TIER_GATED") throw error;
     const fallback = router.fallbackProvider;
+    // Upstream failure of the preferred provider (no key, rate-limited, or a non-OK / timed-out
+    // response) hands the same turn to the fallback provider once. Tier gating never falls back.
     if (
       fallback &&
       fallback !== preferred &&
-      (code === "AI_UNAVAILABLE" || code === "AI_RATE_LIMIT")
+      (code === "AI_UNAVAILABLE" ||
+        code === "AI_RATE_LIMIT" ||
+        code === "GENERATION_FAILED" ||
+        (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")))
     ) {
+      console.error("[llm] falling back", preferred, "→", fallback, "after", code || (error as Error).name);
       const result = await attempt(fallback);
       return { ...result, provider: fallback, model };
     }

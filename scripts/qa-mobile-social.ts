@@ -4,8 +4,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
-const email = `ops.mobile.${Date.now()}@agency.test`;
-const password = "password123";
 const notes: Array<string | Record<string, unknown>> = [];
 const errors: string[] = [];
 
@@ -33,16 +31,10 @@ async function dismissWelcome() {
 }
 
 try {
-  await page.goto(base, { waitUntil: "domcontentloaded" });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await shot("qa-mobile-login.png");
   notes.push({ loginOverflow: await overflow() });
 
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Mobile QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 28000 });
   await page.waitForTimeout(600);
   await dismissWelcome();
 

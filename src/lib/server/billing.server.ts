@@ -269,20 +269,22 @@ export async function writeProductOnboarding(
   return state;
 }
 
-async function alreadyProcessed(eventId: string): Promise<boolean> {
+async function readProcessedEventIds(): Promise<string[]> {
   const raw = await readAppSetting(EVENTS_KEY);
-  let ids: string[] = [];
-  if (raw) {
-    try {
-      ids = JSON.parse(raw) as string[];
-    } catch {
-      ids = [];
-    }
+  if (!raw) return [];
+  try {
+    const ids = JSON.parse(raw) as string[];
+    return Array.isArray(ids) ? ids : [];
+  } catch {
+    return [];
   }
-  if (ids.includes(eventId)) return true;
+}
+
+async function recordProcessedEvent(eventId: string): Promise<void> {
+  const ids = await readProcessedEventIds();
+  if (ids.includes(eventId)) return;
   ids.unshift(eventId);
   await writeAppSetting(EVENTS_KEY, JSON.stringify(ids.slice(0, 200)));
-  return false;
 }
 
 
@@ -305,20 +307,46 @@ export async function handleWhopWebhook(
   eventName: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  if (eventId && (await alreadyProcessed(eventId))) return;
+  if (eventId && (await readProcessedEventIds()).includes(eventId)) return;
   const config = await loadWhopConfig();
   const application = mapWhopEvent(
     eventName,
     data,
     config?.planIds ?? { starter: null, pro: null, agency: null },
   );
+  const current = await readSubscription();
+  const incomingMem =
+    typeof application.patch.externalSubscriptionId === "string" &&
+    application.patch.externalSubscriptionId.startsWith("mem_")
+      ? application.patch.externalSubscriptionId
+      : null;
+  if (!incomingMem) delete application.patch.externalSubscriptionId;
+  const isMembershipEvent = eventName.toLowerCase().includes("membership");
+  if (
+    isMembershipEvent &&
+    typeof current.externalSubscriptionId === "string" &&
+    current.externalSubscriptionId.startsWith("mem_") &&
+    incomingMem &&
+    incomingMem !== current.externalSubscriptionId
+  ) {
+    return;
+  }
+  const unmappedPlan = Boolean(application.patch.priceId) && !application.patch.planKey;
+  if (
+    unmappedPlan &&
+    (application.patch.status === "active" ||
+      application.patch.status === "canceled" ||
+      application.patch.status === "in_trial")
+  ) {
+    delete application.patch.status;
+  }
   // Whop does not guarantee delivery order: a late payment.*/invoice.* event
   // must not resurrect a workspace that membership.deactivated canceled.
-  const current = await readSubscription();
   if (application.patch.status && shouldIgnoreStatusFlip(current.status, eventName)) {
     delete application.patch.status;
   }
   await applyWhopApplication(application);
+  if (eventId) await recordProcessedEvent(eventId);
 }
 
 
@@ -411,8 +439,6 @@ export async function startHostedCheckout(input: {
     redirectUrl: `${origin}/billing?checkout=success`,
   });
   await writeSubscription({
-    planKey: input.planKey,
-    priceId: session.planId ?? planId,
     externalCheckoutId: session.id,
   });
   void import("@/lib/server/safety-hooks.server")
@@ -430,9 +456,10 @@ export async function startHostedCheckout(input: {
 export async function requestCancelAtPeriodEnd(): Promise<WorkspaceSubscription> {
   const config = await loadWhopConfig();
   const current = await readSubscription();
-  if (config && current.externalSubscriptionId) {
-    await cancelMembershipAtPeriodEnd(config, current.externalSubscriptionId);
-  }
+  if (!current.externalSubscriptionId) throw new Error("WHOP_CANCEL_FAILED");
+  if (!config) throw new Error("WHOP_UNAVAILABLE");
+  const canceled = await cancelMembershipAtPeriodEnd(config, current.externalSubscriptionId);
+  if (!canceled) throw new Error("WHOP_CANCEL_FAILED");
   return writeSubscription({ cancelAtPeriodEnd: true });
 }
 

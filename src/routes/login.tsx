@@ -1,6 +1,10 @@
 import { createFileRoute, Link, Navigate, useRouterState } from "@tanstack/react-router";
 import { useState, type FormEvent, useEffect } from "react";
-import { GROK_PROVIDERS, authClient, authEnabled, isLivePreviewHost, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { authClient, authEnabled, setPreviewSessionToken, signIn } from "@/lib/auth/client";
+import { loginSocialProviders } from "@/lib/auth/providers";
+import { loadSignInFlags } from "@/lib/auth/sign-in-flags";
+import { isReservedOwnerEmail } from "@/lib/auth/email-password";
+import { publicSignUpEnabled } from "@/lib/auth/public-signup";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { mcpOAuthLoginRedirect } from "@/lib/mcp-oauth";
@@ -28,6 +32,7 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/login")({
+  loader: () => loadSignInFlags(),
   component: LoginPage,
 });
 
@@ -62,7 +67,13 @@ function LoginForm() {
   const wantsAccess = searchStr.includes("intent=access");
   const oauthRedirect = mcpOAuthLoginRedirect(searchStr);
   const afterSignIn = oauthRedirect ?? (wantsAccess ? "/billing" : "/home");
-  const [mode, setMode] = useState<"signin" | "signup" | "forgot">(wantsAccess ? "signup" : "signin");
+  const flags = Route.useLoaderData() ?? {
+    googleConfigured: false,
+    twitterConfigured: false,
+    brokerConfigured: false,
+  };
+  const oauthProviders = loginSocialProviders(flags);
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -115,6 +126,18 @@ function LoginForm() {
       setFormError("Enter a valid email and a password of at least 8 characters.");
       return;
     }
+    if (mode === "signup") {
+      if (!publicSignUpEnabled) {
+        setFormError(
+          "This workspace does not accept public sign-up. Use Super Admin, an invited login, or a paid seat.",
+        );
+        return;
+      }
+      if (isReservedOwnerEmail(email)) {
+        setFormError("Owner accounts cannot self-register.");
+        return;
+      }
+    }
     setBusy(true);
     try {
       if (mode === "signup") {
@@ -129,7 +152,7 @@ function LoginForm() {
           email: email.trim(),
           password,
         });
-        if (error) throw new Error("Could not sign in");
+        if (error) throw new Error(error.message?.trim() || "Could not sign in");
       }
       window.location.assign(oauthRedirect ?? (mode === "signup" || wantsAccess ? "/billing" : "/home"));
     } catch (error) {
@@ -150,7 +173,11 @@ function LoginForm() {
     setSaBusy(true);
     try {
       const result = await unlockSuperAdmin({ data: { password: saPassword } });
-      if (isLivePreviewHost()) setPreviewSessionToken(result.token);
+      setPreviewSessionToken(result.token);
+      const session = await authClient.getSession();
+      if (!session.data?.user) {
+        throw new Error("Could not start session. Try again.");
+      }
       window.location.assign("/home");
     } catch (error) {
       captureClientError(error, { source: "super-admin" });
@@ -184,14 +211,15 @@ function LoginForm() {
           </div>
         </div>
         <p className="relative z-[1] mb-5 text-body text-muted">
-          {mode === "signup" || wantsAccess
+          {mode === "signup"
             ? "Create your workspace, then choose a plan. ClippyOS is subscription-gated — Request a Demo on the landing if you want a walkthrough first."
-            : "Sign in to the private OS. New teams subscribe on the next step."}
+            : "Sign in with an invited login, Super Admin, or Google/X on an existing account."}
         </p>
 
         {authEnabled ? (
+          oauthProviders.length > 0 ? (
           <div className="relative z-[1] flex flex-col gap-2">
-            {GROK_PROVIDERS.map((provider) => (
+            {oauthProviders.map((provider) => (
               <Button
                 key={provider.providerId}
                 variant="secondary"
@@ -206,6 +234,7 @@ function LoginForm() {
               </Button>
             ))}
           </div>
+          ) : null
         ) : (
           <p className="relative z-[1] text-body text-muted">Sign-in is disabled.</p>
         )}
@@ -216,7 +245,11 @@ function LoginForm() {
           <Separator className="flex-1" />
         </div>
 
-        <form onSubmit={(event) => void onSubmit(event)} className="relative z-[1] flex flex-col gap-3">
+        <form
+          onSubmit={(event) => void onSubmit(event)}
+          className="relative z-[1] flex flex-col gap-3"
+          aria-describedby={formError ? "login-error" : undefined}
+        >
           {mode === "signup" ? (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="name">Name</Label>
@@ -263,7 +296,7 @@ function LoginForm() {
             </p>
           )}
           {formError ? (
-            <p className="text-caption text-danger" role="alert">
+            <p id="login-error" className="text-caption text-danger" role="alert">
               {formError}
             </p>
           ) : null}
@@ -293,6 +326,7 @@ function LoginForm() {
           </button>
         ) : null}
 
+        {publicSignUpEnabled ? (
         <button
           type="button"
           className="relative z-[1] mt-4 w-full text-center text-caption text-muted underline-offset-4 hover:text-fg hover:underline"
@@ -305,6 +339,7 @@ function LoginForm() {
             ? "Already have an account? Sign in"
             : "Need an account? Create one"}
         </button>
+        ) : null}
         <p className="relative z-[1] mt-3 text-center text-caption text-muted">
           Brand stakeholder?{" "}
           <Link to="/portal/login" className="text-fg underline-offset-4 hover:underline">
@@ -342,7 +377,11 @@ function LoginForm() {
             Enter the Super Admin password from Settings → Team access. The
             password is never stored in the browser.
           </DialogDescription>
-          <form className="mt-4 flex flex-col gap-3" onSubmit={(event) => void onSuperAdmin(event)}>
+          <form
+            className="mt-4 flex flex-col gap-3"
+            onSubmit={(event) => void onSuperAdmin(event)}
+            aria-describedby={saError ? "sa-error" : undefined}
+          >
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sa-login-password">Password</Label>
               <Input
@@ -356,7 +395,7 @@ function LoginForm() {
               />
             </div>
             {saError ? (
-              <p className="text-caption text-danger" role="alert">
+              <p id="sa-error" className="text-caption text-danger" role="alert">
                 {saError}
               </p>
             ) : null}

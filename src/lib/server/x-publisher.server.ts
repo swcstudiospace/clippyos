@@ -149,8 +149,15 @@ type XMedia = {
 
 function isTrustedXMediaUrl(url: string): boolean {
   if (!url) return false;
+  if (url.startsWith("/api/library/file")) return true;
   if (url.startsWith("data:")) {
     return isTrustedImageUrl(url) || /^data:(video|image)\//i.test(url);
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/api/library/file") return true;
+  } catch {
+    /* */
   }
   return isTrustedImageUrl(url);
 }

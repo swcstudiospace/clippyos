@@ -35,6 +35,7 @@ export function UploadForm({
   onUpload,
   initialMediaAssetId,
   initialPlatforms,
+  initialMode,
 }: {
   clients: Array<{ id: string; name: string }>;
   assets: SocialAsset[];
@@ -57,13 +58,17 @@ export function UploadForm({
   }) => void;
   initialMediaAssetId?: string;
   initialPlatforms?: SocialPlatform[];
+  initialMode?: "draft" | "publish";
 }) {
-  const [clientId, setClientId] = useState(clients[0]?.id ?? "");
+  const linkedAsset = initialMediaAssetId
+    ? assets.find((row) => row.id === initialMediaAssetId)
+    : undefined;
+  const [clientId, setClientId] = useState(linkedAsset?.clientId ?? clients[0]?.id ?? "");
   const [assetId, setAssetId] = useState(initialMediaAssetId ?? "");
   const [platforms, setPlatforms] = useState<SocialPlatform[]>(initialPlatforms ?? []);
   const [caption, setCaption] = useState("");
   const [preferredRail, setPreferredRail] = useState<SocialPreferredRail>("AUTO");
-  const [mode, setMode] = useState<"draft" | "publish">("draft");
+  const [mode, setMode] = useState<"draft" | "publish">(initialMode ?? "draft");
   const [ytTitle, setYtTitle] = useState("");
   const [ytDescription, setYtDescription] = useState("");
   const [ytTags, setYtTags] = useState("");
@@ -127,7 +132,12 @@ export function UploadForm({
     onUpload({
       clientId,
       assetId: assetId || undefined,
-      mediaAssetId: selected?.kind === "library" ? assetId : undefined,
+      mediaAssetId:
+        selected?.kind === "library"
+          ? assetId
+          : !selected && initialMediaAssetId
+            ? initialMediaAssetId
+            : undefined,
       platforms,
       caption: caption || selected?.caption || "",
       mediaUrl: selected?.mediaUrl ?? null,

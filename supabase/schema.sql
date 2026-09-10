@@ -276,37 +276,34 @@ create table if not exists app_profiles (
   updated_at  timestamptz not null default now()
 );
 
-do $$
-declare
-  t text;
-begin
-  foreach t in array array[
-    'clients',
-    'payments',
-    'team_members',
-    'client_progress',
-    'analytics_snapshots',
-    'ideation_threads',
-    'ideation_messages',
-    'thumbnail_sessions',
-    'thumbnail_messages',
-    'knowledge_entries',
-    'leads',
-    'app_settings',
-    'app_profiles',
-    'api_keys',
-    'agent_audit_log',
-    'webhook_deliveries',
-    'agent_jobs',
-    'agent_idempotency',
-    'social_posts',
-    'skills',
-    'skill_runs'
-  ]
-  loop
-    execute format('alter table public.%I enable row level security', t);
-  end loop;
-end $$;
+alter table if exists app_profiles
+  add column if not exists inherit_workspace_apis boolean not null default false;
+
+create table if not exists operator_secrets (
+  user_id     text not null,
+  key         text not null,
+  value       text not null,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  primary key (user_id, key)
+);
+
+create index if not exists operator_secrets_user_idx on operator_secrets (user_id);
+
+alter table if exists public.clients enable row level security;
+alter table if exists public.payments enable row level security;
+alter table if exists public.team_members enable row level security;
+alter table if exists public.client_progress enable row level security;
+alter table if exists public.analytics_snapshots enable row level security;
+alter table if exists public.ideation_threads enable row level security;
+alter table if exists public.ideation_messages enable row level security;
+alter table if exists public.thumbnail_sessions enable row level security;
+alter table if exists public.thumbnail_messages enable row level security;
+alter table if exists public.knowledge_entries enable row level security;
+alter table if exists public.leads enable row level security;
+alter table if exists public.app_settings enable row level security;
+alter table if exists public.app_profiles enable row level security;
+alter table if exists public.operator_secrets enable row level security;
 
 alter table if exists public.clients add column if not exists suggested_titles text;
 alter table if exists public.clients add column if not exists suggested_ideas text;
@@ -334,6 +331,8 @@ create table if not exists api_keys (
 
 
 create unique index if not exists api_keys_hash_uidx on api_keys (key_hash);
+alter table if exists public.api_keys enable row level security;
+
 
 create table if not exists agent_audit_log (
   id           text primary key,
@@ -354,6 +353,8 @@ create table if not exists agent_audit_log (
 
 create index if not exists agent_audit_log_created_idx on agent_audit_log (created_at desc);
 create index if not exists agent_audit_log_playbook_idx on agent_audit_log (playbook_id);
+alter table if exists public.agent_audit_log enable row level security;
+
 
 create table if not exists webhook_deliveries (
   id              text primary key,
@@ -367,6 +368,8 @@ create table if not exists webhook_deliveries (
   last_attempt_at timestamptz,
   created_at      timestamptz not null default now()
 );
+alter table if exists public.webhook_deliveries enable row level security;
+
 
 create table if not exists agent_jobs (
   id          text primary key,
@@ -378,12 +381,16 @@ create table if not exists agent_jobs (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+alter table if exists public.agent_jobs enable row level security;
+
 
 create table if not exists agent_idempotency (
   id          text primary key,
   body        text not null,
   created_at  timestamptz not null default now()
 );
+alter table if exists public.agent_idempotency enable row level security;
+
 
 create table if not exists social_posts (
   id               text primary key,
@@ -465,6 +472,8 @@ alter table social_jobs add column if not exists triggered_by_team_member_id tex
 create index if not exists social_jobs_client_idx on social_jobs (client_id);
 create index if not exists social_jobs_created_idx on social_jobs (created_at desc);
 
+alter table if exists public.social_upload_sessions enable row level security;
+alter table if exists public.social_jobs enable row level security;
 alter table if exists public.social_posts enable row level security;
 
 create table if not exists skills (
@@ -799,6 +808,66 @@ alter table knowledge_entries add constraint knowledge_entries_scope_check
     'CLIENT_CLIPPING'
   ));
 
+create table if not exists stream_sources (
+  id               text primary key,
+  client_id        text not null,
+  platform         text not null default 'TWITCH',
+  broadcaster_id   text,
+  login            text,
+  display_name     text,
+  status           text not null default 'ACTIVE',
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  created_by       text
+);
+
+create index if not exists stream_sources_client_idx on stream_sources (client_id, platform);
+
+create table if not exists stream_vods (
+  id               text primary key,
+  source_id        text not null,
+  client_id        text not null,
+  external_id      text not null,
+  title            text not null,
+  url              text,
+  thumbnail_url    text,
+  duration_sec     integer not null default 0,
+  view_count       integer,
+  published_at     timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create unique index if not exists stream_vods_external_idx on stream_vods (external_id);
+create index if not exists stream_vods_client_idx on stream_vods (client_id, published_at desc);
+
+create table if not exists stream_clips (
+  id               text primary key,
+  vod_id           text not null,
+  client_id        text not null,
+  external_id      text,
+  url              text,
+  edit_url         text,
+  thumbnail_url    text,
+  title            text,
+  caption          text,
+  notes            text,
+  vod_offset_sec   integer not null default 0,
+  duration_sec     integer not null default 30,
+  status           text not null default 'PROCESSING',
+  error            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  created_by       text
+);
+
+create index if not exists stream_clips_vod_idx on stream_clips (vod_id, created_at desc);
+create index if not exists stream_clips_client_idx on stream_clips (client_id, created_at desc);
+
+alter table if exists public.stream_sources enable row level security;
+alter table if exists public.stream_vods enable row level security;
+alter table if exists public.stream_clips enable row level security;
+
 create table if not exists post_performance (
   id                      text primary key,
   workspace_id            text not null default 'default',
@@ -1048,10 +1117,6 @@ create unique index if not exists mcp_oauth_tokens_access_uidx on mcp_oauth_toke
 create unique index if not exists mcp_oauth_tokens_refresh_uidx on mcp_oauth_tokens (refresh_token_hash) where refresh_token_hash is not null;
 create index if not exists mcp_oauth_tokens_client_idx on mcp_oauth_tokens (client_id);
 
-
-
-
-
-
-
-
+alter table if exists public.mcp_oauth_clients enable row level security;
+alter table if exists public.mcp_oauth_codes enable row level security;
+alter table if exists public.mcp_oauth_tokens enable row level security;

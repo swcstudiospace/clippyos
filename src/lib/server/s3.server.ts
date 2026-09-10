@@ -18,11 +18,14 @@ function amzDate(now = new Date()): { amz: string; date: string } {
   return { amz: iso.slice(0, 16), date: iso.slice(0, 8) };
 }
 
+function encodeRfc3986(value: string): string {
+  return encodeURIComponent(value)
+    .replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/%7E/g, "~");
+}
+
 function encodePath(key: string): string {
-  return key
-    .split("/")
-    .map((part) => encodeURIComponent(part).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`))
-    .join("/");
+  return key.split("/").map((part) => encodeRfc3986(part)).join("/");
 }
 
 export function objectUrl(config: S3Config, key: string): string {
@@ -34,6 +37,7 @@ export function objectUrl(config: S3Config, key: string): string {
 export function canonicalRequest(input: {
   method: string;
   path: string;
+  query?: string;
   headers: Record<string, string>;
   payloadHash: string;
 }): string {
@@ -49,7 +53,7 @@ export function canonicalRequest(input: {
   return [
     input.method,
     input.path,
-    "",
+    input.query ?? "",
     `${canonicalHeaders}\n`,
     names.join(";"),
     input.payloadHash,
@@ -128,13 +132,22 @@ export async function s3List(config: S3Config, prefix: string, limit = 40): Prom
   url.searchParams.set("max-keys", String(Math.min(200, Math.max(1, limit))));
   const payloadHash = sha256Hex("");
   const { amz, date } = amzDate();
-  const path = `${url.pathname}${url.search}`;
+  const path = url.pathname;
+  const queryPairs: Array<[string, string]> = [];
+  for (const [key, value] of url.searchParams.entries()) {
+    queryPairs.push([encodeRfc3986(key), encodeRfc3986(value)]);
+  }
+  queryPairs.sort((a, b) => {
+    if (a[0] === b[0]) return a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0;
+    return a[0] < b[0] ? -1 : 1;
+  });
+  const query = queryPairs.map(([key, value]) => `${key}=${value}`).join("&");
   const headers: Record<string, string> = {
     host: url.host,
     "x-amz-content-sha256": payloadHash,
     "x-amz-date": amz,
   };
-  const canonical = canonicalRequest({ method: "GET", path, headers, payloadHash });
+  const canonical = canonicalRequest({ method: "GET", path, query, headers, payloadHash });
   const scope = `${date}/${config.region}/s3/aws4_request`;
   const stringToSign = ["AWS4-HMAC-SHA256", amz, scope, sha256Hex(canonical)].join("\n");
   const signature = createHmac("sha256", signingKey(config.secret, date, config.region))

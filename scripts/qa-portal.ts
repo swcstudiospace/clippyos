@@ -3,10 +3,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = "http://127.0.0.1:8080";
-const email = `ops.portal.${Date.now()}@agency.test`;
 const password = "password123";
 const portalEmail = `brand.portal.${Date.now()}@client.test`;
-const errors = [];
+const errors: string[] = [];
 interface PortalNotes {
   staffLoginHasPortalLink?: boolean;
   portalLogin?: { url: string; heading: boolean; password: boolean; staffLink: boolean; noMoney: boolean };
@@ -39,7 +38,12 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultTimeout(40000);
 page.on("pageerror", (err) => errors.push("pageerror:" + String(err)));
 page.on("console", (msg) => {
-  if (msg.type() === "error" && !msg.text().includes("favicon") && !msg.text().includes("hydrated")) {
+  if (
+    msg.type() === "error" &&
+    !msg.text().includes("favicon") &&
+    !msg.text().includes("hydrated") &&
+    !msg.text().includes("grok-app-builder/extensions.js")
+  ) {
     errors.push("console:" + msg.text());
   }
 });
@@ -87,13 +91,7 @@ try {
   await shot(anonPage, "qa-portal-money-blocked.png");
   await anon.close();
 
-  await page.goto(base + "/login", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /Need an account\? Create one/i }).click();
-  await page.getByLabel("Name").fill("Portal QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 28000 });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.getByText("Checking access", { exact: false }).waitFor({ state: "hidden", timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(1000);
   await dismissWelcome();
@@ -146,6 +144,8 @@ try {
         const portalPage = await portalCtx.newPage();
         const invitePath = notes.inviteUrl.replace(/^https?:\/\/[^/]+/, base);
         await portalPage.goto(invitePath, { waitUntil: "domcontentloaded" });
+        await portalPage.getByLabel("Set a password").waitFor({ timeout: 15000 });
+        await portalPage.waitForTimeout(800);
         await portalPage.getByLabel("Set a password").fill(password);
         await portalPage.getByRole("button", { name: "Activate access" }).click();
         await portalPage.waitForURL((url) => url.pathname.includes("/portal/home"), { timeout: 20000 });
@@ -174,7 +174,11 @@ try {
   }
 } catch (error) {
   errors.push(String(error));
+  console.error(error);
   await shot(page, "qa-portal-error.png");
+  writeFileSync("/workspace/screenshots/qa-portal.json", JSON.stringify({ notes, errors }, null, 2));
+  await browser.close();
+  process.exit(1);
 }
 
 writeFileSync("/workspace/screenshots/qa-portal.json", JSON.stringify({ notes, errors }, null, 2));
