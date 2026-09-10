@@ -1,7 +1,8 @@
-# AI code review on every pull request: a Greptile agent review plus an omp
-# coding-agent pass. Each reviewer posts a single PR comment keyed by a hidden
-# HTML marker and updates that comment in place on subsequent pushes, so
-# repeated reviews never pile up as duplicate comments.
+# AI code review on every pull request: a Greptile agent review, an omp
+# coding-agent pass, and the official Claude Code review action. Greptile
+# and omp post a single PR comment keyed by a hidden HTML marker and update
+# that comment in place on subsequent pushes, so repeated reviews never pile
+# up as duplicate comments; Claude Code posts its own PR review natively.
 
 name: pr-quality
 
@@ -135,3 +136,33 @@ jobs:
           else
             gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --input omp-comment.json > /dev/null
           fi
+
+  claude-review:
+    name: Claude Code review
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Job-level `if` cannot read secrets, so export a flag instead: the
+      # review only runs when ANTHROPIC_API_KEY is configured.
+      - name: Export Anthropic API key flag
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: echo "HAS_KEY=$([ -n "$ANTHROPIC_API_KEY" ] && echo true || echo false)" >> "$GITHUB_ENV"
+
+      - name: Run Claude Code review
+        if: env.HAS_KEY == 'true'
+        uses: anthropics/claude-code-action@v1
+        continue-on-error: true
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          direct_prompt: |
+            Senior staff engineer review of this PR diff. Report correctness
+            bugs, security issues, contract violations (AGENTS.md §3), and
+            missing tests. Be terse; severity-tag each finding. Post your
+            findings as a single PR review comment — do not push commits or
+            edit files.

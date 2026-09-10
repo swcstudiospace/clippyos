@@ -4,14 +4,20 @@ import {
   CANONICAL_APP_ORIGIN,
   GROK_APP_ORIGIN,
   authorizationServersFor,
+  authFallbackBaseURL,
   collectAppOrigins,
   dynamicBaseAllowedHosts,
+  extraHostsFromEnv,
   isAllowedAppHost,
+  isGrokMeHost,
   isPublishedMcpHost,
   mcpResourcesEquivalent,
   mcpUrlFor,
+  oauthCallbackURL,
+  socialCallbackURL,
   originFromRequest,
   publishedMcpEndpoints,
+  vercelHostsFromEnv,
 } from "./app-hosts.ts";
 
 test("custom studio domain and grok.me are both trusted", () => {
@@ -133,3 +139,75 @@ test("authorization servers list the host that was hit first, then the sibling p
   ]);
 });
 
+
+test("auth fallback never prefers clippyos.grok.me even when the deployer injected it", () => {
+  assert.equal(
+    authFallbackBaseURL({ BETTER_AUTH_URL: "https://clippyos.grok.me" }),
+    CANONICAL_APP_ORIGIN,
+  );
+  assert.equal(
+    authFallbackBaseURL({
+      BETTER_AUTH_URL: "https://clippyos.grok.me",
+      APP_URL: "https://clippyos.grok.me",
+    }),
+    CANONICAL_APP_ORIGIN,
+  );
+  assert.equal(
+    authFallbackBaseURL({ BETTER_AUTH_URL: "https://os.swcstudio.space" }),
+    "https://os.swcstudio.space",
+  );
+  assert.equal(authFallbackBaseURL({}), CANONICAL_APP_ORIGIN);
+  assert.equal(isGrokMeHost("clippyos.grok.me"), true);
+  assert.equal(isGrokMeHost("os.swcstudio.space"), false);
+  assert.equal(
+    oauthCallbackURL("grok-google"),
+    "https://os.swcstudio.space/api/auth/oauth2/callback/grok-google",
+  );
+  assert.equal(
+    oauthCallbackURL("grok-x"),
+    "https://os.swcstudio.space/api/auth/oauth2/callback/grok-x",
+  );
+  assert.equal(
+    socialCallbackURL("google"),
+    "https://os.swcstudio.space/api/auth/callback/google",
+  );
+});
+
+test("Vercel system env hosts are trusted app hosts with zero config", () => {
+  const env = {
+    VERCEL_PROJECT_PRODUCTION_URL: "clippyos.vercel.app",
+    VERCEL_BRANCH_URL: "clippyos-git-main-swc.vercel.app",
+    VERCEL_URL: "clippyos-abc123-swc.vercel.app",
+  };
+  assert.deepEqual(vercelHostsFromEnv(env), [
+    "clippyos.vercel.app",
+    "clippyos-git-main-swc.vercel.app",
+    "clippyos-abc123-swc.vercel.app",
+  ]);
+  assert.deepEqual(extraHostsFromEnv(env), vercelHostsFromEnv(env));
+  assert.equal(isAllowedAppHost("clippyos.vercel.app", extraHostsFromEnv(env)), true);
+  assert.equal(isAllowedAppHost("clippyos-abc123-swc.vercel.app", extraHostsFromEnv(env)), true);
+  assert.equal(isAllowedAppHost("evil.vercel.app", extraHostsFromEnv(env)), false);
+  assert.equal(isAllowedAppHost("clippyos.vercel.app", extraHostsFromEnv({})), false);
+  assert.ok(dynamicBaseAllowedHosts(env).includes("clippyos.vercel.app"));
+  assert.ok(collectAppOrigins({ env }).includes("https://clippyos.vercel.app"));
+});
+
+test("a Vercel deployment falls back to its own production host, not the studio domain", () => {
+  const env = { VERCEL_PROJECT_PRODUCTION_URL: "clippyos.vercel.app", VERCEL_URL: "clippyos-abc.vercel.app" };
+  assert.equal(authFallbackBaseURL(env), "https://clippyos.vercel.app");
+  assert.equal(
+    authFallbackBaseURL({ ...env, BETTER_AUTH_URL: "https://os.swcstudio.space" }),
+    "https://os.swcstudio.space",
+  );
+  assert.equal(
+    authFallbackBaseURL({ ...env, BETTER_AUTH_URL: "https://clippyos.grok.me" }),
+    "https://clippyos.vercel.app",
+  );
+  assert.equal(authFallbackBaseURL({ VERCEL_URL: "clippyos-abc.vercel.app" }), "https://clippyos-abc.vercel.app");
+  assert.equal(authFallbackBaseURL({}), CANONICAL_APP_ORIGIN);
+});
+
+test("authorization servers on a Vercel host stay on that host", () => {
+  assert.deepEqual(authorizationServersFor("https://clippyos.vercel.app"), ["https://clippyos.vercel.app"]);
+});

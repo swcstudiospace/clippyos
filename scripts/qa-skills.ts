@@ -4,8 +4,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
-const email = `ops.skills.${Date.now()}@agency.test`;
-const password = "password123";
 const notes = [];
 const errors: string[] = [];
 
@@ -21,13 +19,7 @@ async function shot(name: string) {
 }
 
 try {
-  await page.goto(base, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Skills QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 28000 });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);
   const skip = page.getByRole("button", { name: /Skip for now|I’ll do this later/i });
   if (await skip.isVisible().catch(() => false)) await skip.click();

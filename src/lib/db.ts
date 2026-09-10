@@ -1,4 +1,5 @@
 import { pendingMigrations } from "../../scripts/migration-plan.ts";
+import { preferTransactionPooler } from "./db-url.ts";
 
 /** Which database backend is active. */
 export type DbSource = "neon" | "pglite";
@@ -7,8 +8,9 @@ export type DbSource = "neon" | "pglite";
 // "unset" — otherwise production would silently run on the PGLite fallback.
 const rawDatabaseUrl =
   typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+// Supabase session-mode pooler URLs are moved to transaction mode (see db-url.ts).
 const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+  rawDatabaseUrl && rawDatabaseUrl.trim() ? preferTransactionPooler(rawDatabaseUrl.trim()) : undefined;
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
@@ -100,7 +102,15 @@ function createNeonSql(): Promise<Sql> {
     types.setTypeParser(OID_INT8, Number);
     types.setTypeParser(OID_DATE, identity);
     types.setTypeParser(OID_INTERVAL, identity);
-    const pool = new Pool({ connectionString: databaseUrl });
+    // Supabase's session-mode pooler caps clients at 15 per project; every warm serverless
+    // instance keeps its own pool, so hold few connections and let idle ones go quickly.
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      max: 3,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 15_000,
+      allowExitOnIdle: true,
+    });
     try {
       const client = await pool.connect();
       try {

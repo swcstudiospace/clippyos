@@ -333,7 +333,7 @@ export function GrokBotPanel() {
                 </p>
                 <Button className="mt-2 min-h-11" onClick={() => mint.mutate()} disabled={mint.isPending}>
                   <KeyRound className="size-4" aria-hidden="true" />
-                  {snap.hasKey ? "Mint another Hermes key" : "Create Hermes key"}
+                  {snap.hasKey ? "Mint another Grok Bot MCP token" : "Create Grok Bot MCP token"}
                 </Button>
                 <a href="/settings#clippy-mcp" className="mt-2 inline-block text-caption text-accent underline-offset-2 hover:underline">
                   ClippyOS MCP settings

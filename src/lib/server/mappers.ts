@@ -1,4 +1,4 @@
-import { parseClientChecklist } from "@/lib/billing";
+import { parseClientChecklist } from "../billing.ts";
 import {
   AUTOMATION_KINDS,
   AUTOMATION_RUNTIME_HINTS,
@@ -49,8 +49,8 @@ import {
   type ThumbnailMessage,
   type ThumbnailMessageMeta,
   type ThumbnailSession,
-} from "@/lib/entities";
-import { parseSuggestedIdeas, parseSuggestedTitles } from "@/lib/client-tools";
+} from "../entities.ts";
+import { parseSuggestedIdeas, parseSuggestedTitles } from "../client-tools.ts";
 
 function asString(value: unknown, fallback = ""): string {
   if (value == null) return fallback;

@@ -43,6 +43,33 @@ export const GUIDES: Record<IntegrationId, GuideDef> = {
       "Test Connection returns Connected",
     ],
   },
+  crayo: {
+    id: "crayo",
+    title: "Crayo.ai",
+    time: "~2 min",
+    intro:
+      "The Agent's /short, /autoclip, /voice, /image and export commands call the Crayo API. One secret key (crayo_sk_…) is all it needs.",
+    steps: [
+      {
+        title: "Create a Crayo API key",
+        body: "On crayo.ai open Developer API and create a key. Crayo only shows it once — copy it straight away.",
+        copy: { label: "Crayo Developer API", value: "https://crayo.ai/developers" },
+      },
+      {
+        title: "Paste the key",
+        body: "ClippyOS → Settings → Integrations → Crayo.ai. Paste the key and Save. A key saved here wins over any CRAYO_API_KEY in the deploy environment, so rotating it needs no redeploy.",
+      },
+      {
+        title: "Test connection",
+        body: "Run Test Connection. It calls GET /v1/account, which is free and shows your plan and credit balance. Disconnect removes the stored key.",
+      },
+    ],
+    checklist: [
+      "Key created on crayo.ai/developers",
+      "Key saved in Settings and Test Connection is green",
+      "Agent card no longer says “Crayo isn’t live on this deploy”",
+    ],
+  },
   higgsfield: {
     id: "higgsfield",
     title: "Higgsfield",
@@ -235,16 +262,16 @@ export const GUIDES: Record<IntegrationId, GuideDef> = {
     title: "Daytona (Computer Use / Social)",
     time: "~5 min",
     intro:
-      "Powers the on-demand Windows Social Machine. The machine stays off until you press Start. Hibernate pauses a hot snapshot. Test Connection only checks the API — it never starts a VM.",
+      "Powers the on-demand Social Machine (Linux container daytona-medium by default). The machine stays off until you press Start. Hibernate auto-stops after idle (filesystem persists; container class has no hot pause). Test Connection only checks the API — it never starts a sandbox.",
     steps: [
       {
         title: "Create a Daytona API key",
-        body: "Open the Daytona dashboard, create an API key, and copy it. Windows-large is the production path for Instagram, X, and TikTok web sessions.",
+        body: "Open the Daytona dashboard, create an API key, and copy it. Default snapshot is daytona-medium (Linux container). Windows snapshots need a plan that includes them.",
         copy: { label: "Daytona", value: "https://app.daytona.io" },
       },
       {
         title: "Paste into ClippyOS",
-        body: "Settings → Integrations → Daytona. Paste the API key. Optional: US or EU region, windows-large, idle hibernate minutes, and a residential AU HTTPS proxy (host/port/user).",
+        body: "Settings → Integrations → Daytona. Paste the API key. Optional: US or EU region, snapshot (daytona-medium default), idle minutes before auto-stop. Start auto-provisions a free country proxy; paste a paid residential URL if you have one.",
       },
       {
         title: "Test Connection (and Test proxy)",

@@ -37,34 +37,53 @@ export const saveLlmRouter = createServerFn({ method: "POST" })
     return { ok: true as const, router: next };
   });
 
+const API_KEY_SETTING = {
+  "xai-api": "XAI_API_KEY",
+  "openai-compat": "AI_API_KEY",
+  "anthropic-api": "ANTHROPIC_API_KEY",
+} as const;
+
 export const saveLlmApiKey = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
     z
       .object({
-        provider: z.enum(["xai-api", "openai-compat"]),
-        key: z.string().trim().min(8).max(400),
+        provider: z.enum(["xai-api", "openai-compat", "anthropic-api"]),
+        key: z.string().trim().min(8).max(400).optional(),
+        baseUrl: z.string().trim().max(300).optional(),
+      })
+      .refine((value) => Boolean(value.key) || value.provider === "openai-compat", {
+        message: "API key required",
       })
       .parse(input),
   )
   .handler(async ({ context, data }) => {
     const { requireSecretEditor } = await import("@/lib/server/access");
     await requireSecretEditor(context.userId);
-    const { writeAppSetting } = await import("@/lib/server/app-settings.server");
-    await writeAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY", data.key);
+    const { deleteAppSetting, writeAppSetting } = await import("@/lib/server/app-settings.server");
+    if (data.key) {
+      await writeAppSetting(API_KEY_SETTING[data.provider], data.key);
+    }
+    if (data.provider === "openai-compat" && data.baseUrl !== undefined) {
+      const { normalizeOpenAiCompatBase } = await import("@/lib/llm");
+      const normalized = normalizeOpenAiCompatBase(data.baseUrl);
+      if (data.baseUrl.trim() && !normalized) throw new Error("Enter an https OpenAI-compatible base URL.");
+      if (normalized) await writeAppSetting("OPENAI_COMPAT_BASE", normalized);
+      else await deleteAppSetting("OPENAI_COMPAT_BASE");
+    }
     return { ok: true as const };
   });
 
 export const disconnectLlmProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
-    z.object({ provider: z.enum(["xai-api", "openai-compat"]) }).parse(input),
+    z.object({ provider: z.enum(["xai-api", "openai-compat", "anthropic-api"]) }).parse(input),
   )
   .handler(async ({ context, data }) => {
     const { requireSecretEditor } = await import("@/lib/server/access");
     await requireSecretEditor(context.userId);
     const { deleteAppSetting } = await import("@/lib/server/app-settings.server");
-    await deleteAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY");
+    await deleteAppSetting(API_KEY_SETTING[data.provider]);
     return { ok: true as const };
   });
 

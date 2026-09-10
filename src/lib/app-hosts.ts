@@ -21,6 +21,15 @@ const CUSTOM_SUFFIXES = [".swcstudio.space"] as const;
 
 const ENV_HOST_KEYS = ["APP_URL", "BETTER_AUTH_URL", "VITE_PUBLIC_HOSTNAME"] as const;
 
+/**
+ * Vercel system env: the hosts a deployment is actually served on
+ * (production alias, branch alias, unique deployment URL). Vercel injects
+ * these itself, so a Vercel deploy trusts its own hostnames with zero config
+ * and advertises itself (auth origin, MCP OAuth issuer) instead of the
+ * canonical studio domain.
+ */
+const VERCEL_HOST_KEYS = ["VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_BRANCH_URL", "VERCEL_URL"] as const;
+
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 export function hostnameOf(value: string): string {
@@ -38,6 +47,23 @@ export function stripPort(hostname: string): string {
   return hostname.trim().toLowerCase().replace(/:\d+$/, "");
 }
 
+function isVercelSystemHost(host: string): boolean {
+  return host === "vercel.app" || host.endsWith(".vercel.app");
+}
+
+/** Hosts Vercel injected for this deployment (empty off-Vercel). */
+export function vercelHostsFromEnv(
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
+): string[] {
+  const hosts: string[] = [];
+  for (const key of VERCEL_HOST_KEYS) {
+    const host = hostnameOf(env[key] ?? "");
+    if (!host || hosts.includes(host)) continue;
+    hosts.push(host);
+  }
+  return hosts;
+}
+
 export function extraHostsFromEnv(
   env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
 ): string[] {
@@ -45,8 +71,14 @@ export function extraHostsFromEnv(
   for (const key of ENV_HOST_KEYS) {
     const host = hostnameOf(env[key] ?? "");
     if (!host) continue;
-    if (host === "vercel.app" || host.endsWith(".vercel.app")) continue;
+    // A bare `*.vercel.app` in APP_URL / BETTER_AUTH_URL is a share-host
+    // artefact, not an origin choice; the deployment's real hosts come from
+    // the Vercel system env below.
+    if (isVercelSystemHost(host)) continue;
     hosts.push(host);
+  }
+  for (const host of vercelHostsFromEnv(env)) {
+    if (!hosts.includes(host)) hosts.push(host);
   }
   return hosts;
 }
@@ -65,9 +97,56 @@ export function isAllowedAppHost(
   return extra.some((item) => stripPort(item) === host);
 }
 
+export function isGrokMeHost(hostname: string): boolean {
+  const host = stripPort(hostname);
+  return host === "grok.me" || host.endsWith(".grok.me");
+}
+
 export function isPublishedMcpHost(hostname: string): boolean {
   const host = stripPort(hostname);
   return (PUBLISHED_MCP_HOSTS as readonly string[]).includes(host);
+}
+
+/**
+ * Better Auth fallback origin. The Grok deployer injects BETTER_AUTH_URL as
+ * https://clippyos.grok.me; that must never win the OAuth redirect_uri for
+ * visitors on os.swcstudio.space. Both hosts stay allowed; grok.me is just
+ * not the fallback.
+ */
+export function authFallbackBaseURL(
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
+): string {
+  for (const key of ["BETTER_AUTH_URL", "APP_URL"] as const) {
+    const raw = env[key]?.trim().replace(/\/+$/, "") ?? "";
+    if (!raw) continue;
+    const host = hostnameOf(raw);
+    if (!host) continue;
+    if (isVercelSystemHost(host)) continue;
+    if (isGrokMeHost(host)) continue;
+    if (LOOPBACK_HOSTS.has(host)) {
+      return raw.includes("://") ? raw : `http://${raw}`;
+    }
+    return raw.includes("://") ? raw : `https://${raw}`;
+  }
+  // On Vercel with no explicit origin, the deployment's own production host
+  // is the fallback — never a studio domain that may not point here.
+  const [vercelHost] = vercelHostsFromEnv(env);
+  if (vercelHost) return `https://${vercelHost}`;
+  return CANONICAL_APP_ORIGIN;
+}
+
+export function oauthCallbackURL(
+  providerId: string,
+  origin: string = CANONICAL_APP_ORIGIN,
+): string {
+  return `${origin.trim().replace(/\/+$/, "")}/api/auth/oauth2/callback/${providerId}`;
+}
+
+export function socialCallbackURL(
+  providerId: string,
+  origin: string = CANONICAL_APP_ORIGIN,
+): string {
+  return `${origin.trim().replace(/\/+$/, "")}/api/auth/callback/${providerId}`;
 }
 
 export function mcpUrlFor(origin: string): string {
@@ -143,8 +222,11 @@ function firstHeader(headers: HeaderReader, name: string): string {
  * Public origin of an inbound request. Host / X-Forwarded-* win over the
  * internal URL so both published MCP hosts (and preview) advertise themselves.
  */
-export function originFromRequest(request: { url?: string; headers: HeaderReader }): string {
-  const extra = extraHostsFromEnv();
+export function originFromRequest(
+  request: { url?: string; headers: HeaderReader },
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
+): string {
+  const extra = extraHostsFromEnv(env);
   const hostHeader = firstHeader(request.headers, "x-forwarded-host") || firstHeader(request.headers, "host");
   const host = stripPort(hostHeader);
   if (host && isAllowedAppHost(host, extra)) {

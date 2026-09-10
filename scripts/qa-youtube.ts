@@ -3,8 +3,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = "http://127.0.0.1:8080";
-const email = `ops.yt.${Date.now()}@agency.test`;
-const password = "password123";
 const errors: string[] = [];
 const notes = [];
 
@@ -13,7 +11,9 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultTimeout(45000);
 page.on("pageerror", (err) => errors.push("pageerror:" + String(err)));
 page.on("console", (msg) => {
-  if (msg.type() === "error") errors.push("console:" + msg.text());
+  if (msg.type() === "error" && !msg.text().includes("grok-app-builder/extensions.js")) {
+    errors.push("console:" + msg.text());
+  }
 });
 
 async function dismissWelcome() {
@@ -24,13 +24,7 @@ async function dismissWelcome() {
 }
 
 try {
-  await page.goto(base, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /Need an account\? Create one/i }).click();
-  await page.getByLabel("Name").fill("YouTube QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 28000 });
+  await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.getByText("Checking access", { exact: false }).waitFor({ state: "hidden", timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(1200);
   await dismissWelcome();
@@ -78,6 +72,9 @@ try {
 } catch (error) {
   notes.push({ error: String(error) });
   await page.screenshot({ path: "/workspace/screenshots/qa-youtube-error.png" }).catch(() => {});
+  writeFileSync("/workspace/screenshots/qa-youtube.json", JSON.stringify({ notes, errors: errors.slice(0, 20) }, null, 2));
+  await browser.close();
+  process.exit(1);
 }
 
 writeFileSync("/workspace/screenshots/qa-youtube.json", JSON.stringify({ notes, errors: errors.slice(0, 20) }, null, 2));

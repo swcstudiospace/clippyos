@@ -11,7 +11,6 @@ import { agencySchemaSql } from "./schema";
 import {
   createPublishableClient,
   hasSupabaseSecret,
-  tryCreateAdminClient,
 } from "./clients.server";
 
 export type TableProbe = {
@@ -49,16 +48,19 @@ async function probeOneTable(
   name: (typeof AGENCY_TABLES)[number],
 ): Promise<TableProbe> {
   try {
-    const { error } = await client.from(name).select("*").limit(0);
-    return { name, exists: !isMissingTable(error) };
+    const { error } = await client.from(name).select("id").limit(0);
+    if (!error) return { name, exists: true };
+    if (isMissingTable(error)) return { name, exists: false };
+    // 401/JWT is not proof the table is missing. Key-only probe should 200 if it exists.
+    return { name, exists: false };
   } catch {
     return { name, exists: false };
   }
 }
 
 async function probeTables(): Promise<TableProbe[]> {
-  const admin = tryCreateAdminClient();
-  const client = admin ?? createPublishableClient();
+  // Always probe with the publishable key, never the admin client or the app session.
+  const client = createPublishableClient();
   const chunkSize = 4;
   const results: TableProbe[] = [];
   for (let i = 0; i < AGENCY_TABLES.length; i += chunkSize) {

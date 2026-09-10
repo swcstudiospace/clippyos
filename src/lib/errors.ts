@@ -53,7 +53,10 @@ export function userFacingErrorMessage(error: unknown): string {
     return "Grok Bot isn’t online. Open the Bot app so it can pick up ClippyOS work.";
   }
   if (error instanceof Error && /invalid origin/i.test(error.message)) {
-    return "This site isn’t recognized for sign-in. Open ClippyOS from os.swcstudio.space or clippyos.grok.me and try again.";
+    return "This site isn’t recognized for sign-in. Open ClippyOS from os.swcstudio.space and try again.";
+  }
+  if (error instanceof Error && /invalid.?uri|redirect_uri|redirect uri/i.test(error.message)) {
+    return "This site isn’t authorized for Google/X sign-in yet. The auth redirect URI must be https://os.swcstudio.space (not clippyos.grok.me).";
   }
   if (
     error instanceof Error &&
@@ -220,11 +223,17 @@ export function userFacingErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message === "HIGGSFIELD_UNAVAILABLE") {
     return "This tool will be available once you connect your API key.";
   }
+  if (error instanceof Error && error.message === "CRAYO_UNAVAILABLE") {
+    return "Crayo did not answer with this key. Check the key on crayo.ai/developers, paste it again, and Test.";
+  }
   if (error instanceof Error && error.message === "OVERLAY_TOO_LARGE") {
     return "That overlay is too large. Shorten the text and try again.";
   }
   if (error instanceof Error && error.message === "UNTRUSTED_IMAGE") {
     return "That image can’t be used here.";
+  }
+  if (error instanceof Error && error.message === "GENERATION_TIMEOUT") {
+    return "The model took longer than 60 seconds on this turn. Retry, or ask for fewer ideas at once.";
   }
   if (error instanceof Error && error.message === "GENERATION_FAILED") {
     return "The reply didn’t come through. Retry to send the same thread.";
@@ -520,6 +529,12 @@ export function userFacingErrorMessage(error: unknown): string {
       error.message === "Could not create account")
   ) {
     return `${error.message}. Check your details and try again.`;
+  }
+  if (
+    error instanceof Error &&
+    /sign.?up is disabled|SIGN_UP_DISABLED/i.test(error.message)
+  ) {
+    return "This workspace does not accept public sign-up. Use Super Admin, an invited login, or a paid seat.";
   }
   if (
     error instanceof Error &&

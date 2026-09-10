@@ -3,7 +3,6 @@ import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
-const email = `mob.${Date.now()}@example.com`;
 const clientName = `Mobile ${Date.now().toString().slice(-6)}`;
 
 const browser = await chromium.launch({ headless: true });
@@ -11,15 +10,9 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultTimeout(30000);
 
 try {
-  await page.goto("http://127.0.0.1:8080", { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Mobile QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill("password123");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 25000 });
+  await page.goto("http://127.0.0.1:8080/home", { waitUntil: "domcontentloaded" });
   await page.getByRole("link", { name: "Clients" }).click();
-  await page.getByRole("button", { name: "Add Client" }).click();
+  await page.getByRole("button", { name: "Add Client" }).first().click();
   await page.getByRole("button", { name: "Enter details manually" }).click();
   await page.getByLabel("Name").fill(clientName);
   await page.getByRole("button", { name: "Save client" }).click();

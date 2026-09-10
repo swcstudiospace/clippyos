@@ -4,8 +4,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 mkdirSync("/workspace/screenshots", { recursive: true });
 const base = process.env.QA_URL || "http://127.0.0.1:8080";
-const email = `ops.${Date.now()}@agency.test`;
-const password = "password123";
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -27,14 +25,6 @@ async function textHas(re: RegExp) {
 }
 
 try {
-  await page.goto(`${base}/login`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: "Need an account? Create one" }).click();
-  await page.getByLabel("Name").fill("Ops QA");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Continue to checkout" }).click();
-  await page.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 25000, waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
   await page.goto(`${base}/home`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "Skip for now" }).click().catch(() => {});
   await page
@@ -103,16 +93,12 @@ try {
   await shot("qa-onboarding.png");
 
 
-  await page.getByRole("link", { name: "Clipping", exact: true }).click();
-  await page.waitForURL("**/clipping");
-  await page
-    .getByRole("heading", { name: "Browser skills" })
-    .waitFor({ timeout: 60000 });
-  const clipSkillsPanel = true;
-  const clipLoginButton = await page
-    .getByRole("button", { name: /Check crayo login/i })
-    .isVisible();
-  notes.push({ clipSkillsPanel, clipLoginButton });
+  await page.getByRole("link", { name: "Agent", exact: true }).click();
+  await page.waitForURL("**/agent");
+  await page.getByRole("heading", { name: "Agent" }).waitFor({ timeout: 60000 });
+  const slashShort = await page.getByRole("button", { name: "/short", exact: true }).isVisible();
+  const composer = await page.getByLabel("Agent message").isVisible();
+  notes.push({ slashShort, composer });
   await shot("qa-clipping.png");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);

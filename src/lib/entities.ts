@@ -255,6 +255,8 @@ export type ThumbnailMessageMeta = {
   parentId?: string;
   imagePrompt?: string;
   imageFailed?: boolean;
+  /** Operator-safe provider detail for the last failed image attempt. */
+  imageError?: string;
   overlayText?: string;
 };
 

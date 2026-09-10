@@ -8,7 +8,7 @@ export const SANDBOX_LABELS: Record<SandboxType, { purpose: string; title: strin
     purpose: "social",
     title: "Social Machine",
     blurb:
-      "Windows VM + browser profiles for Instagram, X, TikTok, and YouTube. Explicit Start / Hibernate only. Idle auto-pause (hot snapshot) 15–30 min. Never starts on login. Clock is Australia/Sydney.",
+      "Linux container (daytona-medium) + browser for Instagram, X, TikTok, and YouTube. Windows snapshots need a Daytona plan that includes them. Explicit Start / Hibernate only. Idle auto-stop 15–30 min (filesystem persists). Never starts on login. Clock is Australia/Sydney.",
   },
   skill: {
     purpose: "skill",
@@ -43,8 +43,14 @@ export const SKILL_ENV_DENY = [
   "WEBHOOK_SECRET",
   "WEBHOOK_SIGNING_SECRET",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_SECRET_KEY",
   "DATABASE_URL",
   "BETTER_AUTH_SECRET",
+  "CRON_SECRET",
+  "CRAYO_API_KEY",
+  "OPERATOR_SECRETS_KEY",
+  "GOOGLE_CLIENT_SECRET",
+  "TWITTER_CLIENT_SECRET",
 ] as const;
 
 export const SKILL_ARTIFACT_EXTS = [
@@ -59,8 +65,17 @@ export const SKILL_ARTIFACT_EXTS = [
 ] as const;
 
 export const SKILL_ARTIFACT_MAX_BYTES = 2_000_000;
+export const SKILL_NETWORK_DOMAIN_ALLOWLIST =
+  "os.swcstudio.space,*.swcstudio.space,clippyos.grok.me";
 export const SKILL_SANDBOX_AUTOSTOP_MINUTES = 5;
 export const SOCIAL_SANDBOX_AUTOSTOP_MINUTES = 20;
+
+/** Shell-safe KEY='value' assignment, or null if the pair is unsafe to interpolate. */
+export function shellEnvAssignment(key: string, value: string): string | null {
+  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) return null;
+  if (/[\n\r\0`$;&|<>]/.test(value)) return null;
+  return `${key}='${value.replace(/'/g, "")}'`;
+}
 
 export const SANDBOX_THREAT_MITIGATIONS = [
   {

@@ -3,15 +3,20 @@
 export const SOCIAL_MACHINE_OS = ["windows", "linux"] as const;
 export type SocialMachineOs = (typeof SOCIAL_MACHINE_OS)[number];
 
-export const SOCIAL_MACHINE_SIZES = ["windows-medium", "windows-large"] as const;
+export const SOCIAL_MACHINE_SIZES = ["daytona-medium", "daytona-vm-medium", "windows-medium", "windows-large"] as const;
 export type SocialMachineSize = (typeof SOCIAL_MACHINE_SIZES)[number];
+
+export const SANDBOX_CLASSES = ["container", "linux-vm", "windows"] as const;
+export type SandboxClass = (typeof SANDBOX_CLASSES)[number];
 
 export const SOCIAL_MACHINE_REGIONS = ["us", "eu"] as const;
 export type SocialMachineRegion = (typeof SOCIAL_MACHINE_REGIONS)[number];
 
-export const DEFAULT_SOCIAL_MACHINE_SIZE: SocialMachineSize = "windows-large";
+/** Container snapshot: Daytona's default class, available on every account.
+ * Linux-VM and Windows snapshots need a plan that supports pause/VM classes. */
+export const DEFAULT_SOCIAL_MACHINE_SIZE: SocialMachineSize = "daytona-medium";
 export const DEFAULT_SOCIAL_MACHINE_REGION: SocialMachineRegion = "us";
-export const DEFAULT_SOCIAL_MACHINE_OS: SocialMachineOs = "windows";
+export const DEFAULT_SOCIAL_MACHINE_OS: SocialMachineOs = "linux";
 export const DEFAULT_SOCIAL_TIMEZONE = "Australia/Sydney";
 export const DEFAULT_SOCIAL_LOCALE = "en-AU";
 /** Windows tzutil id for AEST/AEDT (Sydney). */
@@ -19,11 +24,21 @@ export const WINDOWS_TIMEZONE_ID = "AUS Eastern Standard Time";
 /** Windows GeoId 12 = Australia. */
 export const WINDOWS_GEO_ID = 12;
 
-export const WINDOWS_SNAPSHOTS: Record<SocialMachineSize, { cpu: number; memoryGiB: number; diskGiB: number }> =
-  {
-    "windows-medium": { cpu: 2, memoryGiB: 8, diskGiB: 50 },
-    "windows-large": { cpu: 4, memoryGiB: 16, diskGiB: 50 },
-  };
+export const WINDOWS_SNAPSHOTS: Record<
+  Exclude<SocialMachineSize, "daytona-medium" | "daytona-vm-medium">,
+  { cpu: number; memoryGiB: number; diskGiB: number }
+> = {
+  "windows-medium": { cpu: 2, memoryGiB: 8, diskGiB: 50 },
+  "windows-large": { cpu: 4, memoryGiB: 16, diskGiB: 50 },
+};
+
+export const LINUX_SNAPSHOTS: Record<
+  "daytona-medium" | "daytona-vm-medium",
+  { cpu: number; memoryGiB: number; diskGiB: number }
+> = {
+  "daytona-medium": { cpu: 2, memoryGiB: 4, diskGiB: 20 },
+  "daytona-vm-medium": { cpu: 2, memoryGiB: 4, diskGiB: 20 },
+};
 
 /** Daytona's largest Windows snapshot. Hot-resize existing undersized VMs to this. */
 export const TARGET_WINDOWS_RESOURCES = { cpu: 4, memory: 16 } as const;
@@ -37,7 +52,17 @@ export const WINDOWS_PROFILE_DIR = "C:\\Users\\Public\\ClippyOS\\profiles";
 export function parseSocialMachineSize(value: unknown): SocialMachineSize {
   const raw = String(value ?? "").trim();
   if (raw === "windows-medium" || raw === "windows-small") return "windows-medium";
-  return "windows-large";
+  if (raw === "windows-large") return "windows-large";
+  if (raw === "daytona-vm-medium" || raw === "linux-vm") return "daytona-vm-medium";
+  if (
+    raw === "daytona-medium" ||
+    raw === "linux-medium" ||
+    raw === "linux" ||
+    raw === "container"
+  ) {
+    return "daytona-medium";
+  }
+  return DEFAULT_SOCIAL_MACHINE_SIZE;
 }
 
 export function parseSocialMachineRegion(value: unknown): SocialMachineRegion {
@@ -45,7 +70,20 @@ export function parseSocialMachineRegion(value: unknown): SocialMachineRegion {
 }
 
 export function parseSocialMachineOs(value: unknown): SocialMachineOs {
-  return String(value ?? "").trim().toLowerCase() === "linux" ? "linux" : "windows";
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "windows") return "windows";
+  if (raw === "linux") return "linux";
+  return DEFAULT_SOCIAL_MACHINE_OS;
+}
+
+export function osForSize(size: SocialMachineSize): SocialMachineOs {
+  return size.startsWith("windows") ? "windows" : "linux";
+}
+
+export function sandboxClassForSize(size: SocialMachineSize): SandboxClass {
+  if (size === "daytona-vm-medium") return "linux-vm";
+  if (size.startsWith("windows")) return "windows";
+  return "container";
 }
 
 export function snapshotForSize(size: SocialMachineSize): string {
@@ -65,16 +103,27 @@ export function snapshotCandidates(
   stored?: string | null,
 ): string[] {
   const names: string[] = [];
+  const os = osForSize(size);
   const push = (value: string | null | undefined) => {
     const name = String(value ?? "").trim();
     if (!name) return;
-    if (name.toLowerCase().includes("linux")) return;
     if (names.includes(name)) return;
     names.push(name);
   };
-  push(stored);
+  if (stored) {
+    const storedWin = isWindowsSnapshot(stored);
+    const hot = isHotSnapshot(stored);
+    if (hot || (os === "windows") === storedWin) push(stored);
+  }
   push(snapshotForSize(size));
-  if (size !== "windows-medium") push("windows-medium");
+  if (os === "linux") {
+    push("daytona-vm-medium");
+    push("daytona-medium");
+  } else {
+    if (size !== "windows-medium") push("windows-medium");
+    // Accounts without Windows snapshots fall through to the Linux default.
+    push("daytona-vm-medium");
+  }
   return names;
 }
 
@@ -95,11 +144,22 @@ export type IdlePolicy = {
   autoDeleteInterval: number;
 };
 
-/** Pause (hot) instead of stop. Never auto-delete the Social Machine. */
-export function idlePolicy(idleMinutes: number): IdlePolicy {
+/** Container class has no pause: auto-stop after idle instead (Daytona
+ * preserves the filesystem across stop/start for container/GPU sandboxes).
+ * Linux-VM and Windows classes hot-pause instead of stopping. Never
+ * auto-delete the Social Machine either way. */
+export function idlePolicy(idleMinutes: number, sandboxClass: SandboxClass): IdlePolicy {
   const minutes = Number.isFinite(idleMinutes)
     ? Math.min(240, Math.max(5, Math.floor(idleMinutes)))
     : 20;
+  if (sandboxClass === "container") {
+    return {
+      autoStopInterval: minutes,
+      autoPauseInterval: 0,
+      autoArchiveInterval: 0,
+      autoDeleteInterval: -1,
+    };
+  }
   return {
     autoStopInterval: 0,
     autoPauseInterval: minutes,
@@ -112,6 +172,15 @@ export type StopAction = "pause" | "stop";
 
 export function stopActionForOs(os: SocialMachineOs): StopAction {
   return os === "windows" ? "pause" : "stop";
+}
+
+/** Daytona assigns sandbox class (container/linux-vm/windows) server-side from
+ * the account's snapshot config — ClippyOS never requests or reads it back
+ * (the SDK's Sandbox wrapper doesn't expose a class field). When pause() is
+ * rejected for this reason specifically, a cold stop is safe: the hot named
+ * snapshot is always captured before pause is attempted. */
+export function isUnsupportedPauseClassError(message: string): boolean {
+  return /auto-pause is not supported for sandbox class/i.test(message);
 }
 
 export type HibernatePlan = {
@@ -207,6 +276,13 @@ export function windowsProxyScript(proxyUrl: string | null): string | null {
   const safeHost = escapePowerShellSingleQuoted(hostPort);
   const safeFull = escapePowerShellSingleQuoted(parsed);
   return `powershell -NoProfile -Command "try { netsh winhttp set proxy '${safeHost}' } catch {}; try { Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name ProxyEnable -Value 1 } catch {}; try { Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings' -Name ProxyServer -Value '${safeHost}' } catch {}; [Environment]::SetEnvironmentVariable('HTTPS_PROXY','${safeFull}','User'); [Environment]::SetEnvironmentVariable('HTTP_PROXY','${safeFull}','User'); Write-Output 'proxy-applied'"`;
+}
+
+export function linuxProxyScript(proxyUrl: string | null): string | null {
+  const parsed = parseHttpsProxy(proxyUrl);
+  if (!parsed) return null;
+  const safe = parsed.replace(/'/g, `'\\''`);
+  return `sh -lc 'export HTTP_PROXY='"'"'${safe}'"'"' HTTPS_PROXY='"'"'${safe}'"'"' http_proxy='"'"'${safe}'"'"' https_proxy='"'"'${safe}'"'"'; echo proxy-applied'`;
 }
 
 export function listWindowsCommand(os: SocialMachineOs): string {
@@ -328,10 +404,20 @@ export function parseProxyCountry(value: unknown): ProxyCountryCode {
     : DEFAULT_PROXY_COUNTRY;
 }
 
-/** ProxyScrape public list — no key. Country-matched HTTPS/HTTP endpoints. */
-export function proxyscrapeListUrl(country: unknown): string {
+/** ProxyScrape public list — no key. Country-matched HTTP/HTTPS endpoints (not a paid ISP pool). */
+export function proxyscrapeListUrl(country: unknown, protocol: "http" | "https" = "http"): string {
   const cc = parseProxyCountry(country);
-  return `https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&country=${cc}&proxy_format=protocolipport&format=text&timeout=8000`;
+  return `https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=${protocol}&country=${cc}&proxy_format=protocolipport&format=text&timeout=8000`;
+}
+
+/** Ordered free lists: country HTTP, country HTTPS, then any-country HTTP. */
+export function freeProxyListUrls(country: unknown): string[] {
+  const cc = parseProxyCountry(country);
+  return [
+    proxyscrapeListUrl(cc, "http"),
+    proxyscrapeListUrl(cc, "https"),
+    `https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&protocol=http&proxy_format=protocolipport&format=text&timeout=8000`,
+  ];
 }
 
 export function parseProxyListLine(line: string): string | null {
@@ -614,5 +700,64 @@ export function ipfsGatewayUrl(gateway: string, cid: string): string {
   const safeCid = parseCid(cid);
   if (!base || !safeCid) throw new Error("VALIDATION");
   return `${base}${safeCid}`;
+}
+
+/**
+ * Default Social Machine egress domains (NIST SC-7). Computer Use needs the
+ * publisher origins plus their CDNs and Google OAuth. Operators may widen or
+ * set `unrestricted` via SOCIAL_MACHINE_DOMAIN_ALLOWLIST.
+ */
+export const DEFAULT_SOCIAL_MACHINE_DOMAIN_ALLOWLIST = [
+  "tiktok.com",
+  "*.tiktok.com",
+  "*.tiktokcdn.com",
+  "*.muscdn.com",
+  "instagram.com",
+  "*.instagram.com",
+  "*.cdninstagram.com",
+  "facebook.com",
+  "*.facebook.com",
+  "*.fbcdn.net",
+  "youtube.com",
+  "*.youtube.com",
+  "*.googlevideo.com",
+  "*.ytimg.com",
+  "*.ggpht.com",
+  "x.com",
+  "twitter.com",
+  "*.twitter.com",
+  "*.twimg.com",
+  "linkedin.com",
+  "*.linkedin.com",
+  "snapchat.com",
+  "*.snapchat.com",
+  "threads.net",
+  "*.threads.net",
+  "pinterest.com",
+  "*.pinterest.com",
+  "crayo.ai",
+  "*.crayo.ai",
+  "cdn-crayo.com",
+  "*.cdn-crayo.com",
+  "google.com",
+  "*.google.com",
+  "gstatic.com",
+  "*.gstatic.com",
+  "googleapis.com",
+  "*.googleapis.com",
+  "accounts.google.com",
+  "proxyscrape.com",
+  "*.proxyscrape.com",
+].join(",");
+
+export function socialMachineDomainAllowList(override?: string | null): string | undefined {
+  const raw = String(override ?? "").trim();
+  if (!raw) return DEFAULT_SOCIAL_MACHINE_DOMAIN_ALLOWLIST;
+  if (raw === "*" || raw.toLowerCase() === "unrestricted") return undefined;
+  const cleaned = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return cleaned.length ? cleaned.join(",") : DEFAULT_SOCIAL_MACHINE_DOMAIN_ALLOWLIST;
 }
 

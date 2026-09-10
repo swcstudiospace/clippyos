@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { secretsEqual } from "@/lib/server/secret-crypto.server";
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -29,7 +30,7 @@ export const Route = createFileRoute("/api/webhooks/whatsapp")({
         const mode = url.searchParams.get("hub.mode");
         const token = url.searchParams.get("hub.verify_token");
         const challenge = url.searchParams.get("hub.challenge");
-        if (mode === "subscribe" && config?.verifyToken && token === config.verifyToken && challenge) {
+        if (mode === "subscribe" && config?.verifyToken && secretsEqual(token ?? "", config.verifyToken) && challenge) {
           return new Response(challenge, { status: 200, headers: { "Content-Type": "text/plain" } });
         }
         return json(403, { ok: false });

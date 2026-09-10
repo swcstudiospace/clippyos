@@ -1,5 +1,6 @@
 export const INTEGRATION_IDS = [
   "ai",
+  "crayo",
   "higgsfield",
   "youtube",
   "discord",
@@ -68,6 +69,12 @@ export const INTEGRATION_COPY: Record<
     required: true,
     time: "~2 min",
   },
+  crayo: {
+    name: "Crayo.ai",
+    purpose: "Agent shorts, AutoClip, voiceovers, images, and exports via the Crayo API.",
+    required: false,
+    time: "~2 min",
+  },
   higgsfield: {
     name: "Higgsfield",
     purpose: "16:9 4K YouTube thumbnails via nano-banana-pro.",
@@ -105,8 +112,8 @@ export const INTEGRATION_COPY: Record<
     time: "~10 min",
   },
   daytona: {
-    name: "Daytona (Windows Social Machine)",
-    purpose: "On-demand Windows VM for Computer Use. Hibernate = hot snapshot. AU clock, US/EU IPs. Optional residential proxy.",
+    name: "Daytona (Social Machine)",
+    purpose: "On-demand Linux container (daytona-medium) for Computer Use. Windows snapshots are quota-gated. Hibernate = auto-stop after idle. AU clock. Start auto-provisions a free country proxy.",
     required: false,
     time: "~5 min",
   },
@@ -142,6 +149,7 @@ export const BANNER_BY_PATH: Array<{
       path.startsWith("/clients"),
     id: "ai",
   },
+  { match: (path) => path.startsWith("/agent") || path.startsWith("/library"), id: "crayo" },
   { match: (path) => path.startsWith("/thumbnails") || path.startsWith("/agent"), id: "higgsfield" },
   { match: (path) => path.startsWith("/analytics"), id: "youtube" },
   { match: (path) => path.startsWith("/social") || path.startsWith("/agent") || path.startsWith("/health"), id: "daytona" },

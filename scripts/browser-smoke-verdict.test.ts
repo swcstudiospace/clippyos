@@ -439,3 +439,19 @@ test("platform-chrome filter ignores other blocked resources and URLs", () => {
     false,
   );
 });
+
+test("CSP script-src block matches on violation text even though Chromium reports the document as sourceUrl, not the blocked script", () => {
+  const cspText =
+    "Loading the script 'https://grok.com/grok-app-builder/extensions.js' violates the following " +
+    'Content Security Policy directive: "script-src \'self\' \'unsafe-inline\'". Note that ' +
+    "'script-src-elem' was not explicitly set, so 'script-src' is used as a fallback. The action has been blocked.";
+  assert.equal(isExpectedPlatformChromeBlock(cspText, "https://os.swcstudio.space/login"), true);
+  assert.equal(isExpectedPlatformChromeBlock(cspText, ""), true);
+  assert.equal(
+    isExpectedPlatformChromeBlock(
+      'violates the following Content Security Policy directive: "script-src \'self\'"',
+      "https://os.swcstudio.space/login",
+    ),
+    false,
+  );
+});
