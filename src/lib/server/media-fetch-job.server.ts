@@ -521,3 +521,48 @@ export async function abortMediaFetchJob(outputs: Record<string, JsonValue> | nu
   const state = readState(outputs);
   if (state?.sandboxId) await deleteSandbox(state.sandboxId);
 }
+
+
+/**
+ * Reap orphaned Daytona sandboxes from the synchronous (non-job) media-fetch path used by
+ * external API callers (see media-fetch.server.ts). That path has no AgentRun tracking it, and
+ * its `finally { sandbox.delete() }` never runs if the caller's Vercel function is killed on
+ * timeout instead of throwing — so a failing/retrying external caller (e.g. a Hermes playbook
+ * step) can leak one sandbox per attempt well before Daytona's own 10-minute autoStopInterval
+ * catches up, and a burst of leaked sandboxes can exhaust the account's concurrency limit and
+ * stall unrelated, properly-tracked runs. Called from /api/cron/ops as a backstop.
+ *
+ * Only targets `purpose: media-fetch` sandboxes (the untracked sync path). `media-fetch-job`
+ * sandboxes are already tracked by tickMediaFetchJob/abortMediaFetchJob and have their own
+ * 60-minute autoStopInterval, so reaping them here would risk killing a run still legitimately
+ * in progress.
+ */
+export async function reapStaleMediaFetchSandboxes(maxAgeMinutes = 8): Promise<number> {
+  let daytona: Awaited<ReturnType<typeof daytonaClient>>["daytona"];
+  try {
+    ({ daytona } = await daytonaClient());
+  } catch {
+    return 0;
+  }
+  const cutoff = Date.now() - maxAgeMinutes * 60_000;
+  let reaped = 0;
+  try {
+    const iter = daytona.list({ labels: { purpose: "media-fetch", app: "clippyos" }, limit: 20 });
+    for await (const sandbox of iter as AsyncIterable<AnySandbox>) {
+      const state = String(sandbox.state ?? "").toLowerCase();
+      if (state === "stopped" || state === "destroyed" || state === "destroying" || state === "archived") continue;
+      const createdAt = Date.parse(String(sandbox.createdAt ?? ""));
+      if (!Number.isFinite(createdAt) || createdAt > cutoff) continue;
+      try {
+        if (sandbox.delete) await sandbox.delete();
+        else if (sandbox.stop) await sandbox.stop();
+        reaped += 1;
+      } catch {
+        /* best-effort; auto-stop still applies */
+      }
+    }
+  } catch {
+    /* Daytona list unavailable this tick; try again next cron run */
+  }
+  return reaped;
+}
