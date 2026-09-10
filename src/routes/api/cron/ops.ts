@@ -35,6 +35,13 @@ export const Route = createFileRoute("/api/cron/ops")({
         } catch {
           mediaFetchTicked = 0;
         }
+        let mediaFetchSandboxesReaped = 0;
+        try {
+          const { reapStaleMediaFetchSandboxes } = await import("@/lib/server/media-fetch-job.server");
+          mediaFetchSandboxesReaped = await reapStaleMediaFetchSandboxes();
+        } catch {
+          mediaFetchSandboxesReaped = 0;
+        }
         let machineState = "unknown";
         try {
           const { getSocialMachineStatus } = await import("@/lib/server/daytona.server");
@@ -47,6 +54,7 @@ export const Route = createFileRoute("/api/cron/ops")({
           ok: true,
           linearSwept,
           mediaFetchTicked,
+          mediaFetchSandboxesReaped,
           machineState,
           startedMachine: false,
           note: "Cron never starts the Social Machine. Idle pause is owned by Daytona. Hibernate is pause, not destroy.",
