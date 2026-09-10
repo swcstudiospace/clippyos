@@ -37,12 +37,18 @@ export const saveLlmRouter = createServerFn({ method: "POST" })
     return { ok: true as const, router: next };
   });
 
+const API_KEY_SETTING = {
+  "xai-api": "XAI_API_KEY",
+  "openai-compat": "AI_API_KEY",
+  "anthropic-api": "ANTHROPIC_API_KEY",
+} as const;
+
 export const saveLlmApiKey = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
     z
       .object({
-        provider: z.enum(["xai-api", "openai-compat"]),
+        provider: z.enum(["xai-api", "openai-compat", "anthropic-api"]),
         key: z.string().trim().min(8).max(400).optional(),
         baseUrl: z.string().trim().max(300).optional(),
       })
@@ -56,7 +62,7 @@ export const saveLlmApiKey = createServerFn({ method: "POST" })
     await requireSecretEditor(context.userId);
     const { deleteAppSetting, writeAppSetting } = await import("@/lib/server/app-settings.server");
     if (data.key) {
-      await writeAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY", data.key);
+      await writeAppSetting(API_KEY_SETTING[data.provider], data.key);
     }
     if (data.provider === "openai-compat" && data.baseUrl !== undefined) {
       const { normalizeOpenAiCompatBase } = await import("@/lib/llm");
@@ -71,13 +77,13 @@ export const saveLlmApiKey = createServerFn({ method: "POST" })
 export const disconnectLlmProvider = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
-    z.object({ provider: z.enum(["xai-api", "openai-compat"]) }).parse(input),
+    z.object({ provider: z.enum(["xai-api", "openai-compat", "anthropic-api"]) }).parse(input),
   )
   .handler(async ({ context, data }) => {
     const { requireSecretEditor } = await import("@/lib/server/access");
     await requireSecretEditor(context.userId);
     const { deleteAppSetting } = await import("@/lib/server/app-settings.server");
-    await deleteAppSetting(data.provider === "xai-api" ? "XAI_API_KEY" : "AI_API_KEY");
+    await deleteAppSetting(API_KEY_SETTING[data.provider]);
     return { ok: true as const };
   });
 

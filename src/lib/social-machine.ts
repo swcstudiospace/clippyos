@@ -3,14 +3,18 @@
 export const SOCIAL_MACHINE_OS = ["windows", "linux"] as const;
 export type SocialMachineOs = (typeof SOCIAL_MACHINE_OS)[number];
 
-export const SOCIAL_MACHINE_SIZES = ["daytona-vm-medium", "windows-medium", "windows-large"] as const;
+export const SOCIAL_MACHINE_SIZES = ["daytona-medium", "daytona-vm-medium", "windows-medium", "windows-large"] as const;
 export type SocialMachineSize = (typeof SOCIAL_MACHINE_SIZES)[number];
+
+export const SANDBOX_CLASSES = ["container", "linux-vm", "windows"] as const;
+export type SandboxClass = (typeof SANDBOX_CLASSES)[number];
 
 export const SOCIAL_MACHINE_REGIONS = ["us", "eu"] as const;
 export type SocialMachineRegion = (typeof SOCIAL_MACHINE_REGIONS)[number];
 
-/** Linux snapshot available on standard Daytona accounts (Windows snapshots are quota-gated). */
-export const DEFAULT_SOCIAL_MACHINE_SIZE: SocialMachineSize = "daytona-vm-medium";
+/** Container snapshot: Daytona's default class, available on every account.
+ * Linux-VM and Windows snapshots need a plan that supports pause/VM classes. */
+export const DEFAULT_SOCIAL_MACHINE_SIZE: SocialMachineSize = "daytona-medium";
 export const DEFAULT_SOCIAL_MACHINE_REGION: SocialMachineRegion = "us";
 export const DEFAULT_SOCIAL_MACHINE_OS: SocialMachineOs = "linux";
 export const DEFAULT_SOCIAL_TIMEZONE = "Australia/Sydney";
@@ -21,14 +25,18 @@ export const WINDOWS_TIMEZONE_ID = "AUS Eastern Standard Time";
 export const WINDOWS_GEO_ID = 12;
 
 export const WINDOWS_SNAPSHOTS: Record<
-  Exclude<SocialMachineSize, "daytona-vm-medium">,
+  Exclude<SocialMachineSize, "daytona-medium" | "daytona-vm-medium">,
   { cpu: number; memoryGiB: number; diskGiB: number }
 > = {
   "windows-medium": { cpu: 2, memoryGiB: 8, diskGiB: 50 },
   "windows-large": { cpu: 4, memoryGiB: 16, diskGiB: 50 },
 };
 
-export const LINUX_SNAPSHOTS: Record<"daytona-vm-medium", { cpu: number; memoryGiB: number; diskGiB: number }> = {
+export const LINUX_SNAPSHOTS: Record<
+  "daytona-medium" | "daytona-vm-medium",
+  { cpu: number; memoryGiB: number; diskGiB: number }
+> = {
+  "daytona-medium": { cpu: 2, memoryGiB: 4, diskGiB: 20 },
   "daytona-vm-medium": { cpu: 2, memoryGiB: 4, diskGiB: 20 },
 };
 
@@ -45,13 +53,14 @@ export function parseSocialMachineSize(value: unknown): SocialMachineSize {
   const raw = String(value ?? "").trim();
   if (raw === "windows-medium" || raw === "windows-small") return "windows-medium";
   if (raw === "windows-large") return "windows-large";
+  if (raw === "daytona-vm-medium" || raw === "linux-vm") return "daytona-vm-medium";
   if (
-    raw === "daytona-vm-medium" ||
     raw === "daytona-medium" ||
     raw === "linux-medium" ||
-    raw === "linux"
+    raw === "linux" ||
+    raw === "container"
   ) {
-    return "daytona-vm-medium";
+    return "daytona-medium";
   }
   return DEFAULT_SOCIAL_MACHINE_SIZE;
 }
@@ -69,6 +78,12 @@ export function parseSocialMachineOs(value: unknown): SocialMachineOs {
 
 export function osForSize(size: SocialMachineSize): SocialMachineOs {
   return size.startsWith("windows") ? "windows" : "linux";
+}
+
+export function sandboxClassForSize(size: SocialMachineSize): SandboxClass {
+  if (size === "daytona-vm-medium") return "linux-vm";
+  if (size.startsWith("windows")) return "windows";
+  return "container";
 }
 
 export function snapshotForSize(size: SocialMachineSize): string {
@@ -129,11 +144,22 @@ export type IdlePolicy = {
   autoDeleteInterval: number;
 };
 
-/** Pause (hot) instead of stop. Never auto-delete the Social Machine. */
-export function idlePolicy(idleMinutes: number): IdlePolicy {
+/** Container class has no pause: auto-stop after idle instead (Daytona
+ * preserves the filesystem across stop/start for container/GPU sandboxes).
+ * Linux-VM and Windows classes hot-pause instead of stopping. Never
+ * auto-delete the Social Machine either way. */
+export function idlePolicy(idleMinutes: number, sandboxClass: SandboxClass): IdlePolicy {
   const minutes = Number.isFinite(idleMinutes)
     ? Math.min(240, Math.max(5, Math.floor(idleMinutes)))
     : 20;
+  if (sandboxClass === "container") {
+    return {
+      autoStopInterval: minutes,
+      autoPauseInterval: 0,
+      autoArchiveInterval: 0,
+      autoDeleteInterval: -1,
+    };
+  }
   return {
     autoStopInterval: 0,
     autoPauseInterval: minutes,

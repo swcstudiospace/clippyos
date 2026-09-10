@@ -14,7 +14,12 @@ import {
   writeAppSetting,
 } from "@/lib/server/app-settings.server";
 import type { LlmProviderId } from "@/lib/llm";
-import { DEFAULT_OPENAI_COMPAT_BASE } from "@/lib/llm";
+import { ANTHROPIC_API_BASE, DEFAULT_OPENAI_COMPAT_BASE } from "@/lib/llm";
+import {
+  ANTHROPIC_VERSION,
+  buildAnthropicPayload,
+  fromAnthropicResponse,
+} from "@/lib/anthropic-format";
 import { CANONICAL_APP_ORIGIN } from "@/lib/app-hosts";
 
 export const XAI_MODEL = "grok-4.6";
@@ -103,6 +108,12 @@ async function settingsApiKey(): Promise<string | null> {
 
 async function compatApiKey(): Promise<string | null> {
   const stored = (await readAppSetting("AI_API_KEY"))?.trim() || "";
+  if (!stored || /[•…]|YOUR_|changeme|placeholder/i.test(stored)) return null;
+  return stored;
+}
+
+async function settingsAnthropicKey(): Promise<string | null> {
+  const stored = (await readAppSetting("ANTHROPIC_API_KEY"))?.trim() || "";
   if (!stored || /[•…]|YOUR_|changeme|placeholder/i.test(stored)) return null;
   return stored;
 }
@@ -271,6 +282,16 @@ export async function resolveCredsFor(prefer?: LlmProviderId): Promise<ResolvedC
       bearer: key,
       bases: [base],
       extraHeaders,
+    };
+  }
+  if (prefer === "anthropic-api") {
+    const key = await settingsAnthropicKey();
+    if (!key) return null;
+    return {
+      source: "key",
+      bearer: key,
+      bases: [ANTHROPIC_API_BASE],
+      extraHeaders: {},
     };
   }
   const oauth = await oauthBearer();
@@ -595,11 +616,13 @@ export async function xaiChat(params: {
   const models =
     params.provider === "openai-compat"
       ? [requested && !requested.startsWith("grok") ? requested : "z-ai/glm-5.3-flash"]
-      : requested
-        ? [requested, XAI_MODEL, XAI_MODEL_FALLBACK].filter(
-            (item, index, all) => all.indexOf(item) === index,
-          )
-        : [XAI_MODEL, XAI_MODEL_FALLBACK];
+      : params.provider === "anthropic-api"
+        ? [requested && requested.startsWith("claude") ? requested : "claude-sonnet-5"]
+        : requested
+          ? [requested, XAI_MODEL, XAI_MODEL_FALLBACK].filter(
+              (item, index, all) => all.indexOf(item) === index,
+            )
+          : [XAI_MODEL, XAI_MODEL_FALLBACK];
   let lastStatus = 0;
   let lastRaw = "";
   let lastModel = "";
@@ -608,39 +631,60 @@ export async function xaiChat(params: {
   for (const base of creds.bases) {
     for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
       const model = models[modelIndex]!;
-      const payload: Record<string, unknown> = {
-        model,
-        temperature: params.temperature ?? 0.6,
-        max_tokens: params.maxTokens ?? 1600,
-        messages: params.messages,
-      };
-      if (params.tools) {
+      const isAnthropic = params.provider === "anthropic-api";
+      const payload: Record<string, unknown> = isAnthropic
+        ? buildAnthropicPayload(model, params.messages, {
+            maxTokens: params.maxTokens,
+            temperature: params.temperature,
+            tools: params.tools,
+            toolChoice: params.toolChoice,
+          })
+        : {
+            model,
+            temperature: params.temperature ?? 0.6,
+            max_tokens: params.maxTokens ?? 1600,
+            messages: params.messages,
+          };
+      if (!isAnthropic && params.tools) {
         payload.tools = params.tools;
         payload.tool_choice = params.toolChoice ?? "auto";
       }
-      if (params.reasoningEffort) payload.reasoning_effort = params.reasoningEffort;
-      if (params.promptCacheKey) payload.prompt_cache_key = params.promptCacheKey;
+      if (!isAnthropic && params.reasoningEffort) payload.reasoning_effort = params.reasoningEffort;
+      if (!isAnthropic && params.promptCacheKey) payload.prompt_cache_key = params.promptCacheKey;
 
       const extra: Record<string, string> = { ...creds.extraHeaders };
       if (params.conversationId) extra["x-conversation-id"] = params.conversationId;
       if (params.promptCacheKey) extra["x-prompt-cache-key"] = params.promptCacheKey;
 
+      const requestUrl = isAnthropic ? `${base}/messages` : `${base}/chat/completions`;
+      const requestHeaders: Record<string, string> = isAnthropic
+        ? {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "x-api-key": creds.bearer,
+            "anthropic-version": ANTHROPIC_VERSION,
+            ...extra,
+          }
+        : {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${creds.bearer}`,
+            ...extra,
+          };
+
       const lim = limiterFor(model);
       await acquireSlot(model);
       try {
         if (lim.backoffUntil && lim.backoffUntil > Date.now()) {
-          await new Promise((resolve) => setTimeout(resolve, lim.backoffUntil! - Date.now()));
+          const { promise, resolve } = Promise.withResolvers<void>();
+          setTimeout(resolve, lim.backoffUntil - Date.now());
+          await promise;
         }
         let attempt = 0;
         while (attempt < MAX_429_ATTEMPTS) {
-          const response = await fetch(`${base}/chat/completions`, {
+          const response = await fetch(requestUrl, {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-              Authorization: `Bearer ${creds.bearer}`,
-              ...extra,
-            },
+            headers: requestHeaders,
             body: JSON.stringify(payload),
             signal: AbortSignal.timeout(params.timeoutMs ?? 60_000),
           });
@@ -655,7 +699,9 @@ export async function xaiChat(params: {
             if (attempt >= MAX_429_ATTEMPTS) {
               throw new Error("AI_RATE_LIMIT");
             }
-            await new Promise((resolve) => setTimeout(resolve, wait));
+            const { promise, resolve } = Promise.withResolvers<void>();
+            setTimeout(resolve, wait);
+            await promise;
             continue;
           }
           const raw = await response.text();
@@ -663,6 +709,19 @@ export async function xaiChat(params: {
           lastModel = model;
           if (response.ok) {
             lim.backoffUntil = null;
+            if (isAnthropic) {
+              const anthropicBody = JSON.parse(raw) as {
+                content?: Array<{
+                  type: string;
+                  text?: string;
+                  id?: string;
+                  name?: string;
+                  input?: unknown;
+                }>;
+                stop_reason?: string | null;
+              };
+              return fromAnthropicResponse(anthropicBody);
+            }
             const body = JSON.parse(raw) as {
               choices?: {
                 finish_reason?: string;

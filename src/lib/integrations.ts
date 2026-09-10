@@ -113,7 +113,7 @@ export const INTEGRATION_COPY: Record<
   },
   daytona: {
     name: "Daytona (Social Machine)",
-    purpose: "On-demand Linux VM (daytona-vm-medium) for Computer Use. Windows snapshots are quota-gated. Hibernate = hot snapshot. AU clock. Start auto-provisions a free country proxy.",
+    purpose: "On-demand Linux container (daytona-medium) for Computer Use. Windows snapshots are quota-gated. Hibernate = auto-stop after idle. AU clock. Start auto-provisions a free country proxy.",
     required: false,
     time: "~5 min",
   },

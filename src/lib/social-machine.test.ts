@@ -47,6 +47,7 @@ import {
   freeProxyListUrls,
   osForSize,
   linuxProxyScript,
+  sandboxClassForSize,
   shouldResizeWindows,
   snapshotCandidates,
   snapshotForSize,
@@ -59,24 +60,33 @@ import {
   windowsProxyScript,
 } from "./social-machine.ts";
 
-test("defaults to daytona-vm-medium Linux Social Machine in Sydney locale", () => {
+test("defaults to daytona-medium Linux container Social Machine in Sydney locale", () => {
   assert.equal(DEFAULT_SOCIAL_MACHINE_OS, "linux");
-  assert.equal(DEFAULT_SOCIAL_MACHINE_SIZE, "daytona-vm-medium");
-  assert.equal(snapshotForSize("daytona-vm-medium"), "daytona-vm-medium");
-  assert.equal(osForSize("daytona-vm-medium"), "linux");
+  assert.equal(DEFAULT_SOCIAL_MACHINE_SIZE, "daytona-medium");
+  assert.equal(snapshotForSize("daytona-medium"), "daytona-medium");
+  assert.equal(osForSize("daytona-medium"), "linux");
   assert.equal(osForSize("windows-large"), "windows");
   assert.equal(DEFAULT_SOCIAL_TIMEZONE, "Australia/Sydney");
   assert.ok(isWindowsSnapshot("windows-large"));
-  assert.equal(isWindowsSnapshot("daytona-vm-medium"), false);
+  assert.equal(isWindowsSnapshot("daytona-medium"), false);
 });
 
-test("size parser accepts linux default and still maps windows aliases", () => {
+test("size parser accepts linux default and still maps windows/vm aliases", () => {
   assert.equal(parseSocialMachineSize("windows-large"), "windows-large");
   assert.equal(parseSocialMachineSize("windows-medium"), "windows-medium");
   assert.equal(parseSocialMachineSize("windows-small"), "windows-medium");
-  assert.equal(parseSocialMachineSize("linux"), "daytona-vm-medium");
-  assert.equal(parseSocialMachineSize(""), "daytona-vm-medium");
-  assert.equal(parseSocialMachineSize("daytona-medium"), "daytona-vm-medium");
+  assert.equal(parseSocialMachineSize("linux"), "daytona-medium");
+  assert.equal(parseSocialMachineSize(""), "daytona-medium");
+  assert.equal(parseSocialMachineSize("daytona-medium"), "daytona-medium");
+  assert.equal(parseSocialMachineSize("daytona-vm-medium"), "daytona-vm-medium");
+  assert.equal(parseSocialMachineSize("linux-vm"), "daytona-vm-medium");
+});
+
+test("sandbox class maps container, linux-vm, and windows sizes correctly", () => {
+  assert.equal(sandboxClassForSize("daytona-medium"), "container");
+  assert.equal(sandboxClassForSize("daytona-vm-medium"), "linux-vm");
+  assert.equal(sandboxClassForSize("windows-medium"), "windows");
+  assert.equal(sandboxClassForSize("windows-large"), "windows");
 });
 
 test("Daytona regions are us or eu — there is no Australia target", () => {
@@ -87,11 +97,22 @@ test("Daytona regions are us or eu — there is no Australia target", () => {
   assert.match(instagramGeoWarning("us"), /Graph API/i);
 });
 
-test("idle policy pauses instead of destroying", () => {
-  const policy = idlePolicy(20);
-  assert.equal(policy.autoStopInterval, 0);
-  assert.equal(policy.autoPauseInterval, 20);
-  assert.equal(policy.autoDeleteInterval, -1);
+test("idle policy auto-stops container class, hot-pauses VM/Windows classes instead of destroying", () => {
+  const containerPolicy = idlePolicy(20, "container");
+  assert.equal(containerPolicy.autoStopInterval, 20);
+  assert.equal(containerPolicy.autoPauseInterval, 0);
+  assert.equal(containerPolicy.autoDeleteInterval, -1);
+
+  const vmPolicy = idlePolicy(20, "linux-vm");
+  assert.equal(vmPolicy.autoStopInterval, 0);
+  assert.equal(vmPolicy.autoPauseInterval, 20);
+  assert.equal(vmPolicy.autoDeleteInterval, -1);
+
+  const windowsPolicy = idlePolicy(20, "windows");
+  assert.equal(windowsPolicy.autoStopInterval, 0);
+  assert.equal(windowsPolicy.autoPauseInterval, 20);
+  assert.equal(windowsPolicy.autoDeleteInterval, -1);
+
   assert.equal(stopActionForOs("windows"), "pause");
   assert.equal(stopActionForOs("linux"), "stop");
   assert.equal(HOT_SNAPSHOT_NAME, "clippy-os-social-hot");
@@ -121,6 +142,10 @@ test("snapshot candidates prefer linux default and fall back off Windows quota",
   assert.deepEqual(snapshotCandidates("daytona-vm-medium", null), [
     "daytona-vm-medium",
     "daytona-medium",
+  ]);
+  assert.deepEqual(snapshotCandidates("daytona-medium", null), [
+    "daytona-medium",
+    "daytona-vm-medium",
   ]);
   assert.deepEqual(snapshotCandidates("windows-large", null), [
     "windows-large",

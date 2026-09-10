@@ -71,15 +71,17 @@ function last4(value: string | null): string | null {
 }
 
 export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
-  const [router, status, xaiKey, compatKey, compatBase] = await Promise.all([
+  const [router, status, xaiKey, compatKey, compatBase, anthropicKey] = await Promise.all([
     readLlmRouter(),
     llmStatus(),
     readAppSetting("XAI_API_KEY"),
     readAppSetting("AI_API_KEY"),
     readAppSetting("OPENAI_COMPAT_BASE"),
+    readAppSetting("ANTHROPIC_API_KEY"),
   ]);
   const xaiModels = modelsForProvider("xai-api").map((row) => row.id);
   const compatModels = modelsForProvider("openai-compat").map((row) => row.id);
+  const anthropicModels = modelsForProvider("anthropic-api").map((row) => row.id);
   const providers: Record<LlmProviderId, LlmProviderStatus> = {
     "xai-oauth": {
       id: "xai-oauth",
@@ -110,6 +112,14 @@ export async function buildLlmSnapshot(): Promise<LlmSnapshot> {
       email: null,
       models: compatModels,
       baseUrl: compatBase?.trim().replace(/\/+$/, "") || DEFAULT_OPENAI_COMPAT_BASE,
+    },
+    "anthropic-api": {
+      id: "anthropic-api",
+      configured: Boolean(anthropicKey?.trim()),
+      health: anthropicKey?.trim() ? "connected" : "not_configured",
+      last4: last4(anthropicKey),
+      email: null,
+      models: anthropicModels,
     },
   };
   return { router, providers, catalog: LLM_MODELS, rateLimit: xaiRateLimitSnapshot() };
