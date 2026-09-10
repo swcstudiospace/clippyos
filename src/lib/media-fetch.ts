@@ -199,7 +199,7 @@ export const YTDLP_BOOTSTRAP_SCRIPT = `set -u
 mkdir -p /tmp/mf
 if command -v yt-dlp >/dev/null 2>&1; then echo "yt-dlp"; exit 0; fi
 if python3 -c "import yt_dlp" >/dev/null 2>&1; then echo "python3 -m yt_dlp"; exit 0; fi
-(python3 -m pip install -q --disable-pip-version-check --user yt-dlp || python3 -m pip install -q --disable-pip-version-check yt-dlp) >/tmp/mf/pip.log 2>&1 || true
+(timeout 120 python3 -m pip install -q --disable-pip-version-check --user yt-dlp || timeout 120 python3 -m pip install -q --disable-pip-version-check yt-dlp) >/tmp/mf/pip.log 2>&1 || true
 if python3 -c "import yt_dlp" >/dev/null 2>&1; then echo "python3 -m yt_dlp"; exit 0; fi
 if curl -fsSL --max-time 60 https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /tmp/mf/yt-dlp 2>>/tmp/mf/pip.log; then
   chmod +x /tmp/mf/yt-dlp
@@ -212,7 +212,7 @@ exit 1
 
 /** Probe metadata as JSON on stdout. Reads MF_BIN and MF_URL from the environment. */
 export const YTDLP_PROBE_SCRIPT = `set -u
-$MF_BIN -J --no-playlist --no-warnings --no-check-certificate "$MF_URL" 2>/tmp/mf/probe.err || { echo "PROBE_FAILED"; tail -n 4 /tmp/mf/probe.err; exit 1; }
+timeout 90 $MF_BIN -J --no-playlist --no-warnings --no-check-certificate "$MF_URL" 2>/tmp/mf/probe.err || { echo "PROBE_FAILED"; tail -n 4 /tmp/mf/probe.err; exit 1; }
 `;
 
 /**
@@ -223,7 +223,7 @@ export const YTDLP_DOWNLOAD_SCRIPT = `set -u
 rm -f /tmp/mf/src.*
 MERGE=""
 if command -v ffmpeg >/dev/null 2>&1; then MERGE="--merge-output-format mp4"; fi
-$MF_BIN --no-playlist --no-warnings --no-progress --no-check-certificate --retries 3 --fragment-retries 5 \\
+timeout 3600 $MF_BIN --no-playlist --no-warnings --no-progress --no-check-certificate --retries 3 --fragment-retries 5 \\
   -f "$MF_FORMAT" $MERGE --max-filesize "$MF_MAX" -o "/tmp/mf/src.%(ext)s" "$MF_URL" >/tmp/mf/dl.log 2>&1 \\
   || { echo "DOWNLOAD_FAILED"; tail -n 6 /tmp/mf/dl.log; exit 1; }
 FILE=$(ls -S /tmp/mf/src.* 2>/dev/null | head -n 1)
@@ -361,13 +361,18 @@ PY
 /**
  * Stage 1 (detached): install yt-dlp + ffmpeg (imageio-ffmpeg wheel from PyPI), probe the
  * source, write probe into status.json with phase "probed". Reads MF_URL.
+ *
+ * Every network-touching step below is wrapped in `timeout` — pip installs and the yt-dlp probe
+ * have no built-in wall-clock ceiling, and a stalled/blocked outbound connection inside the
+ * sandbox (rather than a clean refusal) would otherwise hang this whole detached script forever
+ * with status.json stuck on an earlier phase and no error ever written.
  */
 export const MEDIA_JOB_STAGE1_SCRIPT = `${STATUS_HELPER}
 st '{"phase":"install"}'
 BIN=""
 if command -v yt-dlp >/dev/null 2>&1; then BIN="yt-dlp"; fi
 if [ -z "$BIN" ]; then
-  (python3 -m pip install -q --disable-pip-version-check --user yt-dlp imageio-ffmpeg || python3 -m pip install -q --disable-pip-version-check yt-dlp imageio-ffmpeg) >/tmp/mf/pip.log 2>&1 || true
+  (timeout 120 python3 -m pip install -q --disable-pip-version-check --user yt-dlp imageio-ffmpeg || timeout 120 python3 -m pip install -q --disable-pip-version-check yt-dlp imageio-ffmpeg) >/tmp/mf/pip.log 2>&1 || true
   if python3 -c "import yt_dlp" >/dev/null 2>&1; then BIN="python3 -m yt_dlp"; fi
 fi
 if [ -z "$BIN" ]; then
@@ -378,8 +383,15 @@ FF=$(command -v ffmpeg || python3 -c "import imageio_ffmpeg;print(imageio_ffmpeg
 printf '%s\n' "$BIN" > /tmp/mf/bin.txt
 printf '%s\n' "$FF" > /tmp/mf/ffmpeg.txt
 st '{"phase":"probe"}'
-if ! $BIN -J --no-playlist --no-warnings --no-check-certificate "$MF_URL" > /tmp/mf/probe.json 2>/tmp/mf/probe.err; then
-  st "$(python3 -c 'import json;print(json.dumps({"phase":"failed","error":"yt-dlp could not read the page: "+open("/tmp/mf/probe.err").read()[-300:]}))')"; exit 1
+timeout 90 $BIN -J --no-playlist --no-warnings --no-check-certificate "$MF_URL" > /tmp/mf/probe.json 2>/tmp/mf/probe.err
+PROBE_RC=$?
+if [ "$PROBE_RC" -ne 0 ]; then
+  if [ "$PROBE_RC" -eq 124 ]; then
+    st "$(python3 -c 'import json;print(json.dumps({"phase":"failed","error":"yt-dlp timed out reading the page after 90s (network stall or a blocked host)."}))')"
+  else
+    st "$(python3 -c 'import json;print(json.dumps({"phase":"failed","error":"yt-dlp could not read the page: "+open("/tmp/mf/probe.err").read()[-300:]}))')"
+  fi
+  exit 1
 fi
 python3 - <<'PY'
 import json, os
@@ -402,6 +414,10 @@ PY
 /**
  * Stage 2 (detached): download every segment in /tmp/mf/plan.json sequentially, writing each
  * segment's state into status.json. Reads MF_URL, MF_FORMAT. Uses bin.txt / ffmpeg.txt.
+ *
+ * Each per-segment download is wrapped in a generous `timeout` (1h) — the same silent-hang risk
+ * as stage 1 applies here: without a ceiling, a stalled connection mid-download would wedge the
+ * whole script on one segment forever instead of marking it failed and moving on.
  */
 export const MEDIA_JOB_STAGE2_SCRIPT = `${STATUS_HELPER}
 BIN=$(cat /tmp/mf/bin.txt)
@@ -423,7 +439,7 @@ while read -r IDX START END; do
     SECT="--download-sections *$S-$E"
   fi
   rm -f /tmp/mf/seg-$IDX.*
-  if $BIN --no-playlist --no-warnings --no-progress --no-check-certificate --retries 3 --fragment-retries 5 \
+  if timeout 3600 $BIN --no-playlist --no-warnings --no-progress --no-check-certificate --retries 3 --fragment-retries 5 \
       -f "$MF_FORMAT" $FFARG $SECT --max-filesize 950m -o "/tmp/mf/seg-$IDX.%(ext)s" "$MF_URL" >/tmp/mf/dl-$IDX.log 2>&1; then
     FILE=$(ls -S /tmp/mf/seg-$IDX.* 2>/dev/null | grep -vE '\\.(part|ytdl|log)$' | head -n 1)
     if [ -n "$FILE" ]; then
