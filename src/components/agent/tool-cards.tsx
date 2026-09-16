@@ -115,14 +115,23 @@ export function AgentToolCardView({
       ) : null}
       {!crayoReady && RUNNABLE.has(card.ui) ? (
         <p className="mt-2 text-caption text-warning">
-          Crayo isn’t connected. Paste your Crayo API key in Settings → Integrations → Crayo.ai (no redeploy needed).
+          Crayo isn’t connected. Paste your Crayo API key in Settings → Integrations → Crayo.ai (no
+          redeploy needed).
         </p>
       ) : null}
     </GlassCard>
   );
 }
 
-const RUNNABLE = new Set<AgentSlashUi>(["short", "autoclip", "voiceover", "image", "import", "export", "ingest"]);
+const RUNNABLE = new Set<AgentSlashUi>([
+  "short",
+  "autoclip",
+  "voiceover",
+  "image",
+  "import",
+  "export",
+  "ingest",
+]);
 
 const CARD_COPY: Record<
   AgentSlashUi,
@@ -166,7 +175,7 @@ const CARD_COPY: Record<
   },
   ingest: {
     title: "Ingest to library",
-    hint: "Crayo CDN https only → Filebase, source=AGENT.",
+    hint: "Crayo CDN https only → Library, source=AGENT.",
     action: "Ingest",
     icon: <Upload className="size-4" aria-hidden="true" />,
   },
@@ -192,7 +201,8 @@ const CARD_COPY: Record<
 
 function canSubmit(ui: AgentSlashUi, draft: Record<string, string>): boolean {
   if (ui === "short") return Boolean(draft.topic?.trim() || draft.script?.trim());
-  if (ui === "autoclip") return Boolean(draft.url?.trim()) && autoclipSourceProblem(draft.url ?? "") === null;
+  if (ui === "autoclip")
+    return Boolean(draft.url?.trim()) && autoclipSourceProblem(draft.url ?? "") === null;
   if (ui === "import" || ui === "ingest") return Boolean(draft.url?.startsWith("https://"));
   if (ui === "voiceover") return Boolean(draft.script?.trim() && draft.voiceId?.trim());
   if (ui === "image") return Boolean(draft.prompt?.trim());
@@ -208,13 +218,20 @@ function buildGoal(
   if (ui === "short") {
     return {
       preset: "crayo-short",
-      goal: buildCrayoShortGoal({ topic: draft.topic ?? "", script: draft.script ?? "", clientName }),
+      goal: buildCrayoShortGoal({
+        topic: draft.topic ?? "",
+        script: draft.script ?? "",
+        clientName,
+      }),
     };
   }
   if (ui === "autoclip") {
     return {
       preset: "crayo-autoclip",
-      goal: buildCrayoAutoclipGoal({ url: draft.url ?? "", clipCount: Number(draft.clipCount ?? 5) }),
+      goal: buildCrayoAutoclipGoal({
+        url: draft.url ?? "",
+        clipCount: Number(draft.clipCount ?? 5),
+      }),
     };
   }
   if (ui === "voiceover") {
@@ -230,17 +247,29 @@ function buildGoal(
   if (ui === "image") {
     return {
       preset: "crayo-image",
-      goal: buildCrayoImageGoal({ prompt: draft.prompt ?? "", aspectRatio: draft.aspectRatio || "9:16" }),
+      goal: buildCrayoImageGoal({
+        prompt: draft.prompt ?? "",
+        aspectRatio: draft.aspectRatio || "9:16",
+      }),
     };
   }
   if (ui === "import") {
-    return { preset: "crayo-import", goal: buildCrayoImportGoal({ url: draft.url ?? "", name: draft.name }) };
+    return {
+      preset: "crayo-import",
+      goal: buildCrayoImportGoal({ url: draft.url ?? "", name: draft.name }),
+    };
   }
   if (ui === "export") {
-    return { preset: "crayo-export", goal: buildCrayoExportGoal({ projectId: draft.projectId ?? "" }) };
+    return {
+      preset: "crayo-export",
+      goal: buildCrayoExportGoal({ projectId: draft.projectId ?? "" }),
+    };
   }
   if (ui === "ingest") {
-    return { preset: "crayo-ingest", goal: buildCrayoIngestGoal({ url: draft.url ?? "", title: draft.title }) };
+    return {
+      preset: "crayo-ingest",
+      goal: buildCrayoIngestGoal({ url: draft.url ?? "", title: draft.title }),
+    };
   }
   return null;
 }
@@ -300,7 +329,11 @@ function AutoclipFields({
           aria-invalid={problem ? true : undefined}
           aria-describedby="card-long-url-hint"
         />
-        <p id="card-long-url-hint" className={problem ? "text-caption text-warning" : "text-caption text-muted-foreground"} role={problem ? "alert" : undefined}>
+        <p
+          id="card-long-url-hint"
+          className={problem ? "text-caption text-warning" : "text-caption text-muted-foreground"}
+          role={problem ? "alert" : undefined}
+        >
           {problem ??
             "YouTube, TikTok, Vimeo, X or Twitch links are fetched in a sandbox at 720p and uploaded to Crayo. Streams over 3 h are split into ~70-min segments, each its own AutoClip job (clips and credits spread across them). Direct file links (mp4/mov ≤100MB) import straight away."}
         </p>
@@ -363,7 +396,10 @@ function VoiceoverFields({
               : "No voices returned. Check Crayo credits, then retry."}
           </p>
         ) : (
-          <Select value={draft.voiceId || undefined} onValueChange={(value) => set({ voiceId: value })}>
+          <Select
+            value={draft.voiceId || undefined}
+            onValueChange={(value) => set({ voiceId: value })}
+          >
             <SelectTrigger id="card-voice">
               <SelectValue placeholder="Pick a voice" />
             </SelectTrigger>
@@ -412,7 +448,10 @@ function ImageFields({
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="card-aspect">Aspect</Label>
-        <Select value={draft.aspectRatio || "9:16"} onValueChange={(value) => set({ aspectRatio: value })}>
+        <Select
+          value={draft.aspectRatio || "9:16"}
+          onValueChange={(value) => set({ aspectRatio: value })}
+        >
           <SelectTrigger id="card-aspect">
             <SelectValue />
           </SelectTrigger>
@@ -534,7 +573,10 @@ function VoicesBrowser({ crayoReady }: { crayoReady: boolean }) {
   return (
     <ul className="grid max-h-64 gap-1 overflow-y-auto">
       {voicesQuery.data.voices.map((voice) => (
-        <li key={voice.id} className="flex items-baseline justify-between gap-2 rounded-control bg-secondary-surface/50 px-3 py-2">
+        <li
+          key={voice.id}
+          className="flex items-baseline justify-between gap-2 rounded-control bg-secondary-surface/50 px-3 py-2"
+        >
           <span className="text-body">{voice.name}</span>
           <span className="font-mono text-caption text-muted">{voice.id}</span>
         </li>
@@ -581,7 +623,11 @@ function AssetsBrowser({ crayoReady }: { crayoReady: boolean }) {
   }
   if (query.isPending) return <Skeleton className="h-24" />;
   if (!query.data?.ok) {
-    return <p className="text-caption text-warning">{explainAgentToolError(query.data?.error ?? "MISSING")}</p>;
+    return (
+      <p className="text-caption text-warning">
+        {explainAgentToolError(query.data?.error ?? "MISSING")}
+      </p>
+    );
   }
   if (query.data.assets.length === 0) {
     return <p className="text-caption text-muted">No assets in this Crayo account yet.</p>;
@@ -589,7 +635,10 @@ function AssetsBrowser({ crayoReady }: { crayoReady: boolean }) {
   return (
     <ul className="grid max-h-64 gap-1 overflow-y-auto">
       {query.data.assets.map((asset) => (
-        <li key={asset.id} className="flex items-baseline justify-between gap-2 rounded-control bg-secondary-surface/50 px-3 py-2">
+        <li
+          key={asset.id}
+          className="flex items-baseline justify-between gap-2 rounded-control bg-secondary-surface/50 px-3 py-2"
+        >
           <span className="min-w-0 truncate text-body">{asset.name}</span>
           <span className="shrink-0 text-caption text-muted">{asset.type}</span>
         </li>

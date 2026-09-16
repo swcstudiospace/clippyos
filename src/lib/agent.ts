@@ -247,7 +247,7 @@ export const AGENT_PRESET_COPY: Record<AgentPreset, { label: string; goal: strin
     },
     "crayo-ingest": {
       label: "Crayo ingest",
-      goal: "Using Crayo: crayo.ingest_to_library a Crayo CDN https URL into Filebase (source=AGENT). Reject non-Crayo hosts. Do not start the Social Machine.",
+      goal: "Using Crayo: crayo.ingest_to_library a Crayo CDN https URL into Library (source=AGENT). Reject non-Crayo hosts. Do not start the Social Machine.",
       hint: "Crayo CDN file → library.",
     },
   };
@@ -457,7 +457,7 @@ export const CRAYO_PLAN_SKELETONS: Record<CrayoAgentPreset, AgentPlanStep[]> = {
       id: "run",
       tool: "crayo.run_short",
       args: {},
-      purpose: "Generate a 9:16 short and ingest the mp4 into the Filebase library.",
+      purpose: "Generate a 9:16 short and ingest the mp4 into the Library.",
       successCriteria: "library.assetId or videoUrl returned.",
     },
     {
@@ -553,7 +553,7 @@ export const CRAYO_PLAN_SKELETONS: Record<CrayoAgentPreset, AgentPlanStep[]> = {
       id: "run",
       tool: "crayo.ingest_to_library",
       args: {},
-      purpose: "Copy a Crayo CDN file into the Filebase library.",
+      purpose: "Copy a Crayo CDN file into the Library.",
       successCriteria: "library.assetId or UNTRUSTED_URL.",
     },
     {
@@ -775,7 +775,7 @@ export function explainAgentToolError(code: string): string {
     case "FAILED":
       return "Crayo returned an error for this step. The provider message is shown with the step.";
     case "INGEST_FAILED":
-      return "The video rendered, but Filebase/library ingest failed. The Crayo URL may still be in the step output.";
+      return "The video rendered, but the Library ingest failed. The Crayo URL may still be in the step output.";
     case "GROK_BOT_NOT_CONNECTED":
       return "Grok Bot isn’t online. Turn off the Grok Bot switch to run on this server, or open the Bot so it can claim work.";
     case "AI_TIER_GATED":
