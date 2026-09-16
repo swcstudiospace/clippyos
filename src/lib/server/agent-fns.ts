@@ -75,3 +75,44 @@ export const cancelAgentRunFn = createServerFn({ method: "POST" })
     await cancelAgentRun(id);
     return { ok: true as const };
   });
+
+export const retryClipExportFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    z.object({ runId: z.string().min(1), projectId: z.string().min(1) }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    if (!context.userId) throw new Error("Unauthorized");
+    const { getAgentRun, patchAgentRun } = await import("@/lib/server/agent.server");
+    const run = await getAgentRun(data.runId);
+    if (!run) throw new Error("RUN_MISSING");
+    const clips = ((run.outputs?.libraryClips as unknown) ?? []) as {
+      title: string;
+      projectId: string;
+      assetId: string | null;
+      status: string;
+      error: string | null;
+    }[];
+    const clip = clips.find((c) => c.projectId === data.projectId);
+    if (!clip) throw new Error("CLIP_MISSING");
+    const { exportClipToLibrary } = await import("@/lib/server/clip-export.server");
+    const mf = (run.outputs?.mediaFetch as { url?: string } | undefined) ?? {};
+    const result = await exportClipToLibrary({
+      projectId: clip.projectId,
+      title: clip.title,
+      thumbnailUrl: null,
+      actorId: context.userId,
+      clientId: run.clientId ?? null,
+      sourceUrl: mf.url ?? `crayo:project:${clip.projectId}`,
+      tags: ["autoclip", "retry"],
+    });
+    const next = clips.map((c) =>
+      c.projectId === clip.projectId
+        ? { ...c, assetId: result.assetId, status: result.status, error: result.error }
+        : c,
+    );
+    await patchAgentRun(run.id, {
+      outputs: { ...(run.outputs ?? {}), libraryClips: next as never },
+    });
+    return { status: result.status, assetId: result.assetId, error: result.error };
+  });

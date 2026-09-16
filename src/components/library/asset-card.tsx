@@ -1,14 +1,9 @@
-import { Film, Image as ImageIcon } from "lucide-react";
+import { Download, Film, Image as ImageIcon } from "lucide-react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { GlassCard } from "@/components/ui/glass-card";
 import { ScoreBadge } from "@/components/performance/score-badge";
 import { cn } from "@/lib/utils";
-import {
-  SOURCE_LABELS,
-  formatBytes,
-  formatDurationSec,
-  type LibraryAsset,
-} from "@/lib/library";
+import { SOURCE_LABELS, formatBytes, formatDurationSec, type LibraryAsset } from "@/lib/library";
 import type { AssetPerformanceRollup } from "@/lib/performance";
 import { formatUnknownNumber } from "@/lib/performance";
 import { formatCompactCount } from "@/lib/format";
@@ -89,23 +84,34 @@ export function AssetCard({
           <Badge tone="neutral">{SOURCE_LABELS[asset.source]}</Badge>
           {asset.aspectRatio ? <Badge tone="blue">{asset.aspectRatio}</Badge> : null}
           {rollup ? (
-            <ScoreBadge
-              score={rollup.score}
-              verdict={rollup.winnerCount > 0 ? "WINNER" : null}
-            />
+            <ScoreBadge score={rollup.score} verdict={rollup.winnerCount > 0 ? "WINNER" : null} />
           ) : null}
         </div>
-        <p className="text-caption text-muted">
-          {[
-            asset.kind.toLowerCase(),
-            formatBytes(asset.byteSize),
-            rollup?.viewsTotal != null
-              ? `${formatUnknownNumber(rollup.viewsTotal, formatCompactCount)} views`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-caption text-muted">
+            {[
+              asset.kind.toLowerCase(),
+              formatBytes(asset.byteSize),
+              rollup?.viewsTotal != null
+                ? `${formatUnknownNumber(rollup.viewsTotal, formatCompactCount)} views`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+          {asset.previewUrl &&
+          (asset.kind === "VIDEO" || asset.kind === "IMAGE" || asset.kind === "AUDIO") ? (
+            <a
+              href={`${asset.previewUrl}&download=1`}
+              className="inline-flex items-center gap-1 text-caption text-accent"
+              aria-label={`Download ${asset.title}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Download className="size-3.5" aria-hidden="true" />
+              Download
+            </a>
+          ) : null}
+        </div>
       </div>
     </GlassCard>
   );

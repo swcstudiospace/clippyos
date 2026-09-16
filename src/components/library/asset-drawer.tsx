@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { Badge, statusTone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,12 @@ import {
   type MediaPipelineSettings,
   type RenderPreset,
 } from "@/lib/library";
-import { PLATFORM_LABELS, WINDOW_LABELS, formatEngagementPct, formatUnknownNumber } from "@/lib/performance";
+import {
+  PLATFORM_LABELS,
+  WINDOW_LABELS,
+  formatEngagementPct,
+  formatUnknownNumber,
+} from "@/lib/performance";
 import { formatCompactCount } from "@/lib/format";
 
 export function AssetDrawer({
@@ -66,7 +72,8 @@ export function AssetDrawer({
 
   const media = useMemo(() => {
     if (!asset?.previewUrl) return null;
-    if (asset.kind === "IMAGE") return <img src={asset.previewUrl} alt="" className="w-full rounded-control" />;
+    if (asset.kind === "IMAGE")
+      return <img src={asset.previewUrl} alt="" className="w-full rounded-control" />;
     if (asset.kind === "VIDEO") {
       return (
         <video src={asset.previewUrl} controls playsInline className="w-full rounded-control" />
@@ -98,6 +105,24 @@ export function AssetDrawer({
             <p className="mt-2 text-caption text-muted">
               {[formatBytes(asset.byteSize), asset.mimeType].filter(Boolean).join(" · ")}
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              {asset.previewUrl && asset.kind !== "SUBTITLE" ? (
+                <Button size="sm" variant="secondary" asChild>
+                  <a href={`${asset.previewUrl}&download=1`}>
+                    <Download className="size-3.5" aria-hidden="true" />
+                    Download
+                  </a>
+                </Button>
+              ) : null}
+              <span className="text-caption text-muted">
+                Stored in{" "}
+                {settings.libraryBackend === "supabase"
+                  ? "Supabase Storage"
+                  : settings.libraryBackend === "s3"
+                    ? "S3-compatible storage"
+                    : "local preview disk"}
+              </span>
+            </div>
 
             {detail?.performance || (detail?.snapshots && detail.snapshots.length > 0) ? (
               <section className="mt-6">
@@ -105,7 +130,9 @@ export function AssetDrawer({
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <ScoreBadge
                     score={detail.performance?.score ?? null}
-                    verdict={detail.performance && detail.performance.winnerCount > 0 ? "WINNER" : null}
+                    verdict={
+                      detail.performance && detail.performance.winnerCount > 0 ? "WINNER" : null
+                    }
                   />
                   {detail.performance?.viewsTotal != null ? (
                     <span className="text-caption text-muted">
@@ -115,7 +142,9 @@ export function AssetDrawer({
                         : ""}
                     </span>
                   ) : (
-                    <span className="text-caption text-muted">No stats yet — unknown, not zero.</span>
+                    <span className="text-caption text-muted">
+                      No stats yet — unknown, not zero.
+                    </span>
                   )}
                 </div>
                 {detail.snapshots && detail.snapshots.length > 0 ? (
@@ -158,8 +187,8 @@ export function AssetDrawer({
               <section className="mt-6">
                 <h3 className="text-card font-semibold tracking-tight">Performance</h3>
                 <p className="mt-2 text-caption text-muted">
-                  No published stats on this asset yet. After a social post succeeds, refresh stats on
-                  Analytics or enter them manually.
+                  No published stats on this asset yet. After a social post succeeds, refresh stats
+                  on Analytics or enter them manually.
                 </p>
               </section>
             ) : null}
@@ -219,7 +248,10 @@ export function AssetDrawer({
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="preset">Preset</Label>
-                  <Select value={preset} onValueChange={(value) => setPreset(value as RenderPreset)}>
+                  <Select
+                    value={preset}
+                    onValueChange={(value) => setPreset(value as RenderPreset)}
+                  >
                     <SelectTrigger id="preset">
                       <SelectValue />
                     </SelectTrigger>
@@ -246,7 +278,7 @@ export function AssetDrawer({
                 className="mt-3"
                 disabled={pending || asset.kind === "SUBTITLE"}
                 onClick={() =>
-                  onQueueRender(preset, burnIn, burnIn ? readyCaption?.id ?? null : null)
+                  onQueueRender(preset, burnIn, burnIn ? (readyCaption?.id ?? null) : null)
                 }
               >
                 Queue {PRESET_LABELS[preset]}
