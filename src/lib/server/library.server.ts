@@ -63,12 +63,17 @@ create table if not exists media_assets (
   checksum            text,
   current_version_id  text,
   parent_asset_id     text,
+  external_ref        text,
+  thumbnail_version_id text,
   tags                text not null default '[]',
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   created_by          text
 );
 create index if not exists media_assets_client_idx on media_assets (client_id, created_at desc);
+alter table media_assets add column if not exists external_ref text;
+alter table media_assets add column if not exists thumbnail_version_id text;
+create index if not exists media_assets_external_ref_idx on media_assets (external_ref);
 create table if not exists media_asset_versions (
   id              text primary key,
   asset_id        text not null,
@@ -136,6 +141,8 @@ export async function ensureLibrarySchema(): Promise<void> {
     for (const stmt of SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean)) {
       await sql.query(stmt);
     }
+    await sql.query("alter table media_assets add column if not exists external_ref text");
+    await sql.query("alter table media_assets add column if not exists thumbnail_version_id text");
   })().catch((error) => {
     schemaReady = null;
     throw error;
@@ -228,12 +235,9 @@ function parseOptions(value: unknown): RenderOptions {
 }
 
 async function withPreview(asset: LibraryAsset): Promise<LibraryAsset> {
-  if (!asset.currentVersionId) return { ...asset, previewUrl: null };
-  try {
-    return { ...asset, previewUrl: await signVersionUrl(asset.currentVersionId) };
-  } catch {
-    return { ...asset, previewUrl: null };
-  }
+  const previewUrl = asset.currentVersionId ? await signVersionUrl(asset.currentVersionId).catch(() => null) : null;
+  const thumbnailUrl = asset.thumbnailVersionId ? await signVersionUrl(asset.thumbnailVersionId).catch(() => null) : null;
+  return { ...asset, previewUrl, thumbnailUrl };
 }
 
 export function mapAsset(row: Record<string, unknown>): LibraryAsset {
@@ -256,6 +260,9 @@ export function mapAsset(row: Record<string, unknown>): LibraryAsset {
     checksum: asNullable(row.checksum),
     currentVersionId: asNullable(row.current_version_id),
     parentAssetId: asNullable(row.parent_asset_id),
+    externalRef: asNullable(row.external_ref),
+    thumbnailVersionId: asNullable(row.thumbnail_version_id),
+    thumbnailUrl: null,
     tags: parseTags(row.tags),
     previewUrl: null,
     createdAt: asString(row.created_at, nowIso()),
@@ -360,6 +367,8 @@ export async function insertAsset(row: {
   checksum?: string | null;
   current_version_id?: string | null;
   parent_asset_id?: string | null;
+  external_ref?: string | null;
+  thumbnail_version_id?: string | null;
   tags?: string[];
   created_by?: string | null;
 }): Promise<LibraryAsset> {
@@ -384,6 +393,8 @@ export async function insertAsset(row: {
     checksum: row.checksum ?? null,
     current_version_id: row.current_version_id ?? null,
     parent_asset_id: row.parent_asset_id ?? null,
+    external_ref: row.external_ref ?? null,
+    thumbnail_version_id: row.thumbnail_version_id ?? null,
     tags: JSON.stringify(row.tags ?? []),
     created_at: stamp,
     updated_at: stamp,
@@ -399,8 +410,9 @@ export async function insertAsset(row: {
     `insert into media_assets (
       id, workspace_id, client_id, kind, title, description, source, source_ref, status,
       duration_sec, width, height, aspect_ratio, mime_type, byte_size, checksum,
-      current_version_id, parent_asset_id, tags, created_at, updated_at, created_by
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      current_version_id, parent_asset_id, tags, created_at, updated_at, created_by,
+      external_ref, thumbnail_version_id
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       payload.id,
       payload.workspace_id,
@@ -424,6 +436,8 @@ export async function insertAsset(row: {
       payload.created_at,
       payload.updated_at,
       payload.created_by,
+      payload.external_ref,
+      payload.thumbnail_version_id,
     ],
   );
   return mapAsset(payload);
@@ -495,6 +509,8 @@ export async function patchAsset(
     checksum: string | null;
     current_version_id: string | null;
     tags: string[];
+    external_ref: string | null;
+    thumbnail_version_id: string | null;
   }>,
 ): Promise<void> {
   await ensureLibrarySchema();
@@ -512,6 +528,8 @@ export async function patchAsset(
   if (patch.checksum !== undefined) adminPatch.checksum = patch.checksum;
   if (patch.current_version_id !== undefined) adminPatch.current_version_id = patch.current_version_id;
   if (patch.tags !== undefined) adminPatch.tags = JSON.stringify(patch.tags);
+  if (patch.external_ref !== undefined) adminPatch.external_ref = patch.external_ref;
+  if (patch.thumbnail_version_id !== undefined) adminPatch.thumbnail_version_id = patch.thumbnail_version_id;
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("media_assets").update(adminPatch).eq("id", id);
@@ -618,6 +636,28 @@ export async function findByChecksum(clientId: string | null, checksum: string):
   if (!checksum) return null;
   const assets = await listAssets({ status: "READY" }, 200);
   return assets.find((row) => row.checksum === checksum && row.clientId === clientId) ?? null;
+}
+
+export async function findAssetByExternalRef(ref: string): Promise<LibraryAsset | null> {
+  await ensureLibrarySchema();
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    const { data, error } = await admin
+      .from("media_assets")
+      .select("*")
+      .eq("external_ref", ref)
+      .neq("status", "ARCHIVED")
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) return withPreview(mapAsset(data as Record<string, unknown>));
+    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+  }
+  const sql = await localSql();
+  const rows = await sql.query<Record<string, unknown>>(
+    "select * from media_assets where external_ref = $1 and status <> 'ARCHIVED' limit 1",
+    [ref],
+  );
+  return rows[0] ? withPreview(mapAsset(rows[0])) : null;
 }
 
 export async function insertCaption(row: {

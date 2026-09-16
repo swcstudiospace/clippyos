@@ -97,6 +97,9 @@ export type LibraryAsset = {
   checksum: string | null;
   currentVersionId: string | null;
   parentAssetId: string | null;
+  externalRef: string | null;
+  thumbnailVersionId: string | null;
+  thumbnailUrl: string | null;
   tags: string[];
   previewUrl: string | null;
   createdAt: string;
