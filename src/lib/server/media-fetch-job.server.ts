@@ -63,18 +63,20 @@ type SegmentState = {
   uploadId?: string;
   assetId?: string;
   autoclipId?: string;
-  clips?: {
-    title: string;
-    projectId: string | null;
-    thumbnailUrl: string | null;
-    library: unknown;
-  }[];
+  clips?: import("@/lib/server/clip-export.server").ClipExportState[];
   error?: string;
 };
 
 export type MediaFetchJobState = {
   version: 1;
-  phase: "booting" | "downloading" | "uploading" | "autoclipping" | "done" | "failed";
+  phase:
+    | "booting"
+    | "downloading"
+    | "uploading"
+    | "autoclipping"
+    | "exporting"
+    | "done"
+    | "failed";
   url: string;
   sandboxId: string | null;
   actorId: string;
@@ -94,6 +96,7 @@ export type MediaFetchJobState = {
   error: string | null;
   /** Consecutive ticks that failed on a transient sandbox/API error; reset once a tick reads the sandbox. */
   transientErrors?: number;
+  exportBudget?: { count: number; credits: number | null } | null;
 };
 
 const LOCK_MS = 25_000;
@@ -608,25 +611,23 @@ export async function tickMediaFetchJob(
         } | null;
         const status = String(payload?.autoclip?.status ?? "").toLowerCase();
         if (status === "completed" || status === "complete" || status === "succeeded") {
-          const { ingestCrayoMedia } = await import("@/lib/server/crayo-tools.server");
-          const clips = [];
-          for (const clip of (payload?.autoclip?.clips ?? []).slice(0, 20) as Record<
-            string,
-            unknown
-          >[]) {
-            const title = String(clip.title ?? "AutoClip");
-            const thumbnailUrl = typeof clip.thumbnail_url === "string" ? clip.thumbnail_url : null;
-            const projectId = typeof clip.project_id === "string" ? clip.project_id : null;
-            const library = thumbnailUrl
-              ? await ingestCrayoMedia(state.actorId, state.clientId, thumbnailUrl, title, [
-                  "autoclip",
-                ])
-              : null;
-            clips.push({ title, projectId, thumbnailUrl, library });
-          }
-          seg.clips = clips;
+          const { readAutoclipClips } = await import("@/lib/clip-export");
+          seg.clips = readAutoclipClips(payload).map((clip) => ({
+            projectId: clip.projectId,
+            title: clip.title,
+            thumbnailUrl: clip.thumbnailUrl,
+            exportId: null,
+            status: "pending" as const,
+            assetId: null,
+            error: null,
+            bytes: null,
+          }));
           seg.state = "done";
-          await progress(runId, state, `Segment ${seg.index + 1}: ${clips.length} clip(s) ready.`);
+          await progress(
+            runId,
+            state,
+            `Segment ${seg.index + 1}: ${seg.clips.length} clip(s) ready in Crayo. Exporting next.`,
+          );
         } else if (status === "failed" || status === "error") {
           return await fail(
             "FAILED",
@@ -635,10 +636,81 @@ export async function tickMediaFetchJob(
         }
       }
       if (state.segments.every((seg) => seg.state === "done")) {
+        const { planExportBudget } = await import("@/lib/clip-export");
+        const { readExportCredits, defaultClipExportDeps } = await import(
+          "@/lib/server/clip-export.server"
+        );
+        const allClips = state.segments.flatMap((seg) => seg.clips ?? []);
+        const credits = await readExportCredits(defaultClipExportDeps().crayo);
+        const budget = planExportBudget({ exportCredits: credits, clipCount: allClips.length });
+        if (!budget.ok) return await fail("EXPORT_BUDGET", budget.reason);
+        // Trim to the budget: clips beyond the ceiling stay in Crayo untouched.
+        let remaining = budget.count;
+        for (const seg of state.segments) {
+          seg.clips = (seg.clips ?? []).map((clip) =>
+            remaining-- > 0
+              ? clip
+              : {
+                  ...clip,
+                  status: "failed" as const,
+                  error: "Over the per-run export ceiling; still available in Crayo.",
+                },
+          );
+        }
+        state.exportBudget = { count: budget.count, credits };
+        state.phase = "exporting";
+        await progress(
+          runId,
+          state,
+          `Exporting ${budget.count} clip(s) to the Library${credits != null ? ` (${credits} export credits available)` : ""}.`,
+        );
+      }
+      await saveState(runId, run.outputs, { ...state, lockUntil: null });
+      return "advanced";
+    }
+
+    // ---- Export phase: push each Crayo clip project into the Library ----
+    if (state.phase === "exporting") {
+      const { EXPORT_CONCURRENCY } = await import("@/lib/clip-export");
+      const { exportClipStep, defaultClipExportDeps } = await import(
+        "@/lib/server/clip-export.server"
+      );
+      const deps = defaultClipExportDeps();
+      const ctx = {
+        actorId: state.actorId,
+        clientId: state.clientId,
+        sourceUrl: state.url,
+        tags: ["autoclip"],
+      };
+      const active = state.segments
+        .flatMap((seg) => seg.clips ?? [])
+        .filter((c) => c.status === "pending" || c.status === "exporting");
+      const batch = active.slice(0, EXPORT_CONCURRENCY);
+      for (const clip of batch) {
+        const before = clip.status;
+        const next = await exportClipStep(clip, ctx, deps);
+        Object.assign(clip, next);
+        const all = state.segments.flatMap((seg) => seg.clips ?? []);
+        const idx = all.indexOf(clip) + 1;
+        if (next.status === "stored" && before !== "stored") {
+          await progress(
+            runId,
+            state,
+            `Stored clip ${idx} of ${all.length} (${Math.round((next.bytes ?? 0) / 1048576)} MB): ${next.title}`,
+          );
+        } else if (next.status === "failed" && before !== "failed") {
+          await progress(runId, state, `Clip ${idx} of ${all.length} failed: ${next.error ?? "unknown error"}`);
+        } else if (next.status === "exporting" && before === "pending") {
+          await progress(runId, state, `Exporting clip ${idx} of ${all.length}: ${next.title}`);
+        }
+      }
+      const all = state.segments.flatMap((seg) => seg.clips ?? []);
+      if (all.every((c) => c.status === "stored" || c.status === "failed")) {
         state.phase = "done";
         state.lockUntil = null;
-        const clips = state.segments.flatMap((seg) => seg.clips ?? []);
-        const summary = `AutoClip finished: ${clips.length} clip(s) across ${state.segments.length} segment(s) of “${state.probe?.title ?? "video"}”. ${clips
+        const stored = all.filter((c) => c.status === "stored");
+        const failed = all.filter((c) => c.status === "failed");
+        const summary = `AutoClip finished: ${stored.length} clip(s) in the Library${failed.length ? `, ${failed.length} failed` : ""} from “${state.probe?.title ?? "video"}”. ${stored
           .map((c) => c.title)
           .slice(0, 8)
           .join(" · ")}`;
@@ -658,11 +730,12 @@ export async function tickMediaFetchJob(
           outputs: {
             ...(run.outputs ?? {}),
             mediaFetch: state as unknown as JsonValue,
-            autoclips: state.segments.map((seg) => ({
-              segment: seg.index,
-              assetId: seg.assetId ?? null,
-              autoclipId: seg.autoclipId ?? null,
-              clips: seg.clips ?? [],
+            libraryClips: all.map((c) => ({
+              title: c.title,
+              projectId: c.projectId,
+              assetId: c.assetId,
+              status: c.status,
+              error: c.error,
             })) as unknown as JsonValue,
           },
         });
