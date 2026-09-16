@@ -92,9 +92,13 @@ export type MediaFetchJobState = {
   clipsPerSegment: number | null;
   segments: SegmentState[];
   error: string | null;
+  /** Consecutive ticks that failed on a transient sandbox/API error; reset once a tick reads the sandbox. */
+  transientErrors?: number;
 };
 
 const LOCK_MS = 25_000;
+/** ~12 min of back-to-back transient failures (one tick per LOCK_MS) before the run fails visibly. */
+const MAX_TRANSIENT_ERRORS = 30;
 const LABELS = { purpose: "media-fetch-job", app: "clippyos" } as const;
 
 function shellQuote(value: string): string {
@@ -392,6 +396,7 @@ export async function tickMediaFetchJob(
       const { daytona } = await daytonaClient();
       const sandbox = await getSandbox(daytona, state.sandboxId!);
       const status = await readStatus(sandbox);
+      state.transientErrors = 0;
 
       if (status?.phase === "failed")
         return await fail("MEDIA_FETCH_FAILED", status.error ?? "sandbox job failed");
@@ -677,9 +682,18 @@ export async function tickMediaFetchJob(
     const detail = error instanceof Error ? error.message : "unknown error";
     // Transient sandbox/API hiccups: release the lock and let the next tick retry, unless fatal.
     if (code === "MEDIA_FETCH_FAILED" && !/not found|does not exist|deleted/i.test(detail)) {
+      const attempts = (state.transientErrors ?? 0) + 1;
+      state.transientErrors = attempts;
       state.lockUntil = null;
+      console.error("[media-fetch-job] transient", runId, attempts, scrub(detail));
+      if (attempts >= MAX_TRANSIENT_ERRORS) {
+        return await fail("MEDIA_FETCH_FAILED", `Gave up after ${attempts} consecutive transient errors. Last: ${detail}`);
+      }
+      // Surface the retry on the run (1st, 2nd, 4th, 8th… attempt) so it never looks frozen.
+      if ((attempts & (attempts - 1)) === 0) {
+        await progress(runId, state, `Retrying (attempt ${attempts}) after a transient error: ${scrub(detail)}`);
+      }
       await saveState(runId, run.outputs, state).catch(() => {});
-      console.error("[media-fetch-job] transient", runId, scrub(detail));
       return "idle";
     }
     return await fail(code, detail);
