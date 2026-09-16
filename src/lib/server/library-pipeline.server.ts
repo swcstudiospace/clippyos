@@ -248,6 +248,120 @@ export async function ingestBytes(input: {
   return { asset, duplicate: false };
 }
 
+async function hashFile(path: string): Promise<string> {
+  const { createHash } = await import("node:crypto");
+  const { createReadStream } = await import("node:fs");
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    createReadStream(path).on("data", (chunk) => hash.update(chunk)).on("error", reject).on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+/** Disk-backed twin of ingestBytes: streams into storage and probes the file where it sits. */
+export async function ingestFile(input: {
+  actorId: string;
+  clientId: string | null;
+  title: string;
+  filePath: string;
+  mimeHint: string;
+  filename: string;
+  source: AssetSource;
+  sourceRef?: string | null;
+  externalRef?: string | null;
+  tags?: string[];
+  note?: string;
+}): Promise<{ asset: LibraryAsset; duplicate: boolean }> {
+  const { stat } = await import("node:fs/promises");
+  const { writeLibraryFile } = await import("@/lib/server/library-storage.server");
+  const byteSize = (await stat(input.filePath)).size;
+  const mime = input.mimeHint || "application/octet-stream";
+  const kind = kindFromMime(mime);
+  const checksum = await hashFile(input.filePath);
+  const existing = await findByChecksum(input.clientId, checksum);
+  if (existing) return { asset: existing, duplicate: true };
+
+  const assetId = libraryNewId();
+  const versionId = libraryNewId();
+  const ext = extFromMime(mime, input.filename);
+  const key = makeStorageKey(assetId, versionId, ext);
+  const storageKey = await writeLibraryFile(key, input.filePath, mime);
+  const title = sanitizeText(input.title || input.filename || "Untitled").slice(0, 160) || "Untitled";
+  await insertAsset({
+    id: assetId,
+    client_id: input.clientId,
+    kind,
+    title,
+    source: input.source,
+    source_ref: input.sourceRef ?? null,
+    external_ref: input.externalRef ?? null,
+    status: "PROCESSING",
+    mime_type: mime,
+    byte_size: byteSize,
+    checksum,
+    current_version_id: versionId,
+    tags: input.tags,
+    created_by: input.actorId,
+  });
+  await insertVersion({
+    id: versionId,
+    asset_id: assetId,
+    version_number: 1,
+    storage_key: storageKey,
+    mime_type: mime,
+    byte_size: byteSize,
+    checksum,
+    note: input.note ?? "original",
+  });
+  await finalizeProbeFromPath(assetId, versionId, input.filePath, mime, byteSize, checksum);
+  await audit(input.actorId, "library.ingest", assetId);
+  emitAutonomyEvent({ type: "library.asset.ready", entityType: "media_asset", entityId: assetId, data: { source: input.source, kind, clientId: input.clientId } });
+  const asset = await getAsset(assetId);
+  if (!asset) throw new Error("ASSET_MISSING");
+  return { asset, duplicate: false };
+}
+
+async function finalizeProbeFromPath(assetId: string, versionId: string, path: string, mime: string, byteSize: number, checksum: string) {
+  try {
+    await assertReadableMedia(path);
+  } catch {
+    await patchAsset(assetId, { status: "FAILED" });
+    return;
+  }
+  const probe = await probeFile(path);
+  await patchAsset(assetId, {
+    status: "READY",
+    mime_type: mime,
+    byte_size: byteSize,
+    checksum,
+    current_version_id: versionId,
+    duration_sec: probe.durationSec,
+    width: probe.width,
+    height: probe.height,
+    aspect_ratio: aspectLabel(probe.width, probe.height),
+  });
+}
+
+/** Store a small thumbnail as an extra version row and point the asset at it. */
+export async function attachThumbnail(input: { assetId: string; bytes: Buffer; mimeHint: string }): Promise<string> {
+  const { writeLibraryBytes } = await import("@/lib/server/library-storage.server");
+  const mime = sniffMime(input.bytes, input.mimeHint, "thumb.jpg");
+  const versionId = libraryNewId();
+  const key = makeStorageKey(input.assetId, versionId, extFromMime(mime, "thumb.jpg"));
+  const storageKey = await writeLibraryBytes(key, input.bytes);
+  await insertVersion({
+    id: versionId,
+    asset_id: input.assetId,
+    version_number: 0,
+    storage_key: storageKey,
+    mime_type: mime,
+    byte_size: input.bytes.length,
+    checksum: await hashBytes(input.bytes),
+    note: "thumbnail",
+  });
+  await patchAsset(input.assetId, { thumbnail_version_id: versionId });
+  return versionId;
+}
+
 async function finalizeProbe(
   assetId: string,
   versionId: string,
