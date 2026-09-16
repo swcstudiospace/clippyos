@@ -272,26 +272,47 @@ async function runAutoclip(
   if (!autoclipId) throw new Error("CRAYO_FAILED");
 
   const finished = await wrap(() => crayoPollAutoclip(autoclipId));
-  const clipsRaw =
-    finished && typeof finished === "object" && Array.isArray((finished as { clips?: unknown }).clips)
-      ? ((finished as { clips: unknown[] }).clips)
-      : [];
+  const { readAutoclipClips, planExportBudget } = await import("@/lib/clip-export");
+  const { exportClipToLibrary, readExportCredits, defaultClipExportDeps } = await import(
+    "@/lib/server/clip-export.server"
+  );
+  const found = readAutoclipClips(finished);
+  const deps = defaultClipExportDeps();
+  const budget = planExportBudget({
+    exportCredits: await readExportCredits(deps.crayo),
+    clipCount: found.length,
+  });
+  if (!budget.ok) throw new CrayoToolError("EXPORT_BUDGET", budget.reason);
   const clips = [];
-  for (const clip of clipsRaw.slice(0, 20)) {
-    const title = pickField(clip, "title") || "AutoClip";
-    const thumbnailUrl = pickField(clip, "thumbnail_url") || firstHttps(clip);
-    const projectId = pickField(clip, "project_id") || pickField(clip, "id");
-    const library = thumbnailUrl
-      ? await ingestCrayoMedia(actorId, clientId, thumbnailUrl, title, ["autoclip"])
-      : null;
-    clips.push({
-      title,
-      projectId: projectId || null,
-      thumbnailUrl: thumbnailUrl || null,
-      library,
-    });
+  for (const [i, clip] of found.slice(0, budget.count).entries()) {
+    await onProgress?.(`Exporting clip ${i + 1} of ${budget.count}: ${clip.title}`);
+    const result = await exportClipToLibrary(
+      {
+        projectId: clip.projectId,
+        title: clip.title,
+        thumbnailUrl: clip.thumbnailUrl,
+        actorId,
+        clientId,
+        sourceUrl: url,
+        tags: ["autoclip"],
+      },
+      deps,
+    );
+    clips.push(result);
+    await onProgress?.(
+      result.status === "stored"
+        ? `Stored clip ${i + 1} of ${budget.count} (${Math.round((result.bytes ?? 0) / 1048576)} MB).`
+        : `Clip ${i + 1} failed: ${result.error}`,
+    );
   }
-  return { autoclipId, assetId, clips, ...(fetched ? { source: fetched } : {}) };
+  const libraryClips = clips.map((c) => ({
+    title: c.title,
+    projectId: c.projectId,
+    assetId: c.assetId,
+    status: c.status,
+    error: c.error,
+  }));
+  return { autoclipId, assetId, clips, libraryClips, ...(fetched ? { source: fetched } : {}) };
 }
 
 export async function handleCrayoAction(
@@ -369,14 +390,22 @@ export async function handleCrayoAction(
     case "crayo.export_project": {
       const id = str(payload, "projectId", "id");
       if (!id) throw new Error("VALIDATION");
-      const queued = await wrap(() => crayoExportProject(id));
-      const exportId = pickField(queued, "id");
-      if (!exportId) return queued;
-      try {
-        return await wrap(() => crayoPollExport(exportId));
-      } catch {
-        return queued;
-      }
+      const { exportClipToLibrary } = await import("@/lib/server/clip-export.server");
+      const result = await exportClipToLibrary({
+        projectId: id,
+        title: sanitizeText(str(payload, "title")).slice(0, 160) || `Crayo project ${id}`,
+        thumbnailUrl: null,
+        actorId,
+        clientId: str(payload, "clientId") || null,
+        sourceUrl: `crayo:project:${id}`,
+        tags: ["export"],
+      });
+      if (result.status === "failed") throw new CrayoToolError("EXPORT_FAILED", result.error ?? "");
+      return {
+        libraryClips: [
+          { title: result.title, projectId: id, assetId: result.assetId, status: result.status, error: null },
+        ],
+      };
     }
     case "crayo.get_export": {
       const id = str(payload, "exportId", "id");

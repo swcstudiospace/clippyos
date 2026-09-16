@@ -676,6 +676,8 @@ export function explainAgentToolError(code: string): string {
       return "Crayo never received the bytes on its signed upload URL. Retry the run.";
     case "EXPORT_BUDGET":
       return "Not enough Crayo export credits for these clips.";
+    case "EXPORT_FAILED":
+      return "Crayo could not export that project.";
     case "VALIDATION_ERROR":
       return "Crayo rejected the request: the URL could not be fetched, is not a public https media file, or the video is too short/long (AutoClip needs 1 min–3 h). No credits were spent on a rejected request.";
     case "UNSUPPORTED_MEDIA_TYPE":
