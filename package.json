@@ -17,7 +17,7 @@
     "desktop:build": "tauri build",
     "typecheck": "tsc --noEmit",
     "check:auth": "node --experimental-strip-types scripts/check-auth-invariant.ts",
-    "test": "node --test --experimental-strip-types --test-reporter=spec 'scripts/**/*.test.ts' 'src/**/*.test.ts'",
+    "test": "node --import ./scripts/register-test-aliases.mjs --test --experimental-strip-types --test-reporter=spec 'scripts/**/*.test.ts' 'src/**/*.test.ts'",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
