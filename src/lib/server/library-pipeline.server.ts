@@ -285,13 +285,26 @@ export async function ingestFile(input: {
   const kind = kindFromMime(mime);
   const checksum = await hashFile(input.filePath);
   const existing = await findByChecksum(input.clientId, checksum);
-  if (existing) return { asset: existing, duplicate: true };
+  if (existing) {
+    // Duplicate content: still record the caller's idempotency key (e.g.
+    // "crayo:project:<id>") on the pre-existing asset so a retried export finds it
+    // via findAssetByExternalRef instead of spending another provider credit.
+    if (input.externalRef && !existing.externalRef) {
+      await patchAsset(existing.id, { external_ref: input.externalRef });
+    }
+    return { asset: existing, duplicate: true };
+  }
 
   const assetId = libraryNewId();
   const versionId = libraryNewId();
   const ext = extFromMime(mime, input.filename);
   const key = makeStorageKey(assetId, versionId, ext);
-  const storageKey = await writeLibraryFile(key, input.filePath, mime);
+  // writeLibraryFile's return value is prefixed for cloud backends (`supabase:<key>`,
+  // `s3:<key>`) but is an ABSOLUTE PATH for the local-disk fallback, not the plain
+  // relative key — storing that in storage_key double-joins onto ROOT on every later
+  // read/delete. Store the plain `key` we already have (matches ingestBytes); the
+  // writer's return value is only used here to confirm the write succeeded.
+  await writeLibraryFile(key, input.filePath, mime);
   const title =
     sanitizeText(input.title || input.filename || "Untitled").slice(0, 160) || "Untitled";
   await insertAsset({
@@ -314,7 +327,7 @@ export async function ingestFile(input: {
     id: versionId,
     asset_id: assetId,
     version_number: 1,
-    storage_key: storageKey,
+    storage_key: key,
     mime_type: mime,
     byte_size: byteSize,
     checksum,
@@ -371,12 +384,13 @@ export async function attachThumbnail(input: {
   const mime = sniffMime(input.bytes, input.mimeHint, "thumb.jpg");
   const versionId = libraryNewId();
   const key = makeStorageKey(input.assetId, versionId, extFromMime(mime, "thumb.jpg"));
-  const storageKey = await writeLibraryBytes(key, input.bytes);
+  // Same local-disk-return-value pitfall as ingestFile — store the plain key.
+  await writeLibraryBytes(key, input.bytes);
   await insertVersion({
     id: versionId,
     asset_id: input.assetId,
     version_number: 0,
-    storage_key: storageKey,
+    storage_key: key,
     mime_type: mime,
     byte_size: input.bytes.length,
     checksum: await hashBytes(input.bytes),
@@ -1258,6 +1272,13 @@ export async function archiveAsset(input: {
   if (asset.currentVersionId) {
     const version = await getVersionRow(asset.currentVersionId);
     if (version) await deleteLibraryBytes(version.storageKey);
+  }
+  if (asset.thumbnailVersionId) {
+    // Otherwise the thumbnail version row and its stored JPG survive forever, and
+    // withPreview keeps signing a working thumbnailUrl for an asset whose video is gone.
+    const thumbnailVersion = await getVersionRow(asset.thumbnailVersionId);
+    if (thumbnailVersion) await deleteLibraryBytes(thumbnailVersion.storageKey);
+    await patchAsset(asset.id, { thumbnail_version_id: null });
   }
   await audit(input.actorId, "library.archive", asset.id);
   void import("@/lib/server/safety-hooks.server")

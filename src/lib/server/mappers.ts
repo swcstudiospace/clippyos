@@ -402,3 +402,11 @@ export function isMissingTable(error: { code?: string; message?: string } | null
     /relation .* does not exist/i.test(error.message ?? "")
   );
 }
+
+export function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.code === "23505" ||
+    /duplicate key value violates unique constraint/i.test(error.message ?? "")
+  );
+}

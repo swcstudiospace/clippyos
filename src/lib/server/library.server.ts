@@ -1,5 +1,5 @@
 import { getAgencyAdmin, localSql } from "@/lib/server/agency-db.server";
-import { isMissingColumn, isMissingTable } from "@/lib/server/mappers";
+import { isMissingColumn, isMissingTable, isUniqueViolation } from "@/lib/server/mappers";
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import { signVersionUrl } from "@/lib/server/library-storage.server";
 import {
@@ -74,6 +74,7 @@ create index if not exists media_assets_client_idx on media_assets (client_id, c
 alter table media_assets add column if not exists external_ref text;
 alter table media_assets add column if not exists thumbnail_version_id text;
 create index if not exists media_assets_external_ref_idx on media_assets (external_ref);
+create unique index if not exists media_assets_external_ref_unique on media_assets (external_ref) where external_ref is not null;
 create table if not exists media_asset_versions (
   id              text primary key,
   asset_id        text not null,
@@ -145,6 +146,9 @@ export async function ensureLibrarySchema(): Promise<void> {
     }
     await sql.query("alter table media_assets add column if not exists external_ref text");
     await sql.query("alter table media_assets add column if not exists thumbnail_version_id text");
+    await sql.query(
+      "create unique index if not exists media_assets_external_ref_unique on media_assets (external_ref) where external_ref is not null",
+    );
   })().catch((error) => {
     schemaReady = null;
     throw error;
@@ -430,44 +434,63 @@ export async function insertAsset(row: {
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("media_assets").insert(payload);
-    if (error && !isMissingTable(error) && !isMissingColumn(error))
-      throw new Error("DATA_UNAVAILABLE");
+    if (error) {
+      // A concurrent insert for the same external_ref (e.g. two racing Crayo exports
+      // for the same project id) can lose this narrow race even after the caller's
+      // own findAssetByExternalRef check passed — the unique partial index on
+      // external_ref is the actual guard. Treat that specific conflict as "already
+      // exists" instead of a hard failure.
+      if (payload.external_ref && isUniqueViolation(error)) {
+        const existing = await findAssetByExternalRef(payload.external_ref);
+        if (existing) return existing;
+      }
+      if (!isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+    }
   }
   const sql = await localSql();
-  await sql.query(
-    `insert into media_assets (
-      id, workspace_id, client_id, kind, title, description, source, source_ref, status,
-      duration_sec, width, height, aspect_ratio, mime_type, byte_size, checksum,
-      current_version_id, parent_asset_id, tags, created_at, updated_at, created_by,
-      external_ref, thumbnail_version_id
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
-    [
-      payload.id,
-      payload.workspace_id,
-      payload.client_id,
-      payload.kind,
-      payload.title,
-      payload.description,
-      payload.source,
-      payload.source_ref,
-      payload.status,
-      payload.duration_sec,
-      payload.width,
-      payload.height,
-      payload.aspect_ratio,
-      payload.mime_type,
-      payload.byte_size,
-      payload.checksum,
-      payload.current_version_id,
-      payload.parent_asset_id,
-      payload.tags,
-      payload.created_at,
-      payload.updated_at,
-      payload.created_by,
-      payload.external_ref,
-      payload.thumbnail_version_id,
-    ],
-  );
+  try {
+    await sql.query(
+      `insert into media_assets (
+        id, workspace_id, client_id, kind, title, description, source, source_ref, status,
+        duration_sec, width, height, aspect_ratio, mime_type, byte_size, checksum,
+        current_version_id, parent_asset_id, tags, created_at, updated_at, created_by,
+        external_ref, thumbnail_version_id
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+      [
+        payload.id,
+        payload.workspace_id,
+        payload.client_id,
+        payload.kind,
+        payload.title,
+        payload.description,
+        payload.source,
+        payload.source_ref,
+        payload.status,
+        payload.duration_sec,
+        payload.width,
+        payload.height,
+        payload.aspect_ratio,
+        payload.mime_type,
+        payload.byte_size,
+        payload.checksum,
+        payload.current_version_id,
+        payload.parent_asset_id,
+        payload.tags,
+        payload.created_at,
+        payload.updated_at,
+        payload.created_by,
+        payload.external_ref,
+        payload.thumbnail_version_id,
+      ],
+    );
+  } catch (error) {
+    const pgError = error as { code?: string; message?: string };
+    if (payload.external_ref && isUniqueViolation(pgError)) {
+      const existing = await findAssetByExternalRef(payload.external_ref);
+      if (existing) return existing;
+    }
+    throw error;
+  }
   return mapAsset(payload);
 }
 
