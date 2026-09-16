@@ -427,6 +427,38 @@ export const ingestThumbnailFn = createServerFn({ method: "POST" })
     return ingestThumbnailMessage({ actorId: context.userId, messageId: data.messageId });
   });
 
+export const signLibraryAssetsFn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    z.object({ assetIds: z.array(z.string().min(1)).max(50) }).parse(input),
+  )
+  .handler(async ({ context, data }) => {
+    await requireUser(context.userId);
+    const { getAsset, getVersionRow } = await import("@/lib/server/library.server");
+    const { signVersionUrl, backendFromStorageKey } = await import(
+      "@/lib/server/library-storage.server"
+    );
+    const rows = [];
+    for (const assetId of data.assetIds) {
+      const asset = await getAsset(assetId);
+      if (!asset) continue;
+      const version = asset.currentVersionId ? await getVersionRow(asset.currentVersionId) : null;
+      const previewUrl = asset.currentVersionId
+        ? await signVersionUrl(asset.currentVersionId).catch(() => null)
+        : null;
+      rows.push({
+        assetId,
+        title: asset.title,
+        status: asset.status,
+        previewUrl,
+        downloadUrl: previewUrl ? `${previewUrl}&download=1` : null,
+        thumbnailUrl: asset.thumbnailUrl,
+        backend: backendFromStorageKey(version?.storageKey ?? ""),
+      });
+    }
+    return rows;
+  });
+
 export const listClientClipsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) => z.object({ clientId: z.string().min(1) }).parse(input))
