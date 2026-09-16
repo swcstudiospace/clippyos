@@ -40,12 +40,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/error-state";
 import { SparklesText } from "@/components/magicui/sparkles-text";
 import { Particles } from "@/components/magicui/particles";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import { userFacingErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -65,7 +60,9 @@ export const Route = createFileRoute("/_app/agent")({
 });
 
 function nextCardId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `card-${Date.now()}`;
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `card-${Date.now()}`;
 }
 
 function AgentPage() {
@@ -108,6 +105,9 @@ function AgentPage() {
       const status = query.state.data?.run.status;
       return isAgentBusy(status ?? "queued") || status === "waiting_resource" ? 1200 : false;
     },
+    // Each poll ticks the background media-fetch job. React Query pauses interval
+    // refetches in hidden tabs by default, so a run left in another tab never advanced.
+    refetchIntervalInBackground: true,
   });
 
   const start = useMutation({
@@ -147,11 +147,12 @@ function AgentPage() {
 
   const llmReady = Boolean(
     llmQuery.data?.providers["xai-oauth"].configured ||
-      llmQuery.data?.providers["xai-api"].configured ||
-      llmQuery.data?.providers["openai-compat"].configured,
+    llmQuery.data?.providers["xai-api"].configured ||
+    llmQuery.data?.providers["openai-compat"].configured,
   );
   const model = llmQuery.data?.router.defaultModel ?? "grok-4.6";
-  const plannerId = llmQuery.data?.router.features.agent ?? llmQuery.data?.router.defaultProvider ?? "xai-oauth";
+  const plannerId =
+    llmQuery.data?.router.features.agent ?? llmQuery.data?.router.defaultProvider ?? "xai-oauth";
   const planner = LLM_PROVIDER_COPY[plannerId];
   const clients = useMemo(
     () => (clientsQuery.data ?? []).filter((row) => row.status === "ACTIVE" && !row.deletedAt),
@@ -166,7 +167,9 @@ function AgentPage() {
     setCards((current) => {
       const existing = current.find((card) => card.ui === ui);
       if (existing) {
-        return current.map((card) => (card.id === existing.id ? { ...card, draft: { ...card.draft, ...draft } } : card));
+        return current.map((card) =>
+          card.id === existing.id ? { ...card, draft: { ...card.draft, ...draft } } : card,
+        );
       }
       return [...current, { id: nextCardId(), ui, draft }];
     });
@@ -207,10 +210,13 @@ function AgentPage() {
       </ul>
       <div>
         <p className="text-body font-medium">{selectedClient?.name ?? "No client selected"}</p>
-        <p className="text-caption text-muted">{selectedClient?.currentStage ?? "Optional — shorts don’t require a client."}</p>
+        <p className="text-caption text-muted">
+          {selectedClient?.currentStage ?? "Optional — shorts don’t require a client."}
+        </p>
       </div>
       <p className="text-caption text-muted">
-        Crayo runs never start the Social Machine. Leave Grok Bot off unless a computer should claim the job.
+        Crayo runs never start the Social Machine. Leave Grok Bot off unless a computer should claim
+        the job.
       </p>
     </div>
   );
@@ -260,7 +266,11 @@ function AgentPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge tone={crayoQuery.data?.configured ? "green" : "orange"}>
-            {crayoQuery.isPending ? "Crayo…" : crayoQuery.data?.configured ? "Crayo live" : "Crayo off"}
+            {crayoQuery.isPending
+              ? "Crayo…"
+              : crayoQuery.data?.configured
+                ? "Crayo live"
+                : "Crayo off"}
           </Badge>
           <Badge tone="purple">{model}</Badge>
           <Button
@@ -291,14 +301,21 @@ function AgentPage() {
       ) : null}
 
       {rateLimit?.retrying || rateLimit?.recent429 ? (
-        <p className="rounded-control bg-warning/10 px-3 py-2 text-caption text-warning" role="status">
+        <p
+          className="rounded-control bg-warning/10 px-3 py-2 text-caption text-warning"
+          role="status"
+        >
           {rateLimit.message ?? "Capacity — retrying…"}
         </p>
       ) : null}
 
       {!crayoQuery.isPending && !crayoQuery.data?.configured ? (
-        <p className="rounded-control bg-warning/10 px-3 py-2 text-caption text-warning" role="status">
-          Crayo isn’t connected. Paste your Crayo API key in Settings → Add-ons → Crayo.ai and run Test.
+        <p
+          className="rounded-control bg-warning/10 px-3 py-2 text-caption text-warning"
+          role="status"
+        >
+          Crayo isn’t connected. Paste your Crayo API key in Settings → Add-ons → Crayo.ai and run
+          Test.
         </p>
       ) : null}
 
@@ -307,7 +324,12 @@ function AgentPage() {
         detailQuery.data.run.status === "waiting_human" ||
         detailQuery.data.run.status === "waiting_resource") ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => cancel.mutate()} disabled={cancel.isPending} className="min-h-11">
+          <Button
+            variant="secondary"
+            onClick={() => cancel.mutate()}
+            disabled={cancel.isPending}
+            className="min-h-11"
+          >
             <Square className="size-4" aria-hidden="true" />
             Cancel run
           </Button>
@@ -327,7 +349,9 @@ function AgentPage() {
               crayoReady={crayoReady}
               starting={start.isPending}
               onChange={(draft) =>
-                setCards((current) => current.map((row) => (row.id === card.id ? { ...row, draft } : row)))
+                setCards((current) =>
+                  current.map((row) => (row.id === card.id ? { ...row, draft } : row)),
+                )
               }
               onDismiss={() => setCards((current) => current.filter((row) => row.id !== card.id))}
               onRun={(input) => {
@@ -341,8 +365,8 @@ function AgentPage() {
               <div className="max-w-md text-center">
                 <p className="text-body">Hermes Agent</p>
                 <p className="mt-1 text-caption text-muted">
-                  General clipping operator with Crayo specialities. Type /short, /voice, /image, or /autoclip — a
-                  specialty card pops in. Free text uses the planner.
+                  General clipping operator with Crayo specialities. Type /short, /voice, /image, or
+                  /autoclip — a specialty card pops in. Free text uses the planner.
                 </p>
               </div>
             </GlassCard>
@@ -371,7 +395,9 @@ function AgentPage() {
             {moreOpen ? (
               <GlassCard className="mt-2 p-4">
                 <div className="flex flex-wrap gap-2" role="list" aria-label="Clipping presets">
-                  {AGENT_PRESETS.filter((id) => !(CRAYO_AGENT_PRESETS as readonly string[]).includes(id)).map((id) => (
+                  {AGENT_PRESETS.filter(
+                    (id) => !(CRAYO_AGENT_PRESETS as readonly string[]).includes(id),
+                  ).map((id) => (
                     <button
                       key={id}
                       type="button"
@@ -440,9 +466,9 @@ function AgentPage() {
             cancelling={cancel.isPending}
             canCancel={Boolean(
               detailQuery.data &&
-                (isAgentBusy(detailQuery.data.run.status) ||
-                  detailQuery.data.run.status === "waiting_human" ||
-                  detailQuery.data.run.status === "waiting_resource"),
+              (isAgentBusy(detailQuery.data.run.status) ||
+                detailQuery.data.run.status === "waiting_human" ||
+                detailQuery.data.run.status === "waiting_resource"),
             )}
             grokAvailable={Boolean(grokQuery.data?.hasKey && grokQuery.data.enabled)}
             runner={runner}
@@ -467,7 +493,9 @@ function AgentPage() {
       <Sheet open={ctxOpen} onOpenChange={setCtxOpen}>
         <SheetContent side="right" className="p-0">
           <SheetTitle className="sr-only">Run context</SheetTitle>
-          <SheetDescription className="sr-only">Planner, Crayo credits, and client</SheetDescription>
+          <SheetDescription className="sr-only">
+            Planner, Crayo credits, and client
+          </SheetDescription>
           {contextPanel}
         </SheetContent>
       </Sheet>
