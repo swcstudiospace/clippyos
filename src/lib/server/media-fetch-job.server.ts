@@ -69,14 +69,7 @@ type SegmentState = {
 
 export type MediaFetchJobState = {
   version: 1;
-  phase:
-    | "booting"
-    | "downloading"
-    | "uploading"
-    | "autoclipping"
-    | "exporting"
-    | "done"
-    | "failed";
+  phase: "booting" | "downloading" | "uploading" | "autoclipping" | "exporting" | "done" | "failed";
   url: string;
   sandboxId: string | null;
   actorId: string;
@@ -637,9 +630,8 @@ export async function tickMediaFetchJob(
       }
       if (state.segments.every((seg) => seg.state === "done")) {
         const { planExportBudget } = await import("@/lib/clip-export");
-        const { readExportCredits, defaultClipExportDeps } = await import(
-          "@/lib/server/clip-export.server"
-        );
+        const { readExportCredits, defaultClipExportDeps } =
+          await import("@/lib/server/clip-export.server");
         const allClips = state.segments.flatMap((seg) => seg.clips ?? []);
         const credits = await readExportCredits(defaultClipExportDeps().crayo);
         const budget = planExportBudget({ exportCredits: credits, clipCount: allClips.length });
@@ -672,9 +664,8 @@ export async function tickMediaFetchJob(
     // ---- Export phase: push each Crayo clip project into the Library ----
     if (state.phase === "exporting") {
       const { EXPORT_CONCURRENCY } = await import("@/lib/clip-export");
-      const { exportClipStep, defaultClipExportDeps } = await import(
-        "@/lib/server/clip-export.server"
-      );
+      const { exportClipStep, defaultClipExportDeps } =
+        await import("@/lib/server/clip-export.server");
       const deps = defaultClipExportDeps();
       const ctx = {
         actorId: state.actorId,
@@ -699,7 +690,11 @@ export async function tickMediaFetchJob(
             `Stored clip ${idx} of ${all.length} (${Math.round((next.bytes ?? 0) / 1048576)} MB): ${next.title}`,
           );
         } else if (next.status === "failed" && before !== "failed") {
-          await progress(runId, state, `Clip ${idx} of ${all.length} failed: ${next.error ?? "unknown error"}`);
+          await progress(
+            runId,
+            state,
+            `Clip ${idx} of ${all.length} failed: ${next.error ?? "unknown error"}`,
+          );
         } else if (next.status === "exporting" && before === "pending") {
           await progress(runId, state, `Exporting clip ${idx} of ${all.length}: ${next.title}`);
         }
@@ -760,11 +755,18 @@ export async function tickMediaFetchJob(
       state.lockUntil = null;
       console.error("[media-fetch-job] transient", runId, attempts, scrub(detail));
       if (attempts >= MAX_TRANSIENT_ERRORS) {
-        return await fail("MEDIA_FETCH_FAILED", `Gave up after ${attempts} consecutive transient errors. Last: ${detail}`);
+        return await fail(
+          "MEDIA_FETCH_FAILED",
+          `Gave up after ${attempts} consecutive transient errors. Last: ${detail}`,
+        );
       }
       // Surface the retry on the run (1st, 2nd, 4th, 8th… attempt) so it never looks frozen.
       if ((attempts & (attempts - 1)) === 0) {
-        await progress(runId, state, `Retrying (attempt ${attempts}) after a transient error: ${scrub(detail)}`);
+        await progress(
+          runId,
+          state,
+          `Retrying (attempt ${attempts}) after a transient error: ${scrub(detail)}`,
+        );
       }
       await saveState(runId, run.outputs, state).catch(() => {});
       return "idle";
