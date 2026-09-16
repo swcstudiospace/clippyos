@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readAppSetting, writeAppSetting } from "@/lib/server/app-settings.server";
 import { LIBRARY_BUCKET, pickLibraryBackend, parseS3Config, parseIpfsConfig, parseCid, parseIpfsGateway, parseIpfsPinStrategy, ipfsStrategyNote, DEFAULT_IPFS_GATEWAY, DEFAULT_IPFS_PIN_STRATEGY, PINATA_AUTH_URL, PINATA_PIN_URL, type LibraryBackend, type S3Config, type IpfsConfig, type IpfsPinStrategy } from "@/lib/social-machine";
@@ -265,6 +265,58 @@ export async function writeLibraryBytes(key: string, bytes: Buffer): Promise<str
   }
   await writeAppSetting(BACKEND_KEY, "local");
   return spoolLocal(key, bytes);
+}
+
+export function backendFromStorageKey(storageKey: string): "supabase" | "s3" | "local" {
+  if (storageKey.startsWith("supabase:")) return "supabase";
+  if (storageKey.startsWith("s3:")) return "s3";
+  return "local";
+}
+
+/**
+ * Streaming twin of writeLibraryBytes for files already on disk (clip exports). Supabase gets a
+ * readable stream with a known length; S3 falls back to a single read because s3Put takes a
+ * Buffer; local copies the file into the spool. Unlike writeLibraryBytes, the local spool is NOT
+ * written for cloud backends — the caller already has the file on disk for probing.
+ */
+export async function writeLibraryFile(key: string, filePath: string, contentType: string): Promise<string> {
+  const size = (await stat(filePath)).size;
+  const client = await storageClient();
+  if (client && (await ensureLibraryBucket())) {
+    const { error } = await client.storage.from(LIBRARY_BUCKET).upload(key, createReadStream(filePath), {
+      upsert: true,
+      contentType,
+      duplex: "half",
+      headers: { "content-length": String(size) },
+    });
+    if (!error) {
+      await writeAppSetting(BACKEND_KEY, "supabase");
+      return `supabase:${key}`;
+    }
+    console.error("[library-storage] supabase stream upload failed", scrubError(error));
+  }
+  const s3 = await loadS3Config();
+  if (s3) {
+    try {
+      const { s3Put } = await import("@/lib/server/s3.server");
+      await s3Put(s3, key, await readFile(filePath));
+      await writeAppSetting(BACKEND_KEY, "s3");
+      return `s3:${key}`;
+    } catch {
+      /* fall through */
+    }
+  }
+  await ensureLibraryDir();
+  const path = storagePath(key);
+  await mkdir(dirname(path), { recursive: true });
+  await copyFile(filePath, path);
+  await writeAppSetting(BACKEND_KEY, "local");
+  return path;
+}
+
+function scrubError(error: unknown): string {
+  const message = error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? String((error as { message: unknown }).message) : String(error);
+  return message.replace(/https?:\/\/\S+/g, "<url>").slice(0, 200);
 }
 
 export async function readLibraryBytes(key: string): Promise<Buffer> {

@@ -72,7 +72,10 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   format: "mp4",
 };
 
-export const PRESET_SIZE: Record<Exclude<RenderPreset, "CUSTOM">, { width: number; height: number }> = {
+export const PRESET_SIZE: Record<
+  Exclude<RenderPreset, "CUSTOM">,
+  { width: number; height: number }
+> = {
   REELS_9x16: { width: 1080, height: 1920 },
   SQUARE_1x1: { width: 1080, height: 1080 },
   LANDSCAPE_16x9: { width: 1920, height: 1080 },
@@ -97,6 +100,9 @@ export type LibraryAsset = {
   checksum: string | null;
   currentVersionId: string | null;
   parentAssetId: string | null;
+  externalRef: string | null;
+  thumbnailVersionId: string | null;
+  thumbnailUrl: string | null;
   tags: string[];
   previewUrl: string | null;
   createdAt: string;
@@ -296,7 +302,8 @@ export function parseTimecode(raw: string): number | null {
     const minutes = Number(match[2]);
     const seconds = Number(match[3]);
     const ms = (match[4] ?? "").padEnd(3, "0").slice(0, 3);
-    if (![hours, minutes, seconds].every(Number.isFinite) || minutes > 59 || seconds > 59) return null;
+    if (![hours, minutes, seconds].every(Number.isFinite) || minutes > 59 || seconds > 59)
+      return null;
     return hours * 3600000 + minutes * 60000 + seconds * 1000 + Number(ms);
   }
   const asNumber = Number(trimmed);
@@ -327,7 +334,10 @@ export function cuesToSrt(cues: CaptionCue[]): string {
 
 export function cuesToVtt(cues: CaptionCue[]): string {
   const body = cues
-    .map((cue) => `${cueStamp(cue.startMs, ".")} --> ${cueStamp(cue.endMs, ".")}\n${cue.text.trim()}\n`)
+    .map(
+      (cue) =>
+        `${cueStamp(cue.startMs, ".")} --> ${cueStamp(cue.endMs, ".")}\n${cue.text.trim()}\n`,
+    )
     .join("\n");
   return `WEBVTT\n\n${body}`;
 }

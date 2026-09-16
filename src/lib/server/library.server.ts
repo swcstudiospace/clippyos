@@ -63,12 +63,17 @@ create table if not exists media_assets (
   checksum            text,
   current_version_id  text,
   parent_asset_id     text,
+  external_ref        text,
+  thumbnail_version_id text,
   tags                text not null default '[]',
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   created_by          text
 );
 create index if not exists media_assets_client_idx on media_assets (client_id, created_at desc);
+alter table media_assets add column if not exists external_ref text;
+alter table media_assets add column if not exists thumbnail_version_id text;
+create index if not exists media_assets_external_ref_idx on media_assets (external_ref);
 create table if not exists media_asset_versions (
   id              text primary key,
   asset_id        text not null,
@@ -133,9 +138,13 @@ export async function ensureLibrarySchema(): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
     const sql = await localSql();
-    for (const stmt of SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean)) {
+    for (const stmt of SCHEMA_SQL.split(";")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
       await sql.query(stmt);
     }
+    await sql.query("alter table media_assets add column if not exists external_ref text");
+    await sql.query("alter table media_assets add column if not exists thumbnail_version_id text");
   })().catch((error) => {
     schemaReady = null;
     throw error;
@@ -164,13 +173,27 @@ function asNumber(value: unknown): number | null {
 }
 
 function parseTags(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String).map((t) => t.trim()).filter(Boolean).slice(0, 24);
+  if (Array.isArray(value))
+    return value
+      .map(String)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 24);
   if (typeof value !== "string" || !value.trim()) return [];
   try {
     const parsed = JSON.parse(value) as unknown;
-    if (Array.isArray(parsed)) return parsed.map(String).map((t) => t.trim()).filter(Boolean).slice(0, 24);
+    if (Array.isArray(parsed))
+      return parsed
+        .map(String)
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 24);
   } catch {
-    return value.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 24);
+    return value
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 24);
   }
   return [];
 }
@@ -209,7 +232,8 @@ function parseOptions(value: unknown): RenderOptions {
   } else if (value && typeof value === "object") {
     raw = value as Record<string, unknown>;
   }
-  const trimRaw = raw.trim && typeof raw.trim === "object" ? (raw.trim as Record<string, unknown>) : null;
+  const trimRaw =
+    raw.trim && typeof raw.trim === "object" ? (raw.trim as Record<string, unknown>) : null;
   return {
     burnInCaptions: Boolean(raw.burnInCaptions),
     captionStyleId: typeof raw.captionStyleId === "string" ? raw.captionStyleId : undefined,
@@ -228,12 +252,13 @@ function parseOptions(value: unknown): RenderOptions {
 }
 
 async function withPreview(asset: LibraryAsset): Promise<LibraryAsset> {
-  if (!asset.currentVersionId) return { ...asset, previewUrl: null };
-  try {
-    return { ...asset, previewUrl: await signVersionUrl(asset.currentVersionId) };
-  } catch {
-    return { ...asset, previewUrl: null };
-  }
+  const previewUrl = asset.currentVersionId
+    ? await signVersionUrl(asset.currentVersionId).catch(() => null)
+    : null;
+  const thumbnailUrl = asset.thumbnailVersionId
+    ? await signVersionUrl(asset.thumbnailVersionId).catch(() => null)
+    : null;
+  return { ...asset, previewUrl, thumbnailUrl };
 }
 
 export function mapAsset(row: Record<string, unknown>): LibraryAsset {
@@ -256,6 +281,9 @@ export function mapAsset(row: Record<string, unknown>): LibraryAsset {
     checksum: asNullable(row.checksum),
     currentVersionId: asNullable(row.current_version_id),
     parentAssetId: asNullable(row.parent_asset_id),
+    externalRef: asNullable(row.external_ref),
+    thumbnailVersionId: asNullable(row.thumbnail_version_id),
+    thumbnailUrl: null,
     tags: parseTags(row.tags),
     previewUrl: null,
     createdAt: asString(row.created_at, nowIso()),
@@ -316,11 +344,17 @@ export function mapRender(row: Record<string, unknown>): RenderJob {
   };
 }
 
-export async function getVersionRow(id: string): Promise<(LibraryAssetVersion & { storageKey: string }) | null> {
+export async function getVersionRow(
+  id: string,
+): Promise<(LibraryAssetVersion & { storageKey: string }) | null> {
   await ensureLibrarySchema();
   const admin = await getAgencyAdmin();
   if (admin) {
-    const { data, error } = await admin.from("media_asset_versions").select("*").eq("id", id).maybeSingle();
+    const { data, error } = await admin
+      .from("media_asset_versions")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
     if (!error && data) {
       const rec = data as Record<string, unknown>;
       return { ...mapVersion(rec), storageKey: asString(rec.storage_key) };
@@ -360,6 +394,8 @@ export async function insertAsset(row: {
   checksum?: string | null;
   current_version_id?: string | null;
   parent_asset_id?: string | null;
+  external_ref?: string | null;
+  thumbnail_version_id?: string | null;
   tags?: string[];
   created_by?: string | null;
 }): Promise<LibraryAsset> {
@@ -384,6 +420,8 @@ export async function insertAsset(row: {
     checksum: row.checksum ?? null,
     current_version_id: row.current_version_id ?? null,
     parent_asset_id: row.parent_asset_id ?? null,
+    external_ref: row.external_ref ?? null,
+    thumbnail_version_id: row.thumbnail_version_id ?? null,
     tags: JSON.stringify(row.tags ?? []),
     created_at: stamp,
     updated_at: stamp,
@@ -392,15 +430,17 @@ export async function insertAsset(row: {
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("media_assets").insert(payload);
-    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+    if (error && !isMissingTable(error) && !isMissingColumn(error))
+      throw new Error("DATA_UNAVAILABLE");
   }
   const sql = await localSql();
   await sql.query(
     `insert into media_assets (
       id, workspace_id, client_id, kind, title, description, source, source_ref, status,
       duration_sec, width, height, aspect_ratio, mime_type, byte_size, checksum,
-      current_version_id, parent_asset_id, tags, created_at, updated_at, created_by
-    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+      current_version_id, parent_asset_id, tags, created_at, updated_at, created_by,
+      external_ref, thumbnail_version_id
+    ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       payload.id,
       payload.workspace_id,
@@ -424,6 +464,8 @@ export async function insertAsset(row: {
       payload.created_at,
       payload.updated_at,
       payload.created_by,
+      payload.external_ref,
+      payload.thumbnail_version_id,
     ],
   );
   return mapAsset(payload);
@@ -457,7 +499,8 @@ export async function insertVersion(row: {
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("media_asset_versions").insert(payload);
-    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+    if (error && !isMissingTable(error) && !isMissingColumn(error))
+      throw new Error("DATA_UNAVAILABLE");
   }
   const sql = await localSql();
   await sql.query(
@@ -495,6 +538,8 @@ export async function patchAsset(
     checksum: string | null;
     current_version_id: string | null;
     tags: string[];
+    external_ref: string | null;
+    thumbnail_version_id: string | null;
   }>,
 ): Promise<void> {
   await ensureLibrarySchema();
@@ -510,12 +555,17 @@ export async function patchAsset(
   if (patch.mime_type !== undefined) adminPatch.mime_type = patch.mime_type;
   if (patch.byte_size !== undefined) adminPatch.byte_size = patch.byte_size;
   if (patch.checksum !== undefined) adminPatch.checksum = patch.checksum;
-  if (patch.current_version_id !== undefined) adminPatch.current_version_id = patch.current_version_id;
+  if (patch.current_version_id !== undefined)
+    adminPatch.current_version_id = patch.current_version_id;
   if (patch.tags !== undefined) adminPatch.tags = JSON.stringify(patch.tags);
+  if (patch.external_ref !== undefined) adminPatch.external_ref = patch.external_ref;
+  if (patch.thumbnail_version_id !== undefined)
+    adminPatch.thumbnail_version_id = patch.thumbnail_version_id;
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("media_assets").update(adminPatch).eq("id", id);
-    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+    if (error && !isMissingTable(error) && !isMissingColumn(error))
+      throw new Error("DATA_UNAVAILABLE");
   }
   const sql = await localSql();
   const sets = ["updated_at = $2"];
@@ -539,7 +589,10 @@ export async function getAsset(id: string): Promise<LibraryAsset | null> {
   }
   try {
     const sql = await localSql();
-    const rows = await sql.query<Record<string, unknown>>("select * from media_assets where id = $1 limit 1", [id]);
+    const rows = await sql.query<Record<string, unknown>>(
+      "select * from media_assets where id = $1 limit 1",
+      [id],
+    );
     if (!rows[0]) return null;
     return withPreview(mapAsset(rows[0]));
   } catch {
@@ -547,11 +600,18 @@ export async function getAsset(id: string): Promise<LibraryAsset | null> {
   }
 }
 
-export async function listAssets(filters: LibraryFilters = {}, limit = 80): Promise<LibraryAsset[]> {
+export async function listAssets(
+  filters: LibraryFilters = {},
+  limit = 80,
+): Promise<LibraryAsset[]> {
   await ensureLibrarySchema();
   const admin = await getAgencyAdmin();
   if (admin) {
-    let q = admin.from("media_assets").select("*").order("created_at", { ascending: false }).limit(limit);
+    let q = admin
+      .from("media_assets")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
     if (filters.clientId) q = q.eq("client_id", filters.clientId);
     if (filters.kind) q = q.eq("kind", filters.kind);
     if (filters.source) q = q.eq("source", filters.source);
@@ -614,10 +674,36 @@ export async function nextVersionNumber(assetId: string): Promise<number> {
   return (versions[0]?.versionNumber ?? 0) + 1;
 }
 
-export async function findByChecksum(clientId: string | null, checksum: string): Promise<LibraryAsset | null> {
+export async function findByChecksum(
+  clientId: string | null,
+  checksum: string,
+): Promise<LibraryAsset | null> {
   if (!checksum) return null;
   const assets = await listAssets({ status: "READY" }, 200);
   return assets.find((row) => row.checksum === checksum && row.clientId === clientId) ?? null;
+}
+
+export async function findAssetByExternalRef(ref: string): Promise<LibraryAsset | null> {
+  await ensureLibrarySchema();
+  const admin = await getAgencyAdmin();
+  if (admin) {
+    const { data, error } = await admin
+      .from("media_assets")
+      .select("*")
+      .eq("external_ref", ref)
+      .neq("status", "ARCHIVED")
+      .limit(1)
+      .maybeSingle();
+    if (!error && data) return withPreview(mapAsset(data as Record<string, unknown>));
+    if (error && !isMissingTable(error) && !isMissingColumn(error))
+      throw new Error("DATA_UNAVAILABLE");
+  }
+  const sql = await localSql();
+  const rows = await sql.query<Record<string, unknown>>(
+    "select * from media_assets where external_ref = $1 and status <> 'ARCHIVED' limit 1",
+    [ref],
+  );
+  return rows[0] ? withPreview(mapAsset(rows[0])) : null;
 }
 
 export async function insertCaption(row: {
@@ -649,7 +735,8 @@ export async function insertCaption(row: {
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("caption_tracks").insert(payload);
-    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+    if (error && !isMissingTable(error) && !isMissingColumn(error))
+      throw new Error("DATA_UNAVAILABLE");
   }
   const sql = await localSql();
   await sql.query(
@@ -711,7 +798,10 @@ export async function patchCaption(
 export async function getCaption(id: string): Promise<CaptionTrack | null> {
   await ensureLibrarySchema();
   const sql = await localSql();
-  const rows = await sql.query<Record<string, unknown>>("select * from caption_tracks where id = $1 limit 1", [id]);
+  const rows = await sql.query<Record<string, unknown>>(
+    "select * from caption_tracks where id = $1 limit 1",
+    [id],
+  );
   return rows[0] ? mapCaption(rows[0]) : null;
 }
 
@@ -762,7 +852,8 @@ export async function insertRender(row: {
   const admin = await getAgencyAdmin();
   if (admin) {
     const { error } = await admin.from("render_jobs").insert(payload);
-    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw new Error("DATA_UNAVAILABLE");
+    if (error && !isMissingTable(error) && !isMissingColumn(error))
+      throw new Error("DATA_UNAVAILABLE");
   }
   const sql = await localSql();
   await sql.query(
@@ -828,11 +919,16 @@ export async function patchRender(
 export async function getRender(id: string): Promise<RenderJob | null> {
   await ensureLibrarySchema();
   const sql = await localSql();
-  const rows = await sql.query<Record<string, unknown>>("select * from render_jobs where id = $1 limit 1", [id]);
+  const rows = await sql.query<Record<string, unknown>>(
+    "select * from render_jobs where id = $1 limit 1",
+    [id],
+  );
   return rows[0] ? mapRender(rows[0]) : null;
 }
 
-export async function listRenders(filter: { sourceAssetId?: string; status?: RenderStatus } = {}): Promise<RenderJob[]> {
+export async function listRenders(
+  filter: { sourceAssetId?: string; status?: RenderStatus } = {},
+): Promise<RenderJob[]> {
   await ensureLibrarySchema();
   const sql = await localSql();
   const rows = await sql.query<Record<string, unknown>>(
@@ -914,7 +1010,9 @@ export async function readMediaSettings(): Promise<MediaPipelineSettings> {
   return base;
 }
 
-export async function writeMediaSettings(patch: Partial<MediaPipelineSettings>): Promise<MediaPipelineSettings> {
+export async function writeMediaSettings(
+  patch: Partial<MediaPipelineSettings>,
+): Promise<MediaPipelineSettings> {
   const current = await readMediaSettings();
   const next: MediaPipelineSettings = {
     ...current,
