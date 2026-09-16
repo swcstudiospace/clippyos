@@ -49,12 +49,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { PUBLISHERS_QUERY_KEY } from "@/lib/publishers";
 import { SOCIAL_QUERY_KEY } from "@/lib/social";
 function XMarkIcon({ className }: { className?: string }) {
@@ -128,19 +123,19 @@ export function IntegrationsPanel() {
       <div>
         <h2 className="text-section font-semibold tracking-tight">Add-ons</h2>
         <p className="mt-1 text-body text-muted">
-          ClippyOS is an OS. These integrations are add-ons. Core AI is required. Daytona is
-          the browser runtime for Social Computer Use. Keys stay on the server.
+          ClippyOS is an OS. These integrations are add-ons. Core AI is required. Daytona is the
+          browser runtime for Social Computer Use. Keys stay on the server.
         </p>
         {query.data.role === "member" && inheritWorkspaceApis ? (
           <p className="mt-2 rounded-control bg-secondary-surface px-3 py-2 text-caption text-muted">
-            You’re using the owner’s workspace APIs. Ask an owner to turn that off if you
-            need to connect your own keys.
+            You’re using the owner’s workspace APIs. Ask an owner to turn that off if you need to
+            connect your own keys.
           </p>
         ) : null}
         {query.data.role === "member" && !inheritWorkspaceApis ? (
           <p className="mt-2 rounded-control bg-secondary-surface px-3 py-2 text-caption text-muted">
-            These keys are yours. They don’t use the owner’s APIs unless an owner shares
-            workspace APIs with this login.
+            These keys are yours. They don’t use the owner’s APIs unless an owner shares workspace
+            APIs with this login.
           </p>
         ) : null}
       </div>
@@ -150,11 +145,7 @@ export function IntegrationsPanel() {
             key={id}
             id={id}
             isAdmin={Boolean(isAdmin)}
-            canEdit={
-              id === "whop"
-                ? Boolean(isAdmin)
-                : canEditIntegrations
-            }
+            canEdit={id === "whop" ? Boolean(isAdmin) : canEditIntegrations}
             last4={query.data.items[id].last4}
             health={query.data.items[id].health}
             lastTestedAt={query.data.items[id].lastTestedAt}
@@ -173,7 +164,8 @@ export function IntegrationsPanel() {
             <div>
               <h3 className="text-card font-semibold tracking-tight">ClippyOS MCP</h3>
               <p className="mt-1 text-caption text-muted">
-                Remote MCP URL plus scoped connector tokens for Grok Bot and Cursor. Publish still honors Approvals.
+                Remote MCP URL plus scoped connector tokens for Grok Bot and Cursor. Publish still
+                honors Approvals.
               </p>
             </div>
           </div>
@@ -215,12 +207,20 @@ function IntegrationCard({
   const [pendingDisconnect, setPendingDisconnect] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
   const configured = health !== "not_configured";
+  // Test always checks the credential already stored on the server, never the value
+  // typed above — Save first, or a correct key you just pasted comes back "rejected".
+  const hasUnsavedFields = Object.values(fields).some((value) => value.trim().length > 0);
 
   useEffect(() => {
     if (id !== "x") return;
     function onMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
-      const data = event.data as { source?: string; ok?: boolean; provider?: string; error?: string };
+      const data = event.data as {
+        source?: string;
+        ok?: boolean;
+        provider?: string;
+        error?: string;
+      };
       if (!data || data.source !== "clippy-social-oauth") return;
       if (data.provider && data.provider !== "x") return;
       void queryClient.invalidateQueries({ queryKey: INTEGRATIONS_QUERY_KEY });
@@ -345,13 +345,9 @@ function IntegrationCard({
         {copy.required ? <Badge tone="orange">Required</Badge> : null}
       </div>
       <p className="mt-2 text-caption text-muted">{ADDON_META[id].requiredFor}</p>
-      <p className="mt-1 text-caption text-muted">
-        Used by: {ADDON_META[id].usedBy.join(" · ")}
-      </p>
+      <p className="mt-1 text-caption text-muted">Used by: {ADDON_META[id].usedBy.join(" · ")}</p>
       <p className="mt-3 text-caption text-muted">
-        {lastTestedAt
-          ? `Last tested ${formatRelativeTime(lastTestedAt)}`
-          : "Not tested yet"}
+        {lastTestedAt ? `Last tested ${formatRelativeTime(lastTestedAt)}` : "Not tested yet"}
         {lastError ? ` · ${lastError}` : null}
       </p>
       {id === "x" ? (
@@ -377,7 +373,11 @@ function IntegrationCard({
         </p>
       ) : null}
 
-      {id === "ai" && canEdit ? <div className="mt-4"><GrokOAuthSection embedded /></div> : null}
+      {id === "ai" && canEdit ? (
+        <div className="mt-4">
+          <GrokOAuthSection embedded />
+        </div>
+      ) : null}
 
       {canEdit ? (
         <form className="mt-4 flex flex-col gap-3" onSubmit={onSave}>
@@ -387,7 +387,9 @@ function IntegrationCard({
               label="API key"
               value={fields.key ?? ""}
               onChange={(value) => setFields({ key: value })}
-              placeholder={configured ? "•••• stored on the server" : "Paste the xAI / Grok API key"}
+              placeholder={
+                configured ? "•••• stored on the server" : "Paste the xAI / Grok API key"
+              }
             />
           ) : null}
           {id === "crayo" ? (
@@ -401,7 +403,8 @@ function IntegrationCard({
               />
               <p className="text-caption text-muted">
                 From crayo.ai → Developer API. A key saved here is used ahead of the deploy’s
-                CRAYO_API_KEY, so you can rotate it without a redeploy. Test calls GET /v1/account (free).
+                CRAYO_API_KEY, so you can rotate it without a redeploy. Test calls GET /v1/account
+                (free).
               </p>
             </>
           ) : null}
@@ -460,8 +463,8 @@ function IntegrationCard({
                 placeholder={configured ? "•••• stored on the server" : "lin_api_…"}
               />
               <p className="text-caption text-muted">
-                Personal API key or OAuth. Map team, project, and Kanban columns in the Linear section
-                below. Test never creates an issue.
+                Personal API key or OAuth. Map team, project, and Kanban columns in the Linear
+                section below. Test never creates an issue.
               </p>
             </>
           ) : null}
@@ -547,11 +550,11 @@ function IntegrationCard({
               />
               <p className="text-caption text-muted">
                 Social Machine defaults to the Linux container snapshot daytona-medium (Windows
-                snapshots need a Daytona plan that includes them). Hibernate auto-stops the
-                sandbox after idle minutes (container class has no hot pause; the filesystem
-                persists across stop). Clock is Australia/Sydney. Start auto-provisions a
-                free country-matched HTTP proxy; paste a paid residential URL if you have one.
-                Test Connection and Test proxy never start a sandbox.
+                snapshots need a Daytona plan that includes them). Hibernate auto-stops the sandbox
+                after idle minutes (container class has no hot pause; the filesystem persists across
+                stop). Clock is Australia/Sydney. Start auto-provisions a free country-matched HTTP
+                proxy; paste a paid residential URL if you have one. Test Connection and Test proxy
+                never start a sandbox.
               </p>
             </>
           ) : null}
@@ -735,15 +738,16 @@ function IntegrationCard({
                 </Button>
               </div>
               <p className="text-caption text-muted">
-                User-context OAuth only. Tokens stay on the server. Test Connection never posts.
-                X has no draft API — draft jobs stay local until Publish.
+                User-context OAuth only. Tokens stay on the server. Test Connection never posts. X
+                has no draft API — draft jobs stay local until Publish.
               </p>
             </>
           ) : null}
           {configured ? (
             <p className="text-caption text-muted" id={`${id}-rotate-hint`}>
-              A key is already stored{last4 ? ` (ends …${last4})` : ""}. Paste a new one above and Save to
-              replace it; fields you leave blank keep their current values. Disconnect removes it.
+              A key is already stored{last4 ? ` (ends …${last4})` : ""}. Paste a new one above and
+              Save to replace it; fields you leave blank keep their current values. Disconnect
+              removes it.
             </p>
           ) : null}
           <Button
@@ -765,9 +769,8 @@ function IntegrationCard({
 
       {id === "discord" ? (
         <p className="mt-3 text-caption text-muted">
-          Discord Status Agent is read-only and runs automatically about every 30
-          minutes. It matches Discord server names to client names and updates
-          production stages.
+          Discord Status Agent is read-only and runs automatically about every 30 minutes. It
+          matches Discord server names to client names and updates production stages.
           {discordAgent?.lastRunAt
             ? ` Last run ${formatRelativeTime(discordAgent.lastRunAt)}${discordAgent.summary ? ` — ${discordAgent.summary}` : ""}.`
             : null}
@@ -793,7 +796,12 @@ function IntegrationCard({
           <Button
             size="sm"
             variant="secondary"
-            disabled={test.isPending}
+            disabled={test.isPending || hasUnsavedFields}
+            title={
+              hasUnsavedFields
+                ? "Save first — Test checks the stored key, not the value typed above."
+                : undefined
+            }
             onClick={() => test.mutate()}
           >
             <PlugZap className="size-3.5" />
@@ -855,7 +863,15 @@ function IntegrationCard({
 }
 
 /** Field names that carry a secret; any non-empty one on Save means the stored key was replaced. */
-const SECRET_FIELD_KEYS = ["key", "apiKey", "secret", "token", "keyId", "clientSecret", "proxyPassword"] as const;
+const SECRET_FIELD_KEYS = [
+  "key",
+  "apiKey",
+  "secret",
+  "token",
+  "keyId",
+  "clientSecret",
+  "proxyPassword",
+] as const;
 
 function Field({
   id,

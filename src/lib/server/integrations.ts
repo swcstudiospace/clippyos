@@ -98,15 +98,13 @@ async function crayoStored(): Promise<string | null> {
 }
 
 async function higgsfieldStored(): Promise<{ key: string; secret: string } | null> {
-  const key =
-    (await (await load_app_settings()).readAppSetting("HIGGSFIELD_API_KEY"))?.trim() ||
-    (await (await load_app_settings()).readAppSetting("HIGGSFIELD_KEY_ID"))?.trim() ||
-    "";
-  const secret =
-    (await (await load_app_settings()).readAppSetting("HIGGSFIELD_API_SECRET"))?.trim() ||
-    (await (await load_app_settings()).readAppSetting("HIGGSFIELD_SECRET"))?.trim() ||
-    "";
-  if (key && secret) return { key, secret };
+  // Read through higgsfield.server's own loader — it writes HIGGSFIELD_API_KEY /
+  // HIGGSFIELD_API_SECRET as plaintext, while the generic app-settings reader treats
+  // those key names as encrypted and silently returns null for them (looked configured
+  // on save, then read back as "Not configured" on every reload).
+  const { loadHiggsfieldCreds } = await import("@/lib/server/higgsfield.server");
+  const creds = await loadHiggsfieldCreds().catch(() => null);
+  if (creds?.key && creds.secret) return { key: creds.key, secret: creds.secret };
   return null;
 }
 
@@ -511,7 +509,10 @@ async function testCrayo(): Promise<void> {
     await crayoGetAccount();
   } catch (error) {
     if (error instanceof CrayoApiError) {
-      throw new Error(error.code === "MISSING" ? "CRAYO_UNAVAILABLE" : error.code === "UNAUTHORIZED" ? "UNAUTHORIZED" : "CRAYO_UNAVAILABLE");
+      // Never reuse the bare "UNAUTHORIZED" code here — userFacingErrorMessage maps
+      // that to "Please sign in to continue.", ClippyOS's own session-expired message,
+      // which reads as an app login prompt with no matching login control on this page.
+      throw new Error(error.code === "UNAUTHORIZED" ? "CRAYO_UNAUTHORIZED" : "CRAYO_UNAVAILABLE");
     }
     throw error;
   }
@@ -627,7 +628,11 @@ export const testIntegration = createServerFn({ method: "POST" })
       const friendly =
         message === "AI_UNAVAILABLE"
           ? "The AI provider didn’t accept the key."
-          : message === "HIGGSFIELD_UNAVAILABLE"
+          : message === "CRAYO_UNAVAILABLE"
+            ? "Save a Crayo API key first."
+            : message === "CRAYO_UNAUTHORIZED"
+              ? "Crayo rejected that key. Create a new one at crayo.ai → Developer API."
+              : message === "HIGGSFIELD_UNAVAILABLE"
             ? "Higgsfield rejected those credentials."
             : message === "YOUTUBE_KEY_MISSING" || message === "YOUTUBE_UNAVAILABLE"
               ? "YouTube rejected that API key."

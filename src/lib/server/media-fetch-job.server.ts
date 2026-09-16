@@ -16,7 +16,12 @@ import {
   crayoGetAutoclip,
   CrayoApiError,
 } from "@/lib/server/crayo.server";
-import { getAgentRun, insertIteration, listAgentRuns, patchAgentRun } from "@/lib/server/agent.server";
+import {
+  getAgentRun,
+  insertIteration,
+  listAgentRuns,
+  patchAgentRun,
+} from "@/lib/server/agent.server";
 import { explainAgentToolError } from "@/lib/agent";
 import type { JsonValue } from "@/lib/skills";
 import {
@@ -44,13 +49,26 @@ type SegmentState = {
   index: number;
   startSec: number;
   endSec: number | null;
-  state: "pending" | "downloading" | "ready" | "uploading" | "uploaded" | "autoclipping" | "done" | "failed";
+  state:
+    | "pending"
+    | "downloading"
+    | "ready"
+    | "uploading"
+    | "uploaded"
+    | "autoclipping"
+    | "done"
+    | "failed";
   bytes?: number;
   path?: string;
   uploadId?: string;
   assetId?: string;
   autoclipId?: string;
-  clips?: { title: string; projectId: string | null; thumbnailUrl: string | null; library: unknown }[];
+  clips?: {
+    title: string;
+    projectId: string | null;
+    thumbnailUrl: string | null;
+    library: unknown;
+  }[];
   error?: string;
 };
 
@@ -74,9 +92,13 @@ export type MediaFetchJobState = {
   clipsPerSegment: number | null;
   segments: SegmentState[];
   error: string | null;
+  /** Consecutive ticks that failed on a transient sandbox/API error; reset once a tick reads the sandbox. */
+  transientErrors?: number;
 };
 
 const LOCK_MS = 25_000;
+/** ~12 min of back-to-back transient failures (one tick per LOCK_MS) before the run fails visibly. */
+const MAX_TRANSIENT_ERRORS = 30;
 const LABELS = { purpose: "media-fetch-job", app: "clippyos" } as const;
 
 function shellQuote(value: string): string {
@@ -84,23 +106,39 @@ function shellQuote(value: string): string {
 }
 
 function scrub(text: string): string {
-  return text.replace(/https?:\/\/\S+/g, "<url>").replace(/X-Amz-[A-Za-z-]+=\S+/g, "").replace(/\s+/g, " ").slice(0, 300);
+  return text
+    .replace(/https?:\/\/\S+/g, "<url>")
+    .replace(/X-Amz-[A-Za-z-]+=\S+/g, "")
+    .replace(/\s+/g, " ")
+    .slice(0, 300);
 }
 
 function outputOf(result: unknown): string {
-  const rec = (result ?? {}) as { result?: unknown; stdout?: unknown; artifacts?: { stdout?: unknown } };
+  const rec = (result ?? {}) as {
+    result?: unknown;
+    stdout?: unknown;
+    artifacts?: { stdout?: unknown };
+  };
   return String(rec.result ?? rec.artifacts?.stdout ?? rec.stdout ?? "");
 }
 
-function readState(outputs: Record<string, JsonValue> | null | undefined): MediaFetchJobState | null {
+function readState(
+  outputs: Record<string, JsonValue> | null | undefined,
+): MediaFetchJobState | null {
   const raw = outputs?.mediaFetch;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const state = raw as unknown as MediaFetchJobState;
   return state.version === 1 && Array.isArray(state.segments) ? state : null;
 }
 
-async function saveState(runId: string, outputs: Record<string, JsonValue> | null | undefined, state: MediaFetchJobState): Promise<void> {
-  await patchAgentRun(runId, { outputs: { ...(outputs ?? {}), mediaFetch: state as unknown as JsonValue } });
+async function saveState(
+  runId: string,
+  outputs: Record<string, JsonValue> | null | undefined,
+  state: MediaFetchJobState,
+): Promise<void> {
+  await patchAgentRun(runId, {
+    outputs: { ...(outputs ?? {}), mediaFetch: state as unknown as JsonValue },
+  });
 }
 
 async function progress(runId: string, state: MediaFetchJobState, message: string): Promise<void> {
@@ -131,8 +169,18 @@ async function daytonaClient() {
   return { config, daytona: createClient(config) };
 }
 
-async function exec(sandbox: AnySandbox, script: string, env: Record<string, string>, timeoutSec: number): Promise<{ out: string; code: number }> {
-  const result = await sandbox.process.executeCommand(`bash -c ${shellQuote(script)}`, undefined, env, Math.max(5, Math.floor(timeoutSec)));
+async function exec(
+  sandbox: AnySandbox,
+  script: string,
+  env: Record<string, string>,
+  timeoutSec: number,
+): Promise<{ out: string; code: number }> {
+  const result = await sandbox.process.executeCommand(
+    `bash -c ${shellQuote(script)}`,
+    undefined,
+    env,
+    Math.max(5, Math.floor(timeoutSec)),
+  );
   const code = Number((result as { exitCode?: unknown })?.exitCode);
   return { out: outputOf(result), code: Number.isFinite(code) ? code : 1 };
 }
@@ -143,15 +191,30 @@ async function writeFile(sandbox: AnySandbox, path: string, body: string): Promi
     return;
   }
   const b64 = Buffer.from(body, "utf8").toString("base64");
-  await exec(sandbox, `python3 -c "import pathlib,base64; pathlib.Path('${path}').write_bytes(base64.b64decode('${b64}'))"`, {}, 20);
+  await exec(
+    sandbox,
+    `python3 -c "import pathlib,base64; pathlib.Path('${path}').write_bytes(base64.b64decode('${b64}'))"`,
+    {},
+    20,
+  );
 }
 
 /** Launch a script in the background; returns immediately. */
-async function launch(sandbox: AnySandbox, scriptPath: string, logPath: string, env: Record<string, string>): Promise<void> {
+async function launch(
+  sandbox: AnySandbox,
+  scriptPath: string,
+  logPath: string,
+  env: Record<string, string>,
+): Promise<void> {
   const exports = Object.entries(env)
     .map(([k, v]) => `export ${k}=${shellQuote(v)};`)
     .join(" ");
-  await exec(sandbox, `${exports} setsid nohup bash ${scriptPath} > ${logPath} 2>&1 < /dev/null & disown; echo launched`, {}, 20);
+  await exec(
+    sandbox,
+    `${exports} setsid nohup bash ${scriptPath} > ${logPath} 2>&1 < /dev/null & disown; echo launched`,
+    {},
+    20,
+  );
 }
 
 async function readStatus(sandbox: AnySandbox): Promise<MediaJobStatus | null> {
@@ -159,7 +222,10 @@ async function readStatus(sandbox: AnySandbox): Promise<MediaJobStatus | null> {
   return parseMediaJobStatus(out);
 }
 
-async function getSandbox(daytona: { get: (id: string) => Promise<AnySandbox> }, id: string): Promise<AnySandbox> {
+async function getSandbox(
+  daytona: { get: (id: string) => Promise<AnySandbox> },
+  id: string,
+): Promise<AnySandbox> {
   const sandbox = await daytona.get(id);
   const state = String(sandbox?.state ?? "").toLowerCase();
   if (state && state !== "started" && state !== "starting" && sandbox.start) {
@@ -247,16 +313,43 @@ export async function startMediaFetchJob(input: {
     throw error;
   }
   await saveState(input.runId, run.outputs, state);
-  await progress(input.runId, state, "Sandbox started. Installing yt-dlp + ffmpeg and reading the stream's length. Long streams are split into ≤3 h / ≤1 GB segments, each its own Crayo AutoClip job.");
+  await progress(
+    input.runId,
+    state,
+    "Sandbox started. Installing yt-dlp + ffmpeg and reading the stream's length. Long streams are split into ≤3 h / ≤1 GB segments, each its own Crayo AutoClip job.",
+  );
   return state;
 }
 
 /** One bounded, idempotent step of the job. Safe to call from polling and cron concurrently. */
-export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanced" | "done" | "failed"> {
+export async function tickMediaFetchJob(
+  runId: string,
+): Promise<"idle" | "advanced" | "done" | "failed"> {
   const run = await getAgentRun(runId);
-  if (!run || run.status !== "waiting_resource" || run.errorCode !== MEDIA_FETCH_ERROR_CODE) return "idle";
+  if (!run || run.status !== "waiting_resource" || run.errorCode !== MEDIA_FETCH_ERROR_CODE)
+    return "idle";
   const state = readState(run.outputs);
-  if (!state) return "idle";
+  if (!state) {
+    // Parked as MEDIA_FETCH but the job state never landed (older deploy or a lost save).
+    // Nothing could ever tick it forward, so fail it visibly instead of waiting forever.
+    const summary =
+      "The background fetch lost its job state, so it can’t resume. Start the AutoClip again.";
+    await insertIteration({
+      runId,
+      index: run.iterationCount + 1,
+      kind: "error",
+      toolName: "crayo.run_autoclip",
+      resultSummary: summary,
+      status: "error",
+    }).catch(() => {});
+    await patchAgentRun(runId, {
+      status: "failed",
+      errorCode: "MEDIA_FETCH_FAILED",
+      summary,
+      finishedAt: new Date().toISOString(),
+    });
+    return "failed";
+  }
   if (run.cancelRequested) {
     await deleteSandbox(state.sandboxId);
     return "idle";
@@ -271,7 +364,10 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
     state.error = detail;
     state.lockUntil = null;
     await saveState(runId, run.outputs, state);
-    const summary = `${explainAgentToolError(code)}\n\nProvider said: ${scrub(detail)}`.slice(0, 800);
+    const summary = `${explainAgentToolError(code)}\n\nProvider said: ${scrub(detail)}`.slice(
+      0,
+      800,
+    );
     await insertIteration({
       runId,
       index: state.iterationIndex + 1,
@@ -280,7 +376,12 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
       resultSummary: summary,
       status: "error",
     }).catch(() => {});
-    await patchAgentRun(runId, { status: "failed", errorCode: code, summary, finishedAt: new Date().toISOString() });
+    await patchAgentRun(runId, {
+      status: "failed",
+      errorCode: code,
+      summary,
+      finishedAt: new Date().toISOString(),
+    });
     await deleteSandbox(state.sandboxId);
     return "failed" as const;
   };
@@ -295,8 +396,10 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
       const { daytona } = await daytonaClient();
       const sandbox = await getSandbox(daytona, state.sandboxId!);
       const status = await readStatus(sandbox);
+      state.transientErrors = 0;
 
-      if (status?.phase === "failed") return await fail("MEDIA_FETCH_FAILED", status.error ?? "sandbox job failed");
+      if (status?.phase === "failed")
+        return await fail("MEDIA_FETCH_FAILED", status.error ?? "sandbox job failed");
 
       if (state.phase === "booting") {
         if (!status || status.phase === "install") {
@@ -307,9 +410,15 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
           const duration = status.probe.durationSec ?? null;
           state.probe = { title: status.probe.title ?? "", durationSec: duration };
           if (duration != null && duration < MEDIA_MIN_SECONDS) {
-            return await fail("MEDIA_LENGTH_OUT_OF_RANGE", `This video is ${duration}s long; Crayo AutoClip needs at least ${MEDIA_MIN_SECONDS}s.`);
+            return await fail(
+              "MEDIA_LENGTH_OUT_OF_RANGE",
+              `This video is ${duration}s long; Crayo AutoClip needs at least ${MEDIA_MIN_SECONDS}s.`,
+            );
           }
-          const plan = planMediaSegments({ durationSec: duration ?? maxSegmentSeconds(), clipCount: state.clipCount });
+          const plan = planMediaSegments({
+            durationSec: duration ?? maxSegmentSeconds(),
+            clipCount: state.clipCount,
+          });
           if (!plan) {
             return await fail(
               "MEDIA_LENGTH_OUT_OF_RANGE",
@@ -317,7 +426,12 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
             );
           }
           state.clipsPerSegment = plan.clipsPerSegment;
-          state.segments = plan.segments.map((seg) => ({ index: seg.index, startSec: seg.startSec, endSec: seg.endSec, state: "pending" }));
+          state.segments = plan.segments.map((seg) => ({
+            index: seg.index,
+            startSec: seg.startSec,
+            endSec: seg.endSec,
+            state: "pending",
+          }));
           await writeFile(sandbox, "/tmp/mf/plan.json", JSON.stringify(plan));
           const { out } = await exec(sandbox, "cat /tmp/mf/ffmpeg.txt 2>/dev/null || true", {}, 10);
           const hasFfmpeg = out.trim().length > 0;
@@ -345,11 +459,18 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
         const row = rows.find((r) => r.index === seg.index);
         if (!row) continue;
         if (row.state === "failed" && seg.state !== "failed") {
-          return await fail("MEDIA_SEGMENT_FAILED", `Segment ${seg.index + 1} download failed: ${row.error ?? "unknown"}`);
+          return await fail(
+            "MEDIA_SEGMENT_FAILED",
+            `Segment ${seg.index + 1} download failed: ${row.error ?? "unknown"}`,
+          );
         }
         if (row.state === "downloading" && seg.state === "pending") {
           seg.state = "downloading";
-          await progress(runId, state, `Downloading segment ${seg.index + 1} of ${state.segments.length}.`);
+          await progress(
+            runId,
+            state,
+            `Downloading segment ${seg.index + 1} of ${state.segments.length}.`,
+          );
         }
         if (row.state === "ready" && (seg.state === "pending" || seg.state === "downloading")) {
           seg.state = "ready";
@@ -362,14 +483,28 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
       for (const seg of state.segments) {
         if (seg.state === "ready" && seg.path) {
           if ((seg.bytes ?? 0) > MEDIA_MAX_BYTES) {
-            return await fail("MEDIA_TOO_LARGE", `Segment ${seg.index + 1} is ${Math.round((seg.bytes ?? 0) / 1_048_576)}MB, over Crayo's 1GB upload cap.`);
+            return await fail(
+              "MEDIA_TOO_LARGE",
+              `Segment ${seg.index + 1} is ${Math.round((seg.bytes ?? 0) / 1_048_576)}MB, over Crayo's 1GB upload cap.`,
+            );
           }
           const contentType = mediaContentType(seg.path);
-          if (!contentType) return await fail("MEDIA_FETCH_FAILED", `Segment ${seg.index + 1} is not a container Crayo accepts.`);
+          if (!contentType)
+            return await fail(
+              "MEDIA_FETCH_FAILED",
+              `Segment ${seg.index + 1} is not a container Crayo accepts.`,
+            );
           const ext = seg.path.split(".").pop() ?? "mp4";
           const base = state.probe?.title || "long-form";
-          const filename = mediaAssetFilename(state.segments.length > 1 ? `${base} part ${seg.index + 1}` : base, ext);
-          const upload = await crayoCreateUpload({ filename, contentType, sizeBytes: seg.bytes ?? 0 });
+          const filename = mediaAssetFilename(
+            state.segments.length > 1 ? `${base} part ${seg.index + 1}` : base,
+            ext,
+          );
+          const upload = await crayoCreateUpload({
+            filename,
+            contentType,
+            sizeBytes: seg.bytes ?? 0,
+          });
           let host = "";
           try {
             host = new URL(upload.url).hostname;
@@ -378,7 +513,9 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
           }
           if (host) {
             try {
-              await sandbox.updateNetworkSettings({ domainAllowList: mediaFetchAllowlist(state.url, [host]) });
+              await sandbox.updateNetworkSettings({
+                domainAllowList: mediaFetchAllowlist(state.url, [host]),
+              });
             } catch {
               /* *.crayo.ai already allowed */
             }
@@ -392,9 +529,18 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
           seg.uploadId = upload.id;
           seg.state = "uploading";
           state.phase = "uploading";
-          await progress(runId, state, `Uploading segment ${seg.index + 1} (${Math.round((seg.bytes ?? 0) / 1_048_576)}MB) to Crayo.`);
+          await progress(
+            runId,
+            state,
+            `Uploading segment ${seg.index + 1} (${Math.round((seg.bytes ?? 0) / 1_048_576)}MB) to Crayo.`,
+          );
         } else if (seg.state === "uploading" && seg.uploadId) {
-          const { out } = await exec(sandbox, `cat /tmp/mf/put-${seg.index}.json 2>/dev/null || true`, {}, 10);
+          const { out } = await exec(
+            sandbox,
+            `cat /tmp/mf/put-${seg.index}.json 2>/dev/null || true`,
+            {},
+            10,
+          );
           const start = out.indexOf("{");
           if (start >= 0) {
             let put: { status?: number; body?: string; error?: string } = {};
@@ -414,23 +560,40 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
                 prompt: state.prompt ?? undefined,
               })) as { autoclip?: { id?: string } } | null;
               const autoclipId = job?.autoclip?.id;
-              if (!autoclipId) return await fail("CRAYO_FAILED", "Crayo accepted the upload but returned no AutoClip job id.");
+              if (!autoclipId)
+                return await fail(
+                  "CRAYO_FAILED",
+                  "Crayo accepted the upload but returned no AutoClip job id.",
+                );
               seg.autoclipId = autoclipId;
               seg.state = "autoclipping";
-              await progress(runId, state, `Segment ${seg.index + 1} is in Crayo (asset ${seg.assetId}); AutoClip job ${autoclipId} started (${state.clipsPerSegment} clips).`);
+              await progress(
+                runId,
+                state,
+                `Segment ${seg.index + 1} is in Crayo (asset ${seg.assetId}); AutoClip job ${autoclipId} started (${state.clipsPerSegment} clips).`,
+              );
             } else if (code > 0) {
-              return await fail("MEDIA_UPLOAD_FAILED", `Crayo's signed upload URL answered ${code}: ${put.body || put.error || ""}`);
+              return await fail(
+                "MEDIA_UPLOAD_FAILED",
+                `Crayo's signed upload URL answered ${code}: ${put.body || put.error || ""}`,
+              );
             }
           }
         }
       }
 
-      const allPastSandbox = state.segments.length > 0 && state.segments.every((seg) => seg.state === "autoclipping" || seg.state === "done");
+      const allPastSandbox =
+        state.segments.length > 0 &&
+        state.segments.every((seg) => seg.state === "autoclipping" || seg.state === "done");
       if (allPastSandbox) {
         state.phase = "autoclipping";
         await deleteSandbox(state.sandboxId);
         state.sandboxId = null;
-        await progress(runId, state, `All ${state.segments.length} segment(s) are in Crayo. Waiting for AutoClip to finish (Crayo can take several minutes per job).`);
+        await progress(
+          runId,
+          state,
+          `All ${state.segments.length} segment(s) are in Crayo. Waiting for AutoClip to finish (Crayo can take several minutes per job).`,
+        );
       }
       await saveState(runId, run.outputs, { ...state, lockUntil: null });
       return "advanced";
@@ -440,30 +603,45 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
     if (state.phase === "autoclipping") {
       for (const seg of state.segments) {
         if (seg.state !== "autoclipping" || !seg.autoclipId) continue;
-        const payload = (await crayoGetAutoclip(seg.autoclipId)) as { autoclip?: { status?: string; clips?: unknown[] } } | null;
+        const payload = (await crayoGetAutoclip(seg.autoclipId)) as {
+          autoclip?: { status?: string; clips?: unknown[] };
+        } | null;
         const status = String(payload?.autoclip?.status ?? "").toLowerCase();
         if (status === "completed" || status === "complete" || status === "succeeded") {
           const { ingestCrayoMedia } = await import("@/lib/server/crayo-tools.server");
           const clips = [];
-          for (const clip of (payload?.autoclip?.clips ?? []).slice(0, 20) as Record<string, unknown>[]) {
+          for (const clip of (payload?.autoclip?.clips ?? []).slice(0, 20) as Record<
+            string,
+            unknown
+          >[]) {
             const title = String(clip.title ?? "AutoClip");
             const thumbnailUrl = typeof clip.thumbnail_url === "string" ? clip.thumbnail_url : null;
             const projectId = typeof clip.project_id === "string" ? clip.project_id : null;
-            const library = thumbnailUrl ? await ingestCrayoMedia(state.actorId, state.clientId, thumbnailUrl, title, ["autoclip"]) : null;
+            const library = thumbnailUrl
+              ? await ingestCrayoMedia(state.actorId, state.clientId, thumbnailUrl, title, [
+                  "autoclip",
+                ])
+              : null;
             clips.push({ title, projectId, thumbnailUrl, library });
           }
           seg.clips = clips;
           seg.state = "done";
           await progress(runId, state, `Segment ${seg.index + 1}: ${clips.length} clip(s) ready.`);
         } else if (status === "failed" || status === "error") {
-          return await fail("FAILED", `Crayo AutoClip job ${seg.autoclipId} (segment ${seg.index + 1}) failed.`);
+          return await fail(
+            "FAILED",
+            `Crayo AutoClip job ${seg.autoclipId} (segment ${seg.index + 1}) failed.`,
+          );
         }
       }
       if (state.segments.every((seg) => seg.state === "done")) {
         state.phase = "done";
         state.lockUntil = null;
         const clips = state.segments.flatMap((seg) => seg.clips ?? []);
-        const summary = `AutoClip finished: ${clips.length} clip(s) across ${state.segments.length} segment(s) of “${state.probe?.title ?? "video"}”. ${clips.map((c) => c.title).slice(0, 8).join(" · ")}`;
+        const summary = `AutoClip finished: ${clips.length} clip(s) across ${state.segments.length} segment(s) of “${state.probe?.title ?? "video"}”. ${clips
+          .map((c) => c.title)
+          .slice(0, 8)
+          .join(" · ")}`;
         await saveState(runId, run.outputs, state);
         await insertIteration({
           runId,
@@ -480,7 +658,12 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
           outputs: {
             ...(run.outputs ?? {}),
             mediaFetch: state as unknown as JsonValue,
-            autoclips: state.segments.map((seg) => ({ segment: seg.index, assetId: seg.assetId ?? null, autoclipId: seg.autoclipId ?? null, clips: seg.clips ?? [] })) as unknown as JsonValue,
+            autoclips: state.segments.map((seg) => ({
+              segment: seg.index,
+              assetId: seg.assetId ?? null,
+              autoclipId: seg.autoclipId ?? null,
+              clips: seg.clips ?? [],
+            })) as unknown as JsonValue,
           },
         });
         return "done";
@@ -490,13 +673,27 @@ export async function tickMediaFetchJob(runId: string): Promise<"idle" | "advanc
     }
     return "idle";
   } catch (error) {
-    const code = error instanceof CrayoApiError ? error.code : error instanceof Error && /^[A-Z_]{3,60}$/.test(error.message) ? error.message : "MEDIA_FETCH_FAILED";
+    const code =
+      error instanceof CrayoApiError
+        ? error.code
+        : error instanceof Error && /^[A-Z_]{3,60}$/.test(error.message)
+          ? error.message
+          : "MEDIA_FETCH_FAILED";
     const detail = error instanceof Error ? error.message : "unknown error";
     // Transient sandbox/API hiccups: release the lock and let the next tick retry, unless fatal.
     if (code === "MEDIA_FETCH_FAILED" && !/not found|does not exist|deleted/i.test(detail)) {
+      const attempts = (state.transientErrors ?? 0) + 1;
+      state.transientErrors = attempts;
       state.lockUntil = null;
+      console.error("[media-fetch-job] transient", runId, attempts, scrub(detail));
+      if (attempts >= MAX_TRANSIENT_ERRORS) {
+        return await fail("MEDIA_FETCH_FAILED", `Gave up after ${attempts} consecutive transient errors. Last: ${detail}`);
+      }
+      // Surface the retry on the run (1st, 2nd, 4th, 8th… attempt) so it never looks frozen.
+      if ((attempts & (attempts - 1)) === 0) {
+        await progress(runId, state, `Retrying (attempt ${attempts}) after a transient error: ${scrub(detail)}`);
+      }
       await saveState(runId, run.outputs, state).catch(() => {});
-      console.error("[media-fetch-job] transient", runId, scrub(detail));
       return "idle";
     }
     return await fail(code, detail);
@@ -517,11 +714,12 @@ export async function tickPendingMediaFetchJobs(limit = 5): Promise<number> {
 }
 
 /** Best-effort cleanup when a run is cancelled. */
-export async function abortMediaFetchJob(outputs: Record<string, JsonValue> | null | undefined): Promise<void> {
+export async function abortMediaFetchJob(
+  outputs: Record<string, JsonValue> | null | undefined,
+): Promise<void> {
   const state = readState(outputs);
   if (state?.sandboxId) await deleteSandbox(state.sandboxId);
 }
-
 
 /**
  * Reap orphaned Daytona sandboxes from the synchronous (non-job) media-fetch path used by
@@ -550,7 +748,13 @@ export async function reapStaleMediaFetchSandboxes(maxAgeMinutes = 8): Promise<n
     const iter = daytona.list({ labels: { purpose: "media-fetch", app: "clippyos" }, limit: 20 });
     for await (const sandbox of iter as AsyncIterable<AnySandbox>) {
       const state = String(sandbox.state ?? "").toLowerCase();
-      if (state === "stopped" || state === "destroyed" || state === "destroying" || state === "archived") continue;
+      if (
+        state === "stopped" ||
+        state === "destroyed" ||
+        state === "destroying" ||
+        state === "archived"
+      )
+        continue;
       const createdAt = Date.parse(String(sandbox.createdAt ?? ""));
       if (!Number.isFinite(createdAt) || createdAt > cutoff) continue;
       try {
