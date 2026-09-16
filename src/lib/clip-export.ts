@@ -26,7 +26,8 @@ export function planExportBudget(input: {
 }
 
 type Rec = Record<string, unknown>;
-const rec = (v: unknown): Rec => (v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {});
+const rec = (v: unknown): Rec =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : {};
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -39,14 +40,29 @@ export function readExportPayload(payload: unknown): {
   const outer = rec(payload);
   const inner = "export" in outer ? rec(outer.export) : outer;
   const raw = str(inner.status).toLowerCase();
-  const status = raw === "completed" || raw === "complete" || raw === "succeeded" ? "done" : raw === "failed" || raw === "error" ? "failed" : "pending";
-  const candidates = [inner.video_url, inner.videoUrl, inner.download_url, inner.downloadUrl, inner.url, rec(inner.output).url, rec(inner.result).url];
+  const status =
+    raw === "completed" || raw === "complete" || raw === "succeeded"
+      ? "done"
+      : raw === "failed" || raw === "error"
+        ? "failed"
+        : "pending";
+  const candidates = [
+    inner.video_url,
+    inner.videoUrl,
+    inner.download_url,
+    inner.downloadUrl,
+    inner.url,
+    rec(inner.output).url,
+    rec(inner.result).url,
+  ];
   const url = candidates.map(str).find((u) => u.startsWith("https://")) ?? null;
   const bytes = num(inner.file_size) ?? num(inner.bytes) ?? num(inner.size) ?? null;
   return { status, url: status === "done" ? url : null, bytes, exportId: str(inner.id) || null };
 }
 
-export function readAutoclipClips(payload: unknown): { title: string; projectId: string; thumbnailUrl: string | null }[] {
+export function readAutoclipClips(
+  payload: unknown,
+): { title: string; projectId: string; thumbnailUrl: string | null }[] {
   const outer = rec(payload);
   const inner = "autoclip" in outer ? rec(outer.autoclip) : outer;
   const list = Array.isArray(inner.clips) ? inner.clips : [];
@@ -56,7 +72,11 @@ export function readAutoclipClips(payload: unknown): { title: string; projectId:
     const projectId = str(clip.project_id) || str(clip.projectId) || str(clip.id);
     if (!projectId) continue;
     const thumb = str(clip.thumbnail_url) || str(clip.thumbnailUrl);
-    out.push({ title: str(clip.title) || "AutoClip", projectId, thumbnailUrl: thumb.startsWith("https://") ? thumb : null });
+    out.push({
+      title: str(clip.title) || "AutoClip",
+      projectId,
+      thumbnailUrl: thumb.startsWith("https://") ? thumb : null,
+    });
   }
   return out;
 }
