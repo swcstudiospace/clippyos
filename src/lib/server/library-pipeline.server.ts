@@ -65,7 +65,12 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-async function audit(actorId: string, action: string, entityId: string, result: "ok" | "error" = "ok") {
+async function audit(
+  actorId: string,
+  action: string,
+  entityId: string,
+  result: "ok" | "error" = "ok",
+) {
   try {
     await writeAuditLog({
       requestId: `${action}:${entityId}`,
@@ -135,9 +140,7 @@ async function probeFile(path: string): Promise<Probe> {
     const text = `${result.stdout}\n${result.stderr}`;
     const dur = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(text);
     const dim = /Stream #.*Video:.*\s(\d{2,5})x(\d{2,5})/.exec(text);
-    const durationSec = dur
-      ? Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3])
-      : null;
+    const durationSec = dur ? Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]) : null;
     return {
       durationSec: Number.isFinite(durationSec) ? durationSec : null,
       width: dim ? Number(dim[1]) : null,
@@ -208,7 +211,8 @@ export async function ingestBytes(input: {
   const ext = extFromMime(mime, input.filename);
   const key = makeStorageKey(assetId, versionId, ext);
   await writeLibraryBytes(key, input.bytes);
-  const title = sanitizeText(input.title || input.filename || "Untitled").slice(0, 160) || "Untitled";
+  const title =
+    sanitizeText(input.title || input.filename || "Untitled").slice(0, 160) || "Untitled";
   await insertAsset({
     id: assetId,
     client_id: input.clientId,
@@ -253,7 +257,10 @@ async function hashFile(path: string): Promise<string> {
   const { createReadStream } = await import("node:fs");
   return new Promise((resolve, reject) => {
     const hash = createHash("sha256");
-    createReadStream(path).on("data", (chunk) => hash.update(chunk)).on("error", reject).on("end", () => resolve(hash.digest("hex")));
+    createReadStream(path)
+      .on("data", (chunk) => hash.update(chunk))
+      .on("error", reject)
+      .on("end", () => resolve(hash.digest("hex")));
   });
 }
 
@@ -285,7 +292,8 @@ export async function ingestFile(input: {
   const ext = extFromMime(mime, input.filename);
   const key = makeStorageKey(assetId, versionId, ext);
   const storageKey = await writeLibraryFile(key, input.filePath, mime);
-  const title = sanitizeText(input.title || input.filename || "Untitled").slice(0, 160) || "Untitled";
+  const title =
+    sanitizeText(input.title || input.filename || "Untitled").slice(0, 160) || "Untitled";
   await insertAsset({
     id: assetId,
     client_id: input.clientId,
@@ -314,13 +322,25 @@ export async function ingestFile(input: {
   });
   await finalizeProbeFromPath(assetId, versionId, input.filePath, mime, byteSize, checksum);
   await audit(input.actorId, "library.ingest", assetId);
-  emitAutonomyEvent({ type: "library.asset.ready", entityType: "media_asset", entityId: assetId, data: { source: input.source, kind, clientId: input.clientId } });
+  emitAutonomyEvent({
+    type: "library.asset.ready",
+    entityType: "media_asset",
+    entityId: assetId,
+    data: { source: input.source, kind, clientId: input.clientId },
+  });
   const asset = await getAsset(assetId);
   if (!asset) throw new Error("ASSET_MISSING");
   return { asset, duplicate: false };
 }
 
-async function finalizeProbeFromPath(assetId: string, versionId: string, path: string, mime: string, byteSize: number, checksum: string) {
+async function finalizeProbeFromPath(
+  assetId: string,
+  versionId: string,
+  path: string,
+  mime: string,
+  byteSize: number,
+  checksum: string,
+) {
   try {
     await assertReadableMedia(path);
   } catch {
@@ -342,7 +362,11 @@ async function finalizeProbeFromPath(assetId: string, versionId: string, path: s
 }
 
 /** Store a small thumbnail as an extra version row and point the asset at it. */
-export async function attachThumbnail(input: { assetId: string; bytes: Buffer; mimeHint: string }): Promise<string> {
+export async function attachThumbnail(input: {
+  assetId: string;
+  bytes: Buffer;
+  mimeHint: string;
+}): Promise<string> {
   const { writeLibraryBytes } = await import("@/lib/server/library-storage.server");
   const mime = sniffMime(input.bytes, input.mimeHint, "thumb.jpg");
   const versionId = libraryNewId();
@@ -409,10 +433,17 @@ function hostAllowed(host: string): boolean {
   if (isBlockedFetchHost(h)) return false;
   if (URL_HOST_ALLOW.includes(h)) return true;
   if (h.endsWith(".twitch.tv") || h.endsWith(".jtvnw.net")) return true;
-  if (h.endsWith(".tiktokcdn.com") || h.endsWith(".tiktok.com") || h.endsWith(".muscdn.com")) return true;
+  if (h.endsWith(".tiktokcdn.com") || h.endsWith(".tiktok.com") || h.endsWith(".muscdn.com"))
+    return true;
   if (h.endsWith(".cdninstagram.com") || h.endsWith(".fbcdn.net")) return true;
   if (h.endsWith(".googleusercontent.com") || h.endsWith(".ggpht.com")) return true;
-  if (h === "cdn-crayo.com" || h.endsWith(".cdn-crayo.com") || h === "crayo.ai" || h.endsWith(".crayo.ai")) return true;
+  if (
+    h === "cdn-crayo.com" ||
+    h.endsWith(".cdn-crayo.com") ||
+    h === "crayo.ai" ||
+    h.endsWith(".crayo.ai")
+  )
+    return true;
   return false;
 }
 
@@ -472,7 +503,8 @@ export async function ingestFromUrl(input: {
     } catch {
       throw new Error("UNTRUSTED_URL");
     }
-    if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw new Error("UNTRUSTED_URL");
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password)
+      throw new Error("UNTRUSTED_URL");
     if (!hostAllowed(parsed.hostname.replace(/^\[|\]$/g, ""))) throw new Error("UNTRUSTED_URL");
     const len = Number(response.headers.get("content-length") ?? 0);
     if (len > max) throw new Error("MEDIA_TOO_LARGE");
@@ -496,7 +528,8 @@ export async function ingestFromUrl(input: {
       reader.releaseLock();
     }
     const buf = Buffer.concat(chunks, written);
-    const mime = response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+    const mime =
+      response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
     const name = parsed.pathname.split("/").pop() || "import";
     return ingestBytes({
       actorId: input.actorId,
@@ -510,7 +543,10 @@ export async function ingestFromUrl(input: {
       tags: input.tags,
     });
   } catch (error) {
-    if (error instanceof Error && (error.message === "MEDIA_TOO_LARGE" || error.message === "UNTRUSTED_URL")) {
+    if (
+      error instanceof Error &&
+      (error.message === "MEDIA_TOO_LARGE" || error.message === "UNTRUSTED_URL")
+    ) {
       throw error;
     }
     throw new Error("UNTRUSTED_URL");
@@ -644,7 +680,10 @@ export async function ingestThumbnailMessage(input: {
 }
 
 function parseSrt(raw: string): CaptionCue[] {
-  const blocks = raw.replace(/^\uFEFF/, "").replace(/\r/g, "").split(/\n\n+/);
+  const blocks = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/\r/g, "")
+    .split(/\n\n+/);
   const cues: CaptionCue[] = [];
   for (const block of blocks) {
     const lines = block.split("\n").filter(Boolean);
@@ -654,7 +693,10 @@ function parseSrt(raw: string): CaptionCue[] {
     const match = /(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)/.exec(timeLine);
     if (!match) continue;
     const toMs = (h: string, m: string, s: string, f: string) =>
-      Number(h) * 3_600_000 + Number(m) * 60_000 + Number(s) * 1000 + Number(f.padEnd(3, "0").slice(0, 3));
+      Number(h) * 3_600_000 +
+      Number(m) * 60_000 +
+      Number(s) * 1000 +
+      Number(f.padEnd(3, "0").slice(0, 3));
     const text = lines
       .slice(lines.indexOf(timeLine) + 1)
       .join(" ")
@@ -678,7 +720,11 @@ function wordsToCues(words: Array<{ text: string; start: number; end: number }>)
     cues.push({
       startMs: Math.round(bucket[0].start * 1000),
       endMs: Math.round(bucket[bucket.length - 1].end * 1000),
-      text: bucket.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim(),
+      text: bucket
+        .map((w) => w.text)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim(),
     });
     bucket = [];
   };
@@ -717,7 +763,11 @@ export async function generateCaptions(input: {
     status: "TRANSCRIBING",
     engine: "XAI_OR_PROVIDER",
   });
-  void runTranscription({ trackId: track.id, storageKey: version.storageKey, language: input.language ?? "en" });
+  void runTranscription({
+    trackId: track.id,
+    storageKey: version.storageKey,
+    language: input.language ?? "en",
+  });
   await audit(input.actorId, "library.generate_captions", track.id);
   return track;
 }
@@ -834,14 +884,20 @@ export async function saveCues(input: {
   return updated;
 }
 
-export async function captionExport(trackId: string, format: "SRT" | "VTT"): Promise<{ filename: string; body: string }> {
+export async function captionExport(
+  trackId: string,
+  format: "SRT" | "VTT",
+): Promise<{ filename: string; body: string }> {
   const track = await getCaption(trackId);
   if (!track || track.status !== "READY") throw new Error("CAPTION_NOT_READY");
   const body = format === "VTT" ? cuesToVtt(track.cues) : cuesToSrt(track.cues);
   return { filename: `captions.${format.toLowerCase()}`, body };
 }
 
-function presetSize(preset: RenderPreset, options: RenderOptions): { width: number; height: number } {
+function presetSize(
+  preset: RenderPreset,
+  options: RenderOptions,
+): { width: number; height: number } {
   if (preset === "CUSTOM") {
     return {
       width: options.customWidth || options.maxWidth || 1080,
@@ -899,7 +955,8 @@ export async function queueRender(input: {
 export async function cancelRender(input: { actorId: string; jobId: string }): Promise<RenderJob> {
   const job = await getRender(input.jobId);
   if (!job) throw new Error("JOB_MISSING");
-  if (job.status === "SUCCEEDED" || job.status === "FAILED" || job.status === "CANCELED") return job;
+  if (job.status === "SUCCEEDED" || job.status === "FAILED" || job.status === "CANCELED")
+    return job;
   cancelFlags.add(job.id);
   await patchRender(job.id, {
     status: "CANCELED",
@@ -978,7 +1035,8 @@ async function runRenderJob(jobId: string): Promise<void> {
     let srtPath: string | null = null;
     if (job.options.burnInCaptions && job.captionTrackId) {
       const track = await getCaption(job.captionTrackId);
-      if (!track || track.status !== "READY" || track.cues.length === 0) throw new Error("CAPTION_NOT_READY");
+      if (!track || track.status !== "READY" || track.cues.length === 0)
+        throw new Error("CAPTION_NOT_READY");
       srtPath = join(dir, "burn.srt");
       await writeFile(srtPath, cuesToSrt(track.cues), "utf8");
       const escaped = srtPath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
@@ -997,7 +1055,8 @@ async function runRenderJob(jobId: string): Promise<void> {
       args.push("-t", String(job.options.targetMaxDurationSec));
     }
     args.push("-vf", vf.join(","));
-    if (job.options.loudnorm && asset.kind === "VIDEO") args.push("-af", "loudnorm=I=-16:TP=-1.5:LRA=11");
+    if (job.options.loudnorm && asset.kind === "VIDEO")
+      args.push("-af", "loudnorm=I=-16:TP=-1.5:LRA=11");
     args.push(
       "-c:v",
       "libx264",
@@ -1080,16 +1139,16 @@ async function runRenderJob(jobId: string): Promise<void> {
       data: { error: code },
     });
     void import("@/lib/server/safety-hooks.server")
-      .then((mod) =>
-        mod.onRenderFailed({ jobId, error: code, actorId: job.createdBy ?? null }),
-      )
+      .then((mod) => mod.onRenderFailed({ jobId, error: code, actorId: job.createdBy ?? null }))
       .catch(() => {});
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 }
 
-export async function testRender(actorId: string): Promise<{ ok: boolean; jobId?: string; message: string }> {
+export async function testRender(
+  actorId: string,
+): Promise<{ ok: boolean; jobId?: string; message: string }> {
   const settings = await readMediaSettings();
   if (!settings.ffmpegAvailable) {
     return { ok: false, message: "FFmpeg is not available on this worker." };
@@ -1153,7 +1212,8 @@ export async function resolvePublishAsset(input: {
   platforms?: string[];
 }): Promise<{ asset: LibraryAsset; mediaUrl: string | null; fileBytes?: Buffer; mime?: string }> {
   const asset = await getAsset(input.mediaAssetId);
-  if (!asset || (asset.clientId && asset.clientId !== input.clientId)) throw new Error("ASSET_MISSING");
+  if (!asset || (asset.clientId && asset.clientId !== input.clientId))
+    throw new Error("ASSET_MISSING");
   if (asset.status !== "READY") throw new Error("ASSET_NOT_READY");
   let chosen = asset;
   const wantsVertical = (input.platforms ?? []).some((p) => p === "tiktok" || p === "instagram");
@@ -1186,7 +1246,11 @@ export async function resolvePublishAsset(input: {
   };
 }
 
-export async function archiveAsset(input: { actorId: string; assetId: string; role: "admin" | "member" }) {
+export async function archiveAsset(input: {
+  actorId: string;
+  assetId: string;
+  role: "admin" | "member";
+}) {
   if (input.role !== "admin") throw new Error("Forbidden");
   const asset = await getAsset(input.assetId);
   if (!asset) throw new Error("ASSET_MISSING");
