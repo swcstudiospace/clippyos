@@ -118,6 +118,20 @@ function asJson(value: unknown): JsonValue {
   }
 }
 
+/**
+ * Some crayo.* tool results (run_autoclip's direct-file path, export_project) carry a
+ * `libraryClips` array alongside their step-scoped output. The Agent-results UI reads a
+ * top-level `outputs.libraryClips`, which only the background media-fetch job set directly —
+ * lift it here too, accumulating across every step that produces one (not just the last).
+ */
+function appendLibraryClips(outputs: Record<string, JsonValue>, data: unknown): void {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return;
+  const clips = (data as Record<string, unknown>).libraryClips;
+  if (!Array.isArray(clips)) return;
+  const existing = Array.isArray(outputs.libraryClips) ? (outputs.libraryClips as JsonValue[]) : [];
+  outputs.libraryClips = [...existing, ...(asJson(clips) as JsonValue[])];
+}
+
 function parsePlan(raw: unknown, allow: Set<string>): AgentPlanStep[] {
   const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const steps = Array.isArray(row.steps) ? row.steps : Array.isArray(raw) ? raw : [];
@@ -200,7 +214,13 @@ export async function startAgentRun(input: {
   if (!(await readAutomationEnabled())) throw new Error("AUTOMATION_DISABLED");
   if (input.idempotencyKey) {
     const existing = await findRunByIdempotency(input.idempotencyKey, input.createdBy);
-    if (existing && (existing.status === "queued" || existing.status === "planning" || existing.status === "stepping" || existing.status === "succeeded")) {
+    if (
+      existing &&
+      (existing.status === "queued" ||
+        existing.status === "planning" ||
+        existing.status === "stepping" ||
+        existing.status === "succeeded")
+    ) {
       return { id: existing.id };
     }
   }
@@ -224,7 +244,9 @@ export async function startAgentRun(input: {
   if (triggeredByTeamMemberId) {
     const team = await import("@/lib/server/team.server");
     const seats = await team.readTeamMembersInternal();
-    const seat = seats.find((row) => row.id === triggeredByTeamMemberId && row.isAutomation && row.isActive);
+    const seat = seats.find(
+      (row) => row.id === triggeredByTeamMemberId && row.isAutomation && row.isActive,
+    );
     if (!seat) throw new Error("TEAM_MEMBER_MISSING");
     triggeredByTeamMemberId = seat.id;
   }
@@ -419,13 +441,17 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
           typeof args.arguments === "object" &&
           !Array.isArray(args.arguments)
         ) {
-          args.arguments = { ...(args.arguments as Record<string, unknown>), clientId: run.clientId };
+          args.arguments = {
+            ...(args.arguments as Record<string, unknown>),
+            clientId: run.clientId,
+          };
         }
       }
       if (step.tool === "crayo.run_short") {
         const fields = crayoShortFieldsFromGoal(run.goal);
         if (typeof args.prompt !== "string" || !args.prompt.trim()) args.prompt = fields.prompt;
-        if ((typeof args.script !== "string" || !args.script.trim()) && fields.script) args.script = fields.script;
+        if ((typeof args.script !== "string" || !args.script.trim()) && fields.script)
+          args.script = fields.script;
       }
       if (step.tool === "crayo.run_autoclip") {
         const fields = crayoAutoclipFieldsFromGoal(run.goal);
@@ -434,21 +460,29 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
       }
       if (step.tool === "crayo.generate_voiceover") {
         const fields = crayoVoiceoverFieldsFromGoal(run.goal);
-        if ((typeof args.script !== "string" || !args.script.trim()) && fields.script) args.script = fields.script;
-        if ((typeof args.voiceId !== "string" || !args.voiceId.trim()) && fields.voiceId) args.voiceId = fields.voiceId;
-        if ((typeof args.title !== "string" || !args.title.trim()) && fields.title) args.title = fields.title;
+        if ((typeof args.script !== "string" || !args.script.trim()) && fields.script)
+          args.script = fields.script;
+        if ((typeof args.voiceId !== "string" || !args.voiceId.trim()) && fields.voiceId)
+          args.voiceId = fields.voiceId;
+        if ((typeof args.title !== "string" || !args.title.trim()) && fields.title)
+          args.title = fields.title;
       }
       if (step.tool === "crayo.generate_image") {
         const fields = crayoImageFieldsFromGoal(run.goal);
-        if ((typeof args.prompt !== "string" || !args.prompt.trim()) && fields.prompt) args.prompt = fields.prompt;
-        if ((typeof args.aspectRatio !== "string" || !args.aspectRatio.trim()) && fields.aspectRatio) {
+        if ((typeof args.prompt !== "string" || !args.prompt.trim()) && fields.prompt)
+          args.prompt = fields.prompt;
+        if (
+          (typeof args.aspectRatio !== "string" || !args.aspectRatio.trim()) &&
+          fields.aspectRatio
+        ) {
           args.aspectRatio = fields.aspectRatio;
         }
       }
       if (step.tool === "crayo.import_asset") {
         const fields = crayoImportFieldsFromGoal(run.goal);
         if ((typeof args.url !== "string" || !args.url.trim()) && fields.url) args.url = fields.url;
-        if ((typeof args.name !== "string" || !args.name.trim()) && fields.name) args.name = fields.name;
+        if ((typeof args.name !== "string" || !args.name.trim()) && fields.name)
+          args.name = fields.name;
       }
       if (step.tool === "crayo.export_project") {
         const fields = crayoExportFieldsFromGoal(run.goal);
@@ -459,7 +493,8 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
       if (step.tool === "crayo.ingest_to_library") {
         const fields = crayoIngestFieldsFromGoal(run.goal);
         if ((typeof args.url !== "string" || !args.url.trim()) && fields.url) args.url = fields.url;
-        if ((typeof args.title !== "string" || !args.title.trim()) && fields.title) args.title = fields.title;
+        if ((typeof args.title !== "string" || !args.title.trim()) && fields.title)
+          args.title = fields.title;
       }
       if (run.skillId && (step.tool === "clipping.run_skill" || step.tool === "skills.invoke")) {
         args.skillId = run.skillId;
@@ -499,7 +534,8 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
                 ? "Calling Crayo image generator (1 image credit). This is waiting on api.crayo.ai — not frozen."
                 : step.tool === "crayo.export_project"
                   ? "Queueing a Crayo export. Renders can take a few minutes. This is waiting on api.crayo.ai — not frozen."
-                  : step.tool === "crayo.run_autoclip" && mediaSourceKind(String(args.url ?? "")) === "fetch"
+                  : step.tool === "crayo.run_autoclip" &&
+                      mediaSourceKind(String(args.url ?? "")) === "fetch"
                     ? "Fetching the page link in a Daytona sandbox (yt-dlp), uploading it to Crayo, then AutoClipping. Up to ~4 minutes for a long video. Progress lines follow — not frozen."
                     : "Calling Crayo now. Image, voice, and export can take up to 3 minutes. This is waiting on api.crayo.ai — not frozen.",
           status: "running",
@@ -519,7 +555,13 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
       while (attempt <= AGENT_STEP_RETRIES && !done) {
         const started = Date.now();
         try {
-          const result = await executeAgentTool({ name: step.tool, payload: args, actorId, onProgress, runId });
+          const result = await executeAgentTool({
+            name: step.tool,
+            payload: args,
+            actorId,
+            onProgress,
+            runId,
+          });
           await writeAuditLog({
             requestId: runId,
             actor: { source: "api" as const, keyId: null, label: actorId },
@@ -553,11 +595,13 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
             status: "ok",
           });
           outputs[step.id] = asJson(result.data);
+          appendLibraryClips(outputs, result.data);
 
           if (result.needsLogin || result.waitingHuman) {
             await patchAgentRun(runId, {
               status: "waiting_human",
-              summary: "Needs a human (login, CAPTCHA, or approval). Open Social if this is a session wall.",
+              summary:
+                "Needs a human (login, CAPTCHA, or approval). Open Social if this is a session wall.",
               iterationCount: stepIndex + 1,
               outputs,
             });
@@ -571,11 +615,16 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
               .catch(() => {});
             return;
           }
-          if (result.machineStopped && !policies.socialAutoStartForUpload && step.tool !== "social.get_machine_status") {
+          if (
+            result.machineStopped &&
+            !policies.socialAutoStartForUpload &&
+            step.tool !== "social.get_machine_status"
+          ) {
             await patchAgentRun(runId, {
               status: "waiting_resource",
               errorCode: "MACHINE_STOPPED",
-              summary: "Social Machine is stopped. Start it on the Social tab, then re-run. Auto-start is off.",
+              summary:
+                "Social Machine is stopped. Start it on the Social tab, then re-run. Auto-start is off.",
               iterationCount: stepIndex + 1,
               outputs,
             });
@@ -591,10 +640,16 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
           const code = error instanceof Error ? error.message : "TOOL_FAILED";
           // Provider detail (Crayo/Higgsfield message) — operator-safe, never a credential.
           const detail =
-            error && typeof error === "object" && "detail" in error && typeof (error as { detail?: unknown }).detail === "string"
+            error &&
+            typeof error === "object" &&
+            "detail" in error &&
+            typeof (error as { detail?: unknown }).detail === "string"
               ? (error as { detail: string }).detail.trim().slice(0, 300)
               : "";
-          const explained = detail && detail !== code ? `${explainAgentToolError(code)}\n\nProvider said: ${detail}` : explainAgentToolError(code);
+          const explained =
+            detail && detail !== code
+              ? `${explainAgentToolError(code)}\n\nProvider said: ${detail}`
+              : explainAgentToolError(code);
           await writeAuditLog({
             requestId: runId,
             actor: { source: "api" as const, keyId: null, label: actorId },
@@ -665,7 +720,11 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
             resultSummary: explained.slice(0, 800),
             status: "error",
           });
-          if (code === "AI_TIER_GATED" || isFatalAgentToolError(code) || step.tool.startsWith("crayo.")) {
+          if (
+            code === "AI_TIER_GATED" ||
+            isFatalAgentToolError(code) ||
+            step.tool.startsWith("crayo.")
+          ) {
             const summary = explained.slice(0, 800);
             await patchAgentRun(runId, {
               status: "failed",
@@ -711,7 +770,9 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
     }
 
     const summary =
-      (outputs.finish && typeof outputs.finish === "object" && "summary" in (outputs.finish as object)
+      (outputs.finish &&
+      typeof outputs.finish === "object" &&
+      "summary" in (outputs.finish as object)
         ? String((outputs.finish as { summary?: string }).summary)
         : null) || "Run complete.";
 
