@@ -22,14 +22,17 @@ export const getLibrarySnapshot = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {
     const role = await requireUser(context.userId);
-    const { listAssets, listRenders, readMediaSettings } = await import("@/lib/server/library.server");
+    const { listAssets, listRenders, readMediaSettings } =
+      await import("@/lib/server/library.server");
     const clients = await readClients();
     const [assets, renders, settings] = await Promise.all([
       listAssets({}, 80),
       listRenders(),
       readMediaSettings(),
     ]);
-    let rollups: Awaited<ReturnType<typeof import("@/lib/server/performance.server").listAssetRollups>> = [];
+    let rollups: Awaited<
+      ReturnType<typeof import("@/lib/server/performance.server").listAssetRollups>
+    > = [];
     try {
       const perf = await import("@/lib/server/performance.server");
       rollups = await perf.listAssetRollups();
@@ -41,7 +44,12 @@ export const getLibrarySnapshot = createServerFn({ method: "GET" })
       renders,
       clients: clients
         .filter((row) => !row.deletedAt)
-        .map((row) => ({ id: row.id, name: row.name, status: row.status, deletedAt: row.deletedAt })),
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          status: row.status,
+          deletedAt: row.deletedAt,
+        })),
       role,
       settings,
       rollups,
@@ -74,9 +82,8 @@ export const getLibraryAssetFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => z.object({ id: z.string().min(1) }).parse(input))
   .handler(async ({ context, data }) => {
     await requireUser(context.userId);
-    const { getAsset, listVersions, listCaptions, derivedRenders, listRenders } = await import(
-      "@/lib/server/library.server"
-    );
+    const { getAsset, listVersions, listCaptions, derivedRenders, listRenders } =
+      await import("@/lib/server/library.server");
     const asset = await getAsset(data.id);
     if (!asset) throw new Error("ASSET_MISSING");
     const [versions, captions, derived, renders] = await Promise.all([
@@ -85,8 +92,12 @@ export const getLibraryAssetFn = createServerFn({ method: "POST" })
       derivedRenders(asset.id),
       listRenders({ sourceAssetId: asset.id }),
     ]);
-    let performance = null as Awaited<ReturnType<typeof import("@/lib/server/performance.server").getAssetRollup>>;
-    let snapshots: Awaited<ReturnType<typeof import("@/lib/server/performance.server").listPostPerformance>> = [];
+    let performance = null as Awaited<
+      ReturnType<typeof import("@/lib/server/performance.server").getAssetRollup>
+    >;
+    let snapshots: Awaited<
+      ReturnType<typeof import("@/lib/server/performance.server").listPostPerformance>
+    > = [];
     try {
       const perf = await import("@/lib/server/performance.server");
       performance = await perf.getAssetRollup(asset.id);
@@ -313,7 +324,9 @@ export const archiveAssetFn = createServerFn({ method: "POST" })
 export const tagAssetsFn = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
-    z.object({ assetIds: z.array(z.string()).min(1).max(24), tag: z.string().min(1).max(32) }).parse(input),
+    z
+      .object({ assetIds: z.array(z.string()).min(1).max(24), tag: z.string().min(1).max(32) })
+      .parse(input),
   )
   .handler(async ({ context, data }) => {
     await requireUser(context.userId);
@@ -372,9 +385,8 @@ export const saveIpfsSettingsFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const role = await requireUser(context.userId);
     if (role !== "admin") throw new Error("Forbidden");
-    const { persistIpfsSettings, testPinataConnection } = await import(
-      "@/lib/server/library-storage.server"
-    );
+    const { persistIpfsSettings, testPinataConnection } =
+      await import("@/lib/server/library-storage.server");
     await persistIpfsSettings(data);
     if (data.pinataJwt?.trim()) await testPinataConnection();
     const { readMediaSettings } = await import("@/lib/server/library.server");
@@ -435,9 +447,8 @@ export const signLibraryAssetsFn = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     await requireUser(context.userId);
     const { getAsset, getVersionRow } = await import("@/lib/server/library.server");
-    const { signVersionUrl, backendFromStorageKey } = await import(
-      "@/lib/server/library-storage.server"
-    );
+    const { signVersionUrl, backendFromStorageKey } =
+      await import("@/lib/server/library-storage.server");
     const rows = [];
     for (const assetId of data.assetIds) {
       const asset = await getAsset(assetId);
