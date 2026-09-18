@@ -25,9 +25,13 @@ try {
 }
 
 if (!mod) {
-  test("library-storage.server.ts (skipped: unloadable under node --test)", {
-    skip: `Cannot load this module outside Vite: ${loadError?.message.split("\n")[0]}`,
-  }, () => {});
+  test(
+    "library-storage.server.ts (skipped: unloadable under node --test)",
+    {
+      skip: `Cannot load this module outside Vite: ${loadError?.message.split("\n")[0]}`,
+    },
+    () => {},
+  );
 } else {
   const { writeLibraryFile, backendFromStorageKey, storagePath } = mod;
 

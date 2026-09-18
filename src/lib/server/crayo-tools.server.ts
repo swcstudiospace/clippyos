@@ -29,7 +29,13 @@ function str(payload: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
-function num(payload: Record<string, unknown>, key: string, fallback: number, min: number, max: number): number {
+function num(
+  payload: Record<string, unknown>,
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   const raw = Number(payload[key]);
   if (!Number.isFinite(raw)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(raw)));
@@ -101,7 +107,11 @@ export async function ingestCrayoMedia(
   url: string,
   title: string,
   extraTags: string[],
-): Promise<{ assetId: string; title: string; status: string; kind: string; duplicate: boolean } | { error: string; url: string } | null> {
+): Promise<
+  | { assetId: string; title: string; status: string; kind: string; duplicate: boolean }
+  | { error: string; url: string }
+  | null
+> {
   if (!url.startsWith("https://")) return null;
   if (!isCrayoMediaUrl(url)) return { error: "UNTRUSTED_URL", url };
   try {
@@ -131,7 +141,8 @@ async function crayoPollAutoclip(id: string): Promise<unknown> {
     const payload = await crayoGetAutoclip(id);
     const status = pickField(payload, "status").toLowerCase();
     if (status === "completed" || status === "complete" || status === "succeeded") return payload;
-    if (status === "failed" || status === "error") throw new CrayoApiError("FAILED", "Crayo AutoClip failed.", 400);
+    if (status === "failed" || status === "error")
+      throw new CrayoApiError("FAILED", "Crayo AutoClip failed.", 400);
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
   throw new CrayoApiError("TIMEOUT", "Crayo AutoClip is still processing.", 504);
@@ -140,7 +151,8 @@ async function crayoPollAutoclip(id: string): Promise<unknown> {
 async function runShort(payload: Record<string, unknown>, actorId: string): Promise<unknown> {
   const prompt = sanitizeText(str(payload, "prompt", "topic")).slice(0, 2000);
   const script = sanitizeText(str(payload, "script")).slice(0, 5000) || prompt;
-  const title = sanitizeText(str(payload, "title")).slice(0, 80) || prompt.slice(0, 80) || "Crayo short";
+  const title =
+    sanitizeText(str(payload, "title")).slice(0, 80) || prompt.slice(0, 80) || "Crayo short";
   const clientId = str(payload, "clientId") || null;
   if (!prompt) throw new Error("VALIDATION");
 
@@ -161,7 +173,8 @@ async function runShort(payload: Record<string, unknown>, actorId: string): Prom
     }),
   );
   const audioId = pickField(voice, "id") || pickField(voice, "asset_id");
-  const durationSec = Number(pickField(voice, "duration_seconds") || pickField(voice, "duration")) || 15;
+  const durationSec =
+    Number(pickField(voice, "duration_seconds") || pickField(voice, "duration")) || 15;
   const endMs = Math.min(60_000, Math.max(4_000, Math.round(durationSec * 1000)));
   if (!imageId || !audioId) throw new Error("CRAYO_FAILED");
 
@@ -184,7 +197,9 @@ async function runShort(payload: Record<string, unknown>, actorId: string): Prom
 
   const queued = await wrap(() => crayoExportProject(projectId));
   const exportId = pickField(queued, "id");
-  const exported = exportId ? await wrap(() => crayoPollExport(exportId)).catch(() => queued) : queued;
+  const exported = exportId
+    ? await wrap(() => crayoPollExport(exportId)).catch(() => queued)
+    : queued;
   const videoUrl = firstHttps(exported) || firstHttps(queued);
 
   const library = videoUrl
@@ -238,12 +253,16 @@ async function runAutoclip(
       });
     } catch (error) {
       const code = error instanceof Error ? error.message : "MEDIA_FETCH_FAILED";
-      throw new CrayoToolError(/^[A-Z_]{3,60}$/.test(code) ? code : "MEDIA_FETCH_FAILED", error instanceof Error ? error.message : "");
+      throw new CrayoToolError(
+        /^[A-Z_]{3,60}$/.test(code) ? code : "MEDIA_FETCH_FAILED",
+        error instanceof Error ? error.message : "",
+      );
     }
     throw new CrayoToolError("MEDIA_FETCH_PENDING", "Background fetch started.");
   }
   if (mediaSourceKind(url) === "fetch") {
-    const { fetchPageVideoToCrayoAsset, MediaFetchError } = await import("@/lib/server/media-fetch.server");
+    const { fetchPageVideoToCrayoAsset, MediaFetchError } =
+      await import("@/lib/server/media-fetch.server");
     try {
       const result = await fetchPageVideoToCrayoAsset({ url, name, onProgress });
       assetId = result.assetId;
@@ -257,7 +276,9 @@ async function runAutoclip(
     assetId = pickField(imported, "id") || pickField(imported, "asset_id");
   }
   if (!assetId) throw new Error("CRAYO_FAILED");
-  await onProgress?.(`Crayo asset ${assetId} is ready. Starting AutoClip (credits are charged per requested clip).`);
+  await onProgress?.(
+    `Crayo asset ${assetId} is ready. Starting AutoClip (credits are charged per requested clip).`,
+  );
 
   const job = await wrap(() =>
     crayoCreateAutoclip({
@@ -272,26 +293,46 @@ async function runAutoclip(
   if (!autoclipId) throw new Error("CRAYO_FAILED");
 
   const finished = await wrap(() => crayoPollAutoclip(autoclipId));
-  const clipsRaw =
-    finished && typeof finished === "object" && Array.isArray((finished as { clips?: unknown }).clips)
-      ? ((finished as { clips: unknown[] }).clips)
-      : [];
+  const { readAutoclipClips, planExportBudget } = await import("@/lib/clip-export");
+  const { exportClipToLibrary, readExportCredits, defaultClipExportDeps } =
+    await import("@/lib/server/clip-export.server");
+  const found = readAutoclipClips(finished);
+  const deps = defaultClipExportDeps();
+  const budget = planExportBudget({
+    exportCredits: await readExportCredits(deps.crayo),
+    clipCount: found.length,
+  });
+  if (!budget.ok) throw new CrayoToolError("EXPORT_BUDGET", budget.reason);
   const clips = [];
-  for (const clip of clipsRaw.slice(0, 20)) {
-    const title = pickField(clip, "title") || "AutoClip";
-    const thumbnailUrl = pickField(clip, "thumbnail_url") || firstHttps(clip);
-    const projectId = pickField(clip, "project_id") || pickField(clip, "id");
-    const library = thumbnailUrl
-      ? await ingestCrayoMedia(actorId, clientId, thumbnailUrl, title, ["autoclip"])
-      : null;
-    clips.push({
-      title,
-      projectId: projectId || null,
-      thumbnailUrl: thumbnailUrl || null,
-      library,
-    });
+  for (const [i, clip] of found.slice(0, budget.count).entries()) {
+    await onProgress?.(`Exporting clip ${i + 1} of ${budget.count}: ${clip.title}`);
+    const result = await exportClipToLibrary(
+      {
+        projectId: clip.projectId,
+        title: clip.title,
+        thumbnailUrl: clip.thumbnailUrl,
+        actorId,
+        clientId,
+        sourceUrl: url,
+        tags: ["autoclip"],
+      },
+      deps,
+    );
+    clips.push(result);
+    await onProgress?.(
+      result.status === "stored"
+        ? `Stored clip ${i + 1} of ${budget.count} (${Math.round((result.bytes ?? 0) / 1048576)} MB).`
+        : `Clip ${i + 1} failed: ${result.error}`,
+    );
   }
-  return { autoclipId, assetId, clips, ...(fetched ? { source: fetched } : {}) };
+  const libraryClips = clips.map((c) => ({
+    title: c.title,
+    projectId: c.projectId,
+    assetId: c.assetId,
+    status: c.status,
+    error: c.error,
+  }));
+  return { autoclipId, assetId, clips, libraryClips, ...(fetched ? { source: fetched } : {}) };
 }
 
 export async function handleCrayoAction(
@@ -321,7 +362,12 @@ export async function handleCrayoAction(
     case "crayo.import_asset": {
       const url = str(payload, "url");
       if (!url.startsWith("https://")) throw new Error("VALIDATION");
-      return wrap(() => crayoImportAsset({ url, name: sanitizeText(str(payload, "name")).slice(0, 200) || undefined }));
+      return wrap(() =>
+        crayoImportAsset({
+          url,
+          name: sanitizeText(str(payload, "name")).slice(0, 200) || undefined,
+        }),
+      );
     }
     case "crayo.generate_image": {
       const prompt = sanitizeText(str(payload, "prompt")).slice(0, 2000);
@@ -336,7 +382,13 @@ export async function handleCrayoAction(
       );
       const imageUrl = firstHttps(image);
       const library = imageUrl
-        ? await ingestCrayoMedia(actorId, clientId, imageUrl, prompt.slice(0, 80) || "Crayo still", ["still"])
+        ? await ingestCrayoMedia(
+            actorId,
+            clientId,
+            imageUrl,
+            prompt.slice(0, 80) || "Crayo still",
+            ["still"],
+          )
         : null;
       return { image, thumbnailUrl: imageUrl || null, library };
     }
@@ -354,9 +406,13 @@ export async function handleCrayoAction(
       );
       const audioUrl = firstHttps(voice);
       const library = audioUrl
-        ? await ingestCrayoMedia(actorId, clientId, audioUrl, script.slice(0, 80) || "Crayo voiceover", [
-            "voiceover",
-          ])
+        ? await ingestCrayoMedia(
+            actorId,
+            clientId,
+            audioUrl,
+            script.slice(0, 80) || "Crayo voiceover",
+            ["voiceover"],
+          )
         : null;
       return { voice, audioUrl: audioUrl || null, library };
     }
@@ -369,14 +425,28 @@ export async function handleCrayoAction(
     case "crayo.export_project": {
       const id = str(payload, "projectId", "id");
       if (!id) throw new Error("VALIDATION");
-      const queued = await wrap(() => crayoExportProject(id));
-      const exportId = pickField(queued, "id");
-      if (!exportId) return queued;
-      try {
-        return await wrap(() => crayoPollExport(exportId));
-      } catch {
-        return queued;
-      }
+      const { exportClipToLibrary } = await import("@/lib/server/clip-export.server");
+      const result = await exportClipToLibrary({
+        projectId: id,
+        title: sanitizeText(str(payload, "title")).slice(0, 160) || `Crayo project ${id}`,
+        thumbnailUrl: null,
+        actorId,
+        clientId: str(payload, "clientId") || null,
+        sourceUrl: `crayo:project:${id}`,
+        tags: ["export"],
+      });
+      if (result.status === "failed") throw new CrayoToolError("EXPORT_FAILED", result.error ?? "");
+      return {
+        libraryClips: [
+          {
+            title: result.title,
+            projectId: id,
+            assetId: result.assetId,
+            status: result.status,
+            error: null,
+          },
+        ],
+      };
     }
     case "crayo.get_export": {
       const id = str(payload, "exportId", "id");

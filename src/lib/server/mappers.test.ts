@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isMissingColumn, isMissingTable } from "./mappers.ts";
+import { isMissingColumn, isMissingTable, isUniqueViolation } from "./mappers.ts";
 
 test("PGRST205 schema-cache miss is a missing table, not a missing column", () => {
   const error = {
@@ -33,4 +33,18 @@ test("null and empty errors are neither missing table nor missing column", () =>
   const empty = {};
   assert.equal(isMissingTable(empty), false);
   assert.equal(isMissingColumn(empty), false);
+});
+
+test("Postgres 23505 is a unique violation, by code or by message", () => {
+  const byCode = { code: "23505", message: "duplicate key value violates unique constraint" };
+  assert.equal(isUniqueViolation(byCode), true);
+
+  const byMessage = {
+    message: 'duplicate key value violates unique constraint "media_assets_external_ref_unique"',
+  };
+  assert.equal(isUniqueViolation(byMessage), true);
+
+  assert.equal(isUniqueViolation(null), false);
+  assert.equal(isUniqueViolation({}), false);
+  assert.equal(isUniqueViolation({ code: "23502", message: "not null violation" }), false);
 });

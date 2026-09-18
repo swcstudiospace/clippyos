@@ -168,91 +168,89 @@ export const AGENT_MAX_CONCURRENT = 2;
 export const AGENT_STEP_RETRIES = 2;
 export const AGENT_PROPOSE_MIN_STEPS = 5;
 
-export const AGENT_PRESET_COPY: Record<
-  AgentPreset,
-  { label: string; goal: string; hint: string }
-> = {
-  "clipping-ideation-pack": {
-    label: "Ideation pack",
-    goal: "Research this client's channel (long-form only, ≥ 4 minutes). Produce 5 packaging-ready ideas: each with a working title, hook mechanism, promise/tension/payoff, spoken 3-second hook, and a ≤4-word thumbnail overlay. Then generate 3 mechanistically distinct title alternatives for the latest long-form upload. Do not duplicate existing titles. No social, no VM.",
-    hint: "Ideas + titles. No social, no VM.",
-  },
-  "clipping-thumbnail-pass": {
-    label: "Thumbnail pass",
-    goal: "If a latest thumbnail image exists, vision-critique it (emotion, contrast, overlay ≤4 words, postage-stamp legibility). Then generate a fresh 16:9 4K direction whose overlay complements — not repeats — the title. One focal face/object, mandatory emotion, complementary palette.",
-    hint: "Vision critique + Higgsfield generation.",
-  },
-  "clipping-full-package": {
-    label: "Full clip package",
-    goal: "End-to-end production brief for this client: research long-form (≥ 4 min), 5 ideas with hooks + overlays, 3 titles for the latest long-form, one thumbnail direction, optional stage note only if evidence exists. Write package.json. Never invent analytics. Never start the Social Machine.",
-    hint: "SKILL.md plan + orchestrate.py export. Never auto-starts Social.",
-  },
-  "clipping-social-draft-distribute": {
-    label: "Social drafts",
-    goal: "Queue draft Instagram / X / TikTok posts for the latest publishable library asset (prefer 9:16). preferredRail=AUTO, mode=draft. Do not start the Social Machine. If MACHINE_STOPPED, wait for a human — do not imply start.",
-    hint: "create_upload_job in draft mode. MACHINE_STOPPED waits for a human.",
-  },
-  "clipping-social-verify": {
-    label: "Social verify",
-    goal: "After an upload job, screenshot the desktop and verify compose/success UI with vision. Never type passwords, 2FA, or CAPTCHA. If needs_login, stop for a human.",
-    hint: "Needs a running Social Machine. Never types passwords.",
-  },
-  "clipping-pipeline-nudge": {
-    label: "Pipeline nudge",
-    goal: "Read this client's progress (including Discord-sourced stages). Recommend the next human action with evidence. Only set_stage if notes can cite a real artifact. Never fabricate views or CTR.",
-    hint: "Cautious set_client_stage. No fabricated analytics.",
-  },
-  "clipping-30d-guarantee-check": {
-    label: "30-day check",
-    goal: "Single-client 30-day views check from AnalyticsSnapshots only. Need ≥2 real snapshots to call a delta. If missing, say Insufficient data — never invent views or treat unknown as zero.",
-    hint: "Honest insufficient-data when snapshots are missing.",
-  },
-  "clipping-agent-self-improve": {
-    label: "Self-improve",
-    goal: "From the last successful Agent run (≥5 tool steps), draft a pending_review skill capturing the plan and pitfalls. No secrets in SKILL.md. Do not auto-publish.",
-    hint: "skill_manage.create pending. Never auto-publishes.",
-  },
-  custom: {
-    label: "Custom goal",
-    goal: "",
-    hint: "Describe the clipping or Crayo workflow. The planner cannot call undeclared tools.",
-  },
-  "crayo-short": {
-    label: "Crayo short",
-    goal: "Using the connected Crayo API (Bearer key, never echo it): 1) crayo.get_account to confirm credits. 2) crayo.list_voices and pick one voice_id. 3) crayo.generate_image 9:16 for a hook still from this client's niche. 4) crayo.generate_voiceover from a 12–20s spoken hook script. 5) crayo.create_project with one scene covering the narration duration_ms, optional subtitles. 6) crayo.export_project and return the finished video URL plus thumbnail. Do not start the Social Machine. If Crayo is missing, say so and stop.",
-    hint: "Image + voice + project + export via api.crayo.ai. Shows the file when done.",
-  },
-  "crayo-autoclip": {
-    label: "Crayo AutoClip",
-    goal: "Using Crayo AutoClip: import or pick a long-form https video asset (1 min–3 h). crayo.create_autoclip clip_count=5 clip_length=60 edit_level=full. Then crayo.get_autoclip until clips[] has project_id + thumbnail_url. List each clip title and thumbnail. Do not start the Social Machine. Never invent URLs.",
-    hint: "Long video → vertical shorts. Poll until clips are ready.",
-  },
-  "crayo-voiceover": {
-    label: "Crayo voiceover",
-    goal: "Using Crayo: crayo.generate_voiceover with the spoken script and voice_id from the operator. Return the audio URL. Do not start the Social Machine. Never echo the API key.",
-    hint: "Script + voice_id → audio. Credits per second.",
-  },
-  "crayo-image": {
-    label: "Crayo image",
-    goal: "Using Crayo: crayo.generate_image with the prompt, prefer aspect_ratio=9:16. Return the still URL. Do not start the Social Machine. Never echo the API key.",
-    hint: "Prompt → 9:16 still. 1 image credit.",
-  },
-  "crayo-import": {
-    label: "Crayo import",
-    goal: "Using Crayo: crayo.import_asset a public https URL (≤100MB). Return the asset id. Do not start the Social Machine. Never echo the API key.",
-    hint: "Public https file into Crayo assets.",
-  },
-  "crayo-export": {
-    label: "Crayo export",
-    goal: "Using Crayo: crayo.export_project for the given project_id, then poll until the file is ready. Return the video URL. Never invent URLs. Do not start the Social Machine.",
-    hint: "Queue a project render and poll.",
-  },
-  "crayo-ingest": {
-    label: "Crayo ingest",
-    goal: "Using Crayo: crayo.ingest_to_library a Crayo CDN https URL into Filebase (source=AGENT). Reject non-Crayo hosts. Do not start the Social Machine.",
-    hint: "Crayo CDN file → library.",
-  },
-};
+export const AGENT_PRESET_COPY: Record<AgentPreset, { label: string; goal: string; hint: string }> =
+  {
+    "clipping-ideation-pack": {
+      label: "Ideation pack",
+      goal: "Research this client's channel (long-form only, ≥ 4 minutes). Produce 5 packaging-ready ideas: each with a working title, hook mechanism, promise/tension/payoff, spoken 3-second hook, and a ≤4-word thumbnail overlay. Then generate 3 mechanistically distinct title alternatives for the latest long-form upload. Do not duplicate existing titles. No social, no VM.",
+      hint: "Ideas + titles. No social, no VM.",
+    },
+    "clipping-thumbnail-pass": {
+      label: "Thumbnail pass",
+      goal: "If a latest thumbnail image exists, vision-critique it (emotion, contrast, overlay ≤4 words, postage-stamp legibility). Then generate a fresh 16:9 4K direction whose overlay complements — not repeats — the title. One focal face/object, mandatory emotion, complementary palette.",
+      hint: "Vision critique + Higgsfield generation.",
+    },
+    "clipping-full-package": {
+      label: "Full clip package",
+      goal: "End-to-end production brief for this client: research long-form (≥ 4 min), 5 ideas with hooks + overlays, 3 titles for the latest long-form, one thumbnail direction, optional stage note only if evidence exists. Write package.json. Never invent analytics. Never start the Social Machine.",
+      hint: "SKILL.md plan + orchestrate.py export. Never auto-starts Social.",
+    },
+    "clipping-social-draft-distribute": {
+      label: "Social drafts",
+      goal: "Queue draft Instagram / X / TikTok posts for the latest publishable library asset (prefer 9:16). preferredRail=AUTO, mode=draft. Do not start the Social Machine. If MACHINE_STOPPED, wait for a human — do not imply start.",
+      hint: "create_upload_job in draft mode. MACHINE_STOPPED waits for a human.",
+    },
+    "clipping-social-verify": {
+      label: "Social verify",
+      goal: "After an upload job, screenshot the desktop and verify compose/success UI with vision. Never type passwords, 2FA, or CAPTCHA. If needs_login, stop for a human.",
+      hint: "Needs a running Social Machine. Never types passwords.",
+    },
+    "clipping-pipeline-nudge": {
+      label: "Pipeline nudge",
+      goal: "Read this client's progress (including Discord-sourced stages). Recommend the next human action with evidence. Only set_stage if notes can cite a real artifact. Never fabricate views or CTR.",
+      hint: "Cautious set_client_stage. No fabricated analytics.",
+    },
+    "clipping-30d-guarantee-check": {
+      label: "30-day check",
+      goal: "Single-client 30-day views check from AnalyticsSnapshots only. Need ≥2 real snapshots to call a delta. If missing, say Insufficient data — never invent views or treat unknown as zero.",
+      hint: "Honest insufficient-data when snapshots are missing.",
+    },
+    "clipping-agent-self-improve": {
+      label: "Self-improve",
+      goal: "From the last successful Agent run (≥5 tool steps), draft a pending_review skill capturing the plan and pitfalls. No secrets in SKILL.md. Do not auto-publish.",
+      hint: "skill_manage.create pending. Never auto-publishes.",
+    },
+    custom: {
+      label: "Custom goal",
+      goal: "",
+      hint: "Describe the clipping or Crayo workflow. The planner cannot call undeclared tools.",
+    },
+    "crayo-short": {
+      label: "Crayo short",
+      goal: "Using the connected Crayo API (Bearer key, never echo it): 1) crayo.get_account to confirm credits. 2) crayo.list_voices and pick one voice_id. 3) crayo.generate_image 9:16 for a hook still from this client's niche. 4) crayo.generate_voiceover from a 12–20s spoken hook script. 5) crayo.create_project with one scene covering the narration duration_ms, optional subtitles. 6) crayo.export_project and return the finished video URL plus thumbnail. Do not start the Social Machine. If Crayo is missing, say so and stop.",
+      hint: "Image + voice + project + export via api.crayo.ai. Shows the file when done.",
+    },
+    "crayo-autoclip": {
+      label: "Crayo AutoClip",
+      goal: "Using Crayo AutoClip: import or pick a long-form https video asset (1 min–3 h). crayo.create_autoclip clip_count=5 clip_length=60 edit_level=full. Then crayo.get_autoclip until clips[] has project_id + thumbnail_url. List each clip title and thumbnail. Do not start the Social Machine. Never invent URLs.",
+      hint: "Long video → vertical shorts. Poll until clips are ready.",
+    },
+    "crayo-voiceover": {
+      label: "Crayo voiceover",
+      goal: "Using Crayo: crayo.generate_voiceover with the spoken script and voice_id from the operator. Return the audio URL. Do not start the Social Machine. Never echo the API key.",
+      hint: "Script + voice_id → audio. Credits per second.",
+    },
+    "crayo-image": {
+      label: "Crayo image",
+      goal: "Using Crayo: crayo.generate_image with the prompt, prefer aspect_ratio=9:16. Return the still URL. Do not start the Social Machine. Never echo the API key.",
+      hint: "Prompt → 9:16 still. 1 image credit.",
+    },
+    "crayo-import": {
+      label: "Crayo import",
+      goal: "Using Crayo: crayo.import_asset a public https URL (≤100MB). Return the asset id. Do not start the Social Machine. Never echo the API key.",
+      hint: "Public https file into Crayo assets.",
+    },
+    "crayo-export": {
+      label: "Crayo export",
+      goal: "Using Crayo: crayo.export_project for the given project_id, then poll until the file is ready. Return the video URL. Never invent URLs. Do not start the Social Machine.",
+      hint: "Queue a project render and poll.",
+    },
+    "crayo-ingest": {
+      label: "Crayo ingest",
+      goal: "Using Crayo: crayo.ingest_to_library a Crayo CDN https URL into Library (source=AGENT). Reject non-Crayo hosts. Do not start the Social Machine.",
+      hint: "Crayo CDN file → library.",
+    },
+  };
 
 export function presetCopy(preset: string): { label: string; goal: string; hint: string } {
   return AGENT_PRESET_COPY[normalizePreset(preset)];
@@ -455,32 +453,116 @@ export const PRESET_PLAN_SKELETONS: Record<ClippingPresetSkill, AgentPlanStep[]>
 
 export const CRAYO_PLAN_SKELETONS: Record<CrayoAgentPreset, AgentPlanStep[]> = {
   "crayo-short": [
-    { id: "run", tool: "crayo.run_short", args: {}, purpose: "Generate a 9:16 short and ingest the mp4 into the Filebase library.", successCriteria: "library.assetId or videoUrl returned." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "Crayo short in the library." }, purpose: "Operator-facing summary with library asset id.", successCriteria: "Summary names the asset id or honest gap." },
+    {
+      id: "run",
+      tool: "crayo.run_short",
+      args: {},
+      purpose: "Generate a 9:16 short and ingest the mp4 into the Library.",
+      successCriteria: "library.assetId or videoUrl returned.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "Crayo short in the library." },
+      purpose: "Operator-facing summary with library asset id.",
+      successCriteria: "Summary names the asset id or honest gap.",
+    },
   ],
   "crayo-autoclip": [
-    { id: "run", tool: "crayo.run_autoclip", args: {}, purpose: "Import the long-form URL, AutoClip, ingest thumbnails into the library.", successCriteria: "clips[] with project_id and library asset ids." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "AutoClip clips in the library." }, purpose: "List clip titles and library ids.", successCriteria: "No invented URLs." },
+    {
+      id: "run",
+      tool: "crayo.run_autoclip",
+      args: {},
+      purpose: "Import the long-form URL, AutoClip, ingest thumbnails into the library.",
+      successCriteria: "clips[] with project_id and library asset ids.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "AutoClip clips in the library." },
+      purpose: "List clip titles and library ids.",
+      successCriteria: "No invented URLs.",
+    },
   ],
   "crayo-voiceover": [
-    { id: "run", tool: "crayo.generate_voiceover", args: {}, purpose: "Generate spoken audio from the script and voice_id.", successCriteria: "Audio URL or honest error." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "Crayo voiceover ready." }, purpose: "Operator-facing summary with audio URL.", successCriteria: "No invented URLs." },
+    {
+      id: "run",
+      tool: "crayo.generate_voiceover",
+      args: {},
+      purpose: "Generate spoken audio from the script and voice_id.",
+      successCriteria: "Audio URL or honest error.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "Crayo voiceover ready." },
+      purpose: "Operator-facing summary with audio URL.",
+      successCriteria: "No invented URLs.",
+    },
   ],
   "crayo-image": [
-    { id: "run", tool: "crayo.generate_image", args: {}, purpose: "Generate a still from the prompt.", successCriteria: "Image URL or honest error." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "Crayo still ready." }, purpose: "Operator-facing summary with image URL.", successCriteria: "No invented URLs." },
+    {
+      id: "run",
+      tool: "crayo.generate_image",
+      args: {},
+      purpose: "Generate a still from the prompt.",
+      successCriteria: "Image URL or honest error.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "Crayo still ready." },
+      purpose: "Operator-facing summary with image URL.",
+      successCriteria: "No invented URLs.",
+    },
   ],
   "crayo-import": [
-    { id: "run", tool: "crayo.import_asset", args: {}, purpose: "Import a public https file into Crayo assets.", successCriteria: "asset id returned." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "Asset imported in Crayo." }, purpose: "Name the asset id.", successCriteria: "Honest gap if missing." },
+    {
+      id: "run",
+      tool: "crayo.import_asset",
+      args: {},
+      purpose: "Import a public https file into Crayo assets.",
+      successCriteria: "asset id returned.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "Asset imported in Crayo." },
+      purpose: "Name the asset id.",
+      successCriteria: "Honest gap if missing.",
+    },
   ],
   "crayo-export": [
-    { id: "run", tool: "crayo.export_project", args: {}, purpose: "Queue the project render and poll.", successCriteria: "Video URL or still-processing export id." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "Crayo export finished." }, purpose: "Operator-facing summary with video URL.", successCriteria: "No invented URLs." },
+    {
+      id: "run",
+      tool: "crayo.export_project",
+      args: {},
+      purpose: "Queue the project render and poll.",
+      successCriteria: "Video URL or still-processing export id.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "Crayo export finished." },
+      purpose: "Operator-facing summary with video URL.",
+      successCriteria: "No invented URLs.",
+    },
   ],
   "crayo-ingest": [
-    { id: "run", tool: "crayo.ingest_to_library", args: {}, purpose: "Copy a Crayo CDN file into the Filebase library.", successCriteria: "library.assetId or UNTRUSTED_URL." },
-    { id: "finish", tool: "clipping.finish", args: { summary: "Ingested into the library." }, purpose: "Name the library asset id.", successCriteria: "Honest gap if rejected." },
+    {
+      id: "run",
+      tool: "crayo.ingest_to_library",
+      args: {},
+      purpose: "Copy a Crayo CDN file into the Library.",
+      successCriteria: "library.assetId or UNTRUSTED_URL.",
+    },
+    {
+      id: "finish",
+      tool: "clipping.finish",
+      args: { summary: "Ingested into the library." },
+      purpose: "Name the library asset id.",
+      successCriteria: "Honest gap if rejected.",
+    },
   ],
 };
 
@@ -674,6 +756,10 @@ export function explainAgentToolError(code: string): string {
       return "The video downloaded but the upload to Crayo’s signed URL failed. Retry; if it keeps failing, check Crayo storage headroom on crayo.ai.";
     case "UPLOAD_NOT_FOUND":
       return "Crayo never received the bytes on its signed upload URL. Retry the run.";
+    case "EXPORT_BUDGET":
+      return "Not enough Crayo export credits for these clips.";
+    case "EXPORT_FAILED":
+      return "Crayo could not export that project.";
     case "VALIDATION_ERROR":
       return "Crayo rejected the request: the URL could not be fetched, is not a public https media file, or the video is too short/long (AutoClip needs 1 min–3 h). No credits were spent on a rejected request.";
     case "UNSUPPORTED_MEDIA_TYPE":
@@ -689,7 +775,7 @@ export function explainAgentToolError(code: string): string {
     case "FAILED":
       return "Crayo returned an error for this step. The provider message is shown with the step.";
     case "INGEST_FAILED":
-      return "The video rendered, but Filebase/library ingest failed. The Crayo URL may still be in the step output.";
+      return "The video rendered, but the Library ingest failed. The Crayo URL may still be in the step output.";
     case "GROK_BOT_NOT_CONNECTED":
       return "Grok Bot isn’t online. Turn off the Grok Bot switch to run on this server, or open the Bot so it can claim work.";
     case "AI_TIER_GATED":

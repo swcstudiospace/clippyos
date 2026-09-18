@@ -8,11 +8,20 @@ export type AgentResultMedia = {
   label: string;
 };
 
+export type AgentLibraryClip = {
+  title: string;
+  projectId: string;
+  assetId: string | null;
+  status: string;
+  error: string | null;
+};
+
 export type AgentVisualResults = {
   media: AgentResultMedia[];
   ideas: { title: string; rationale?: string }[];
   titles: string[];
   summary: string | null;
+  libraryClips: AgentLibraryClip[];
   empty: boolean;
 };
 
@@ -28,10 +37,18 @@ function isHttps(url: string): boolean {
 
 function classify(url: string): AgentResultMedia["kind"] {
   const lower = url.toLowerCase();
-  if (/\.(mp4|webm|mov)(\?|$)/.test(lower) || /\/video\./.test(lower) || lower.includes("cdn-crayo.com") && lower.includes("video")) {
+  if (
+    /\.(mp4|webm|mov)(\?|$)/.test(lower) ||
+    /\/video\./.test(lower) ||
+    (lower.includes("cdn-crayo.com") && lower.includes("video"))
+  ) {
     return "video";
   }
-  if (/\.(png|jpe?g|webp|gif)(\?|$)/.test(lower) || lower.includes("thumbnail") || lower.includes("/image")) {
+  if (
+    /\.(png|jpe?g|webp|gif)(\?|$)/.test(lower) ||
+    lower.includes("thumbnail") ||
+    lower.includes("/image")
+  ) {
     return "image";
   }
   if (/\.(mp3|wav|m4a)(\?|$)/.test(lower)) return "audio";
@@ -45,7 +62,13 @@ function pushUrl(acc: AgentResultMedia[], url: string, label: string) {
   acc.push({ url: clean, kind: classify(clean), label: label.slice(0, 80) });
 }
 
-function walk(value: unknown, acc: AgentResultMedia[], ideas: AgentVisualResults["ideas"], titles: string[], depth = 0) {
+function walk(
+  value: unknown,
+  acc: AgentResultMedia[],
+  ideas: AgentVisualResults["ideas"],
+  titles: string[],
+  depth = 0,
+) {
   if (depth > 8 || value == null) return;
   if (typeof value === "string") {
     const matches = value.match(URL_RE) ?? [];
@@ -67,7 +90,11 @@ function walk(value: unknown, acc: AgentResultMedia[], ideas: AgentVisualResults
     }
   }
   for (const [key, child] of Object.entries(row)) {
-    if (typeof child === "string" && /url|href|thumbnail/i.test(key) && child.startsWith("https://")) {
+    if (
+      typeof child === "string" &&
+      /url|href|thumbnail/i.test(key) &&
+      child.startsWith("https://")
+    ) {
       pushUrl(acc, child, key);
     } else {
       walk(child, acc, ideas, titles, depth + 1);
@@ -85,11 +112,33 @@ export function collectAgentVisualResults(detail: AgentRunDetail): AgentVisualRe
     walk(item.resultSummary, media, ideas, titles);
   }
   const summary = detail.run.summary?.trim() || null;
+  const rawClips = (detail.run.outputs as Record<string, unknown> | null)?.libraryClips;
+  const libraryClips: AgentLibraryClip[] = Array.isArray(rawClips)
+    ? rawClips.flatMap((row) => {
+        const r = row as Record<string, unknown>;
+        if (typeof r.projectId !== "string") return [];
+        return [
+          {
+            title: String(r.title ?? "Clip"),
+            projectId: r.projectId,
+            assetId: typeof r.assetId === "string" ? r.assetId : null,
+            status: String(r.status ?? "failed"),
+            error: typeof r.error === "string" ? r.error : null,
+          },
+        ];
+      })
+    : [];
   return {
     media,
     ideas: ideas.slice(0, 12),
     titles: titles.slice(0, 24),
     summary,
-    empty: media.length === 0 && ideas.length === 0 && titles.length === 0 && !summary,
+    libraryClips,
+    empty:
+      media.length === 0 &&
+      ideas.length === 0 &&
+      titles.length === 0 &&
+      libraryClips.length === 0 &&
+      !summary,
   };
 }

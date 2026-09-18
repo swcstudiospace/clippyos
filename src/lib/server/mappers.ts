@@ -153,7 +153,9 @@ function oneOfOrNull<T extends string>(value: unknown, allowed: readonly T[]): T
 
 function parseStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    return value.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
   }
   if (typeof value === "string" && value.trim()) {
     try {
@@ -365,9 +367,7 @@ export function mapSocialPost(row: Record<string, unknown>): SocialPost {
         : null,
     igContainerId: asNullable(row.ig_container_id),
     uploadPercent:
-      row.upload_percent == null || row.upload_percent === ""
-        ? null
-        : Number(row.upload_percent),
+      row.upload_percent == null || row.upload_percent === "" ? null : Number(row.upload_percent),
     uploadPhase:
       row.upload_phase === "init" ||
       row.upload_phase === "uploading" ||
@@ -400,5 +400,13 @@ export function isMissingTable(error: { code?: string; message?: string } | null
     error.code === "PGRST205" ||
     /could not find the table/i.test(error.message ?? "") ||
     /relation .* does not exist/i.test(error.message ?? "")
+  );
+}
+
+export function isUniqueViolation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.code === "23505" ||
+    /duplicate key value violates unique constraint/i.test(error.message ?? "")
   );
 }

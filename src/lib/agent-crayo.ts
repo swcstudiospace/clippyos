@@ -14,8 +14,10 @@ export function buildCrayoShortGoal(input: {
     topic
       ? `Topic / hook: ${topic}`
       : "Invent a tight spoken hook from the client niche if known, otherwise ask is not available — use a generic personal-brand authority hook.",
-    script ? `Spoken script:\n${script}` : "Write a 12–20 second spoken hook, then generate_voiceover from it.",
-    "Pipeline: crayo.run_short (image + voice + project + export) then crayo.ingest_to_library so the mp4 lands in the Filebase library with tags crayo,agent.",
+    script
+      ? `Spoken script:\n${script}`
+      : "Write a 12–20 second spoken hook, then generate_voiceover from it.",
+    "Pipeline: crayo.run_short (image + voice + project + export) then crayo.ingest_to_library so the mp4 lands in the Library with tags crayo,agent.",
     "Return the library asset id, preview URL, and Crayo video URL. Never start the Social Machine. Never echo the API key. Never invent URLs.",
   ];
   return lines.join("\n\n");
@@ -40,7 +42,9 @@ export function isCrayoMediaUrl(url: string): boolean {
 export function crayoShortFieldsFromGoal(goal: string): { prompt: string; script: string } {
   const topic = /Topic \/ hook:\s*(.+)/i.exec(goal)?.[1]?.trim() ?? "";
   const scriptBlock =
-    /Spoken script:\s*\n([\s\S]*?)(?:\n\nPipeline:|\n\nReturn |\n\nNever )/i.exec(goal)?.[1]?.trim() ?? "";
+    /Spoken script:\s*\n([\s\S]*?)(?:\n\nPipeline:|\n\nReturn |\n\nNever )/i
+      .exec(goal)?.[1]
+      ?.trim() ?? "";
   const fallback = goal.replace(/\s+/g, " ").trim().slice(0, 400);
   return { prompt: topic || fallback, script: scriptBlock };
 }
@@ -48,7 +52,10 @@ export function crayoShortFieldsFromGoal(goal: string): { prompt: string; script
 export function crayoAutoclipFieldsFromGoal(goal: string): { url: string; clipCount: number } {
   const url = /https:\/\/[^\s)]+/i.exec(goal)?.[0] ?? "";
   const count = Number(/clip_count=(\d+)/i.exec(goal)?.[1] ?? 5);
-  return { url, clipCount: Number.isFinite(count) ? Math.min(20, Math.max(2, Math.floor(count))) : 5 };
+  return {
+    url,
+    clipCount: Number.isFinite(count) ? Math.min(20, Math.max(2, Math.floor(count))) : 5,
+  };
 }
 
 /** Share-page hosts nothing can fetch unattended (sign-in or share-token walls). */
@@ -70,7 +77,10 @@ export function autoclipSourceProblem(raw: string): string | null {
     return "That is not a valid https URL.";
   }
   if (parsed.protocol !== "https:") return "Crayo only downloads from https URLs.";
-  const host = parsed.hostname.toLowerCase().replace(/^www\./, "").replace(/^m\./, "");
+  const host = parsed.hostname
+    .toLowerCase()
+    .replace(/^www\./, "")
+    .replace(/^m\./, "");
   if (PAGE_ONLY_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
     return `${host} share links need a sign-in, so they can’t be fetched automatically. Download the file, upload it to the Library, then paste that file URL — or paste a YouTube/TikTok/Vimeo link, which ClippyOS fetches for you.`;
   }
@@ -79,7 +89,9 @@ export function autoclipSourceProblem(raw: string): string | null {
 
 export function buildCrayoAutoclipGoal(input: { url: string; clipCount: number }): string {
   const url = input.url.trim();
-  const count = Number.isFinite(input.clipCount) ? Math.min(20, Math.max(2, Math.floor(input.clipCount))) : 5;
+  const count = Number.isFinite(input.clipCount)
+    ? Math.min(20, Math.max(2, Math.floor(input.clipCount)))
+    : 5;
   return [
     "AutoClip a long-form video in Crayo.",
     `Source URL (https): ${url || "(paste a public https video URL)"}`,
@@ -109,10 +121,15 @@ export function buildCrayoVoiceoverGoal(input: {
     .join("\n\n");
 }
 
-export function crayoVoiceoverFieldsFromGoal(goal: string): { script: string; voiceId: string; title: string } {
+export function crayoVoiceoverFieldsFromGoal(goal: string): {
+  script: string;
+  voiceId: string;
+  title: string;
+} {
   const script =
-    /Spoken script:\s*\n([\s\S]*?)(?:\n\nvoice_id=|\n\ntitle=|\n\nPipeline:|\n\nNever )/i.exec(goal)?.[1]?.trim() ??
-    "";
+    /Spoken script:\s*\n([\s\S]*?)(?:\n\nvoice_id=|\n\ntitle=|\n\nPipeline:|\n\nNever )/i
+      .exec(goal)?.[1]
+      ?.trim() ?? "";
   const voiceId = /voice_id=([^\s]+)/i.exec(goal)?.[1]?.trim() ?? "";
   const title = /title=([^\n]+)/i.exec(goal)?.[1]?.trim() ?? "";
   return { script, voiceId, title };
@@ -173,7 +190,7 @@ export function buildCrayoIngestGoal(input: { url: string; title?: string }): st
   const url = input.url.trim();
   const title = input.title?.trim() ?? "";
   return [
-    "Ingest a Crayo CDN https file into the Filebase library (source=AGENT).",
+    "Ingest a Crayo CDN https file into the Library (source=AGENT).",
     `Source URL (https): ${url || "(paste a cdn-crayo.com or *.crayo.ai https URL)"}`,
     title ? `title=${title}` : "",
     "Pipeline: crayo.ingest_to_library. Reject non-Crayo hosts. Never start the Social Machine. Never echo the API key.",

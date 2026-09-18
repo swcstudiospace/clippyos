@@ -3,7 +3,9 @@ import { test } from "node:test";
 import { collectAgentVisualResults } from "./agent-results.ts";
 import type { AgentRunDetail } from "./agent.ts";
 
-function detail(partial: Partial<AgentRunDetail["run"]> & { iterations?: AgentRunDetail["iterations"] }): AgentRunDetail {
+function detail(
+  partial: Partial<AgentRunDetail["run"]> & { iterations?: AgentRunDetail["iterations"] },
+): AgentRunDetail {
   return {
     clientName: "Ada",
     skillName: null,
@@ -53,4 +55,32 @@ test("collects Crayo video URLs and ideas from outputs", () => {
 test("empty run has no visual results", () => {
   const result = collectAgentVisualResults(detail({ summary: null, outputs: null }));
   assert.equal(result.empty, true);
+});
+
+test("a run with a stored library clip is not empty and round-trips the fields", () => {
+  const result = collectAgentVisualResults(
+    detail({
+      summary: null,
+      outputs: {
+        libraryClips: [
+          {
+            title: "Clip one",
+            projectId: "proj_1",
+            assetId: "asset_1",
+            status: "stored",
+            error: null,
+          },
+        ],
+      },
+    }),
+  );
+  assert.equal(result.empty, false);
+  assert.equal(result.libraryClips.length, 1);
+  assert.deepEqual(result.libraryClips[0], {
+    title: "Clip one",
+    projectId: "proj_1",
+    assetId: "asset_1",
+    status: "stored",
+    error: null,
+  });
 });
