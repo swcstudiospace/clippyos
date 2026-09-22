@@ -194,7 +194,9 @@ export async function executeAgentTool(input: {
     case "clipping.distribute_social": {
       const clientId = str(payload, "clientId", "id");
       if (!clientId) throw new Error("VALIDATION");
-      const platforms = Array.isArray(payload.platforms) ? payload.platforms.map(String) : undefined;
+      const platforms = Array.isArray(payload.platforms)
+        ? payload.platforms.map(String)
+        : undefined;
       return {
         data: await clippingDistributeSocial({
           clientId,
@@ -287,14 +289,17 @@ export async function executeAgentTool(input: {
           watchHours: row.watchHours,
           impressionsCtr: row.impressionsCtr,
         }));
-      return { data: { clientId, snapshots: rows, note: "Public snapshots only. Never invented." } };
+      return {
+        data: { clientId, snapshots: rows, note: "Public snapshots only. Never invented." },
+      };
     }
     case "analytics.refresh_post_performance": {
       const fetch = await import("@/lib/server/performance-fetch.server");
       if (payload.sweep === true || !str(payload, "socialPostId")) {
         const due = await fetch.sweepDuePerformanceFetches(12);
         const stale = await fetch.sweepStalePublishedPosts();
-        const { distillWinnersToProposals } = await import("@/lib/server/knowledge-proposals.server");
+        const { distillWinnersToProposals } =
+          await import("@/lib/server/knowledge-proposals.server");
         const distilled = await distillWinnersToProposals(actorId, 3).catch(() => 0);
         return { data: { due, stale, distilled } };
       }
@@ -307,12 +312,7 @@ export async function executeAgentTool(input: {
       const winners = await listWinners({
         clientId: str(payload, "clientId") || undefined,
         platform: (str(payload, "platform") || undefined) as
-          | "X"
-          | "TIKTOK"
-          | "INSTAGRAM"
-          | "YOUTUBE"
-          | "OTHER"
-          | undefined,
+          "X" | "TIKTOK" | "INSTAGRAM" | "YOUTUBE" | "OTHER" | undefined,
       });
       return {
         data: {
@@ -334,11 +334,7 @@ export async function executeAgentTool(input: {
       const { listKnowledgeProposals } = await import("@/lib/server/knowledge-proposals.server");
       const items = await listKnowledgeProposals({
         status: (str(payload, "status") || undefined) as
-          | "PENDING_REVIEW"
-          | "APPROVED"
-          | "REJECTED"
-          | "MERGED"
-          | undefined,
+          "PENDING_REVIEW" | "APPROVED" | "REJECTED" | "MERGED" | undefined,
         clientId: str(payload, "clientId") || undefined,
       });
       return {
@@ -357,7 +353,8 @@ export async function executeAgentTool(input: {
     case "knowledge.decide_proposal": {
       const id = str(payload, "id");
       const decision = str(payload, "decision").toUpperCase();
-      if (!id || (decision !== "APPROVED" && decision !== "REJECTED")) throw new Error("VALIDATION");
+      if (!id || (decision !== "APPROVED" && decision !== "REJECTED"))
+        throw new Error("VALIDATION");
       const { decideProposal } = await import("@/lib/server/knowledge-proposals.server");
       const row = await decideProposal({
         id,
@@ -376,7 +373,10 @@ export async function executeAgentTool(input: {
       if (title.length < 3) throw new Error("VALIDATION");
       const { createLinearIssue } = await import("@/lib/server/linear.server");
       const { isLinearEntityType } = await import("@/lib/linear");
-      const linkRaw = payload.linkTo && typeof payload.linkTo === "object" ? (payload.linkTo as { type?: string; id?: string }) : null;
+      const linkRaw =
+        payload.linkTo && typeof payload.linkTo === "object"
+          ? (payload.linkTo as { type?: string; id?: string })
+          : null;
       return {
         data: await createLinearIssue({
           title,
@@ -394,7 +394,10 @@ export async function executeAgentTool(input: {
     case "linear.update_issue": {
       const { updateLinearIssue } = await import("@/lib/server/linear.server");
       const { isLinearEntityType } = await import("@/lib/linear");
-      const linkRaw = payload.linkTo && typeof payload.linkTo === "object" ? (payload.linkTo as { type?: string; id?: string }) : null;
+      const linkRaw =
+        payload.linkTo && typeof payload.linkTo === "object"
+          ? (payload.linkTo as { type?: string; id?: string })
+          : null;
       return {
         data: await updateLinearIssue({
           issueId: str(payload, "issueId", "id") || undefined,
@@ -431,7 +434,10 @@ export async function executeAgentTool(input: {
       return { data: await handleSocialAction("social.list_platforms", payload, actorId) };
     }
     case "clipping.finish":
-      return { data: { summary: sanitizeText(str(payload, "summary", "text")).slice(0, 2000) }, pause: true };
+      return {
+        data: { summary: sanitizeText(str(payload, "summary", "text")).slice(0, 2000) },
+        pause: true,
+      };
     default: {
       if (name.startsWith("library.")) {
         const { handleLibraryAction } = await import("@/lib/server/library-tools.server");
@@ -460,7 +466,11 @@ export const AGENT_LLM_TOOLS = [
     function: {
       name: "clipping.research_channel",
       description: "Load the client’s YouTube profile and latest long-form videos (≥ 4 minutes).",
-      parameters: { type: "object", required: ["clientId"], properties: { clientId: { type: "string" } } },
+      parameters: {
+        type: "object",
+        required: ["clientId"],
+        properties: { clientId: { type: "string" } },
+      },
     },
   },
   {
@@ -468,7 +478,11 @@ export const AGENT_LLM_TOOLS = [
     function: {
       name: "clipping.generate_ideas",
       description: "Generate long-form video ideas for a client. Persists until regenerate.",
-      parameters: { type: "object", required: ["clientId"], properties: { clientId: { type: "string" } } },
+      parameters: {
+        type: "object",
+        required: ["clientId"],
+        properties: { clientId: { type: "string" } },
+      },
     },
   },
   {
@@ -476,14 +490,19 @@ export const AGENT_LLM_TOOLS = [
     function: {
       name: "clipping.generate_titles",
       description: "3 title alternatives for each of the last 5 long-form uploads.",
-      parameters: { type: "object", required: ["clientId"], properties: { clientId: { type: "string" } } },
+      parameters: {
+        type: "object",
+        required: ["clientId"],
+        properties: { clientId: { type: "string" } },
+      },
     },
   },
   {
     type: "function",
     function: {
       name: "clipping.generate_thumbnail",
-      description: "Generate a 16:9 4K thumbnail via Higgsfield and register it in the Library when ingest succeeds.",
+      description:
+        "Generate a 16:9 4K thumbnail via Higgsfield and register it in the Library when ingest succeeds.",
       parameters: {
         type: "object",
         required: ["clientId"],
@@ -523,7 +542,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "clipping.distribute_social",
-      description: "Queue draft social uploads. Does not start the VM unless policy auto_start_for_upload is on.",
+      description:
+        "Queue draft social uploads. Does not start the VM unless policy auto_start_for_upload is on.",
       parameters: {
         type: "object",
         required: ["clientId"],
@@ -612,7 +632,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "browser.open_url",
-      description: "Open an https URL in the Social Machine browser. Machine must already be running.",
+      description:
+        "Open an https URL in the Social Machine browser. Machine must already be running.",
       parameters: { type: "object", required: ["url"], properties: { url: { type: "string" } } },
     },
   },
@@ -629,7 +650,11 @@ export const AGENT_LLM_TOOLS = [
     function: {
       name: "clipping.get_progress",
       description: "Read ClientProgress including Discord-sourced stages.",
-      parameters: { type: "object", required: ["clientId"], properties: { clientId: { type: "string" } } },
+      parameters: {
+        type: "object",
+        required: ["clientId"],
+        properties: { clientId: { type: "string" } },
+      },
     },
   },
   {
@@ -637,7 +662,11 @@ export const AGENT_LLM_TOOLS = [
     function: {
       name: "clipping.guarantee_check",
       description: "30-day views check from AnalyticsSnapshots. Never invents views.",
-      parameters: { type: "object", required: ["clientId"], properties: { clientId: { type: "string" } } },
+      parameters: {
+        type: "object",
+        required: ["clientId"],
+        properties: { clientId: { type: "string" } },
+      },
     },
   },
   {
@@ -670,7 +699,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "library.queue_render",
-      description: "Queue an FFmpeg export (REELS_9x16, SQUARE_1x1, LANDSCAPE_16x9) with optional burned captions.",
+      description:
+        "Queue an FFmpeg export (REELS_9x16, SQUARE_1x1, LANDSCAPE_16x9) with optional burned captions.",
       parameters: {
         type: "object",
         required: ["assetId"],
@@ -687,7 +717,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "library.attach_to_social_job",
-      description: "Create a social upload job from a library mediaAssetId. Prefers a 9:16 render for TikTok/IG.",
+      description:
+        "Create a social upload job from a library mediaAssetId. Prefers a 9:16 render for TikTok/IG.",
       parameters: {
         type: "object",
         required: ["clientId", "mediaAssetId"],
@@ -733,7 +764,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "knowledge.list_proposals",
-      description: "List pending knowledge proposals distilled from winning posts. Do not auto-approve.",
+      description:
+        "List pending knowledge proposals distilled from winning posts. Do not auto-approve.",
       parameters: {
         type: "object",
         properties: {
@@ -747,7 +779,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "linear.get_status",
-      description: "Linear team/project binding. Never returns tokens. Skip issue create if not enabled.",
+      description:
+        "Linear team/project binding. Never returns tokens. Skip issue create if not enabled.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -765,7 +798,10 @@ export const AGENT_LLM_TOOLS = [
           description: { type: "string" },
           state: { type: "string" },
           labels: { type: "array", items: { type: "string" } },
-          linkTo: { type: "object", properties: { type: { type: "string" }, id: { type: "string" } } },
+          linkTo: {
+            type: "object",
+            properties: { type: { type: "string" }, id: { type: "string" } },
+          },
         },
       },
     },
@@ -774,7 +810,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "crayo.run_short",
-      description: "Make a 9:16 Crayo short (image + voice + export) and ingest the mp4 into the Filebase library.",
+      description:
+        "Make a 9:16 Crayo short (image + voice + export) and ingest the mp4 into the Filebase library.",
       parameters: {
         type: "object",
         required: ["prompt"],
@@ -791,7 +828,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "crayo.run_autoclip",
-      description: "Import a long-form https URL, AutoClip it, ingest thumbnails into the Filebase library.",
+      description:
+        "Import a long-form https URL, AutoClip it, ingest thumbnails into the Filebase library.",
       parameters: {
         type: "object",
         required: ["url"],
@@ -808,11 +846,16 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "crayo.ingest_to_library",
-      description: "Copy a Crayo CDN https file into the Filebase library (source=AGENT). Rejects non-Crayo hosts.",
+      description:
+        "Copy a Crayo CDN https file into the Filebase library (source=AGENT). Rejects non-Crayo hosts.",
       parameters: {
         type: "object",
         required: ["url"],
-        properties: { url: { type: "string" }, title: { type: "string" }, clientId: { type: "string" } },
+        properties: {
+          url: { type: "string" },
+          title: { type: "string" },
+          clientId: { type: "string" },
+        },
       },
     },
   },
@@ -853,7 +896,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "crayo.list_voices",
-      description: "List Crayo voices. Use voice_id with generate_voiceover. Never returns the API key.",
+      description:
+        "List Crayo voices. Use voice_id with generate_voiceover. Never returns the API key.",
       parameters: {
         type: "object",
         properties: { search: { type: "string" }, limit: { type: "number" } },
@@ -864,7 +908,8 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "crayo.get_account",
-      description: "Crayo plan and remaining export/voice/image/video credits. Never returns the API key.",
+      description:
+        "Crayo plan and remaining export/voice/image/video credits. Never returns the API key.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -872,8 +917,13 @@ export const AGENT_LLM_TOOLS = [
     type: "function",
     function: {
       name: "clipping.finish",
-      description: "End the run with a short operator summary. Call when the goal is done or blocked.",
-      parameters: { type: "object", required: ["summary"], properties: { summary: { type: "string" } } },
+      description:
+        "End the run with a short operator summary. Call when the goal is done or blocked.",
+      parameters: {
+        type: "object",
+        required: ["summary"],
+        properties: { summary: { type: "string" } },
+      },
     },
   },
 ] as const;

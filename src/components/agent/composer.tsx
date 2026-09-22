@@ -122,7 +122,9 @@ export function AgentChatComposer({
       return;
     }
     if (!llmReady) {
-      setHint("Free-text goals need a planner (Grok or OpenRouter). Use /short topic for Crayo without the planner.");
+      setHint(
+        "Free-text goals need a planner (Grok or OpenRouter). Use /short topic for Crayo without the planner.",
+      );
       return;
     }
     onSubmit({ preset: "custom", goal: text });
@@ -152,13 +154,17 @@ export function AgentChatComposer({
       {workflowOpen ? (
         <div className="mb-3 rounded-control bg-bg/60 p-3">
           <p className="text-body font-medium">Clipping walkthrough</p>
-          <p className="text-caption text-muted">Pin a client, then run each step. Skip social if you only need the package.</p>
+          <p className="text-caption text-muted">
+            Pin a client, then run each step. Skip social if you only need the package.
+          </p>
           <ol className="mt-2 flex flex-col gap-2">
             {CLIPPING_WORKFLOW_STEPS.map((step, index) => (
               <li key={step.id} className="flex items-center justify-between gap-2">
                 <span className="text-caption">
                   {index + 1}. {step.title}
-                  {"hint" in step && step.hint ? <span className="text-muted"> — {step.hint}</span> : null}
+                  {"hint" in step && step.hint ? (
+                    <span className="text-muted"> — {step.hint}</span>
+                  ) : null}
                 </span>
                 {"command" in step && step.command ? (
                   <Button
@@ -180,7 +186,10 @@ export function AgentChatComposer({
       ) : null}
 
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Select value={clientId || "none"} onValueChange={(value) => onClientId(value === "none" ? "" : value)}>
+        <Select
+          value={clientId || "none"}
+          onValueChange={(value) => onClientId(value === "none" ? "" : value)}
+        >
           <SelectTrigger className="w-48" aria-label="Client">
             <SelectValue placeholder="Client" />
           </SelectTrigger>
@@ -253,17 +262,27 @@ export function AgentChatComposer({
         <p className="text-caption text-muted">
           {hint ??
             (parsed.command
-              ? (slashMissingArg(parsed.command, parsed.rest) ?? AGENT_PRESET_COPY[parsed.command.preset].hint)
+              ? (slashMissingArg(parsed.command, parsed.rest) ??
+                AGENT_PRESET_COPY[parsed.command.preset].hint)
               : "Enter sends. Crayo slash commands open a specialty card. Free text uses the planner.")}
         </p>
         <div className="ml-auto flex gap-2">
           {canCancel ? (
-            <Button variant="secondary" onClick={onCancel} disabled={cancelling} className="min-h-11">
+            <Button
+              variant="secondary"
+              onClick={onCancel}
+              disabled={cancelling}
+              className="min-h-11"
+            >
               <Square className="size-4" aria-hidden="true" />
               Cancel
             </Button>
           ) : null}
-          <Button onClick={() => send(draft)} disabled={starting || !draft.trim()} className="min-h-11">
+          <Button
+            onClick={() => send(draft)}
+            disabled={starting || !draft.trim()}
+            className="min-h-11"
+          >
             <Play className="size-4" aria-hidden="true" />
             {starting ? "Sending…" : "Send"}
           </Button>
@@ -274,7 +293,9 @@ export function AgentChatComposer({
           <li key={row.cmd}>
             <button
               type="button"
-              className={cn("rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted")}
+              className={cn(
+                "rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted",
+              )}
               onClick={() => pickChip(row)}
             >
               {row.cmd}
@@ -295,7 +316,9 @@ export function AgentChatComposer({
             <li key={row.cmd}>
               <button
                 type="button"
-                className={cn("rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted")}
+                className={cn(
+                  "rounded-full bg-secondary-surface px-2.5 py-1 font-mono text-caption text-muted",
+                )}
                 onClick={() => pickChip(row)}
               >
                 {row.cmd}
