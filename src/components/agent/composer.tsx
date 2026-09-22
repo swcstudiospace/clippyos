@@ -24,6 +24,9 @@ import {
 } from "@/lib/agent-slash";
 import { cn } from "@/lib/utils";
 
+/** Clipping commands that research the pinned client's channel — same set the walkthrough gates on. */
+const CLIENT_REQUIRED_COMMANDS = new Set(["/ideas", "/thumb", "/package", "/social"]);
+
 type ClientOpt = { id: string; name: string };
 
 export function AgentChatComposer({
@@ -85,9 +88,22 @@ export function AgentChatComposer({
     if (slash.command?.cmd === "/clip" && !slash.rest) {
       setWorkflowOpen(true);
       setHint("Walkthrough opened. Pin a client, then run each step.");
+      // Clear the box: leaving "/clip" in place turned the next command into "/clip/thumb".
+      setDraft("");
+      return;
+    }
+    if (!slash.command && text.startsWith("/")) {
+      // An unknown slash token must never reach the planner as a free-text goal.
+      setHint(`Unknown command ${text.split(/\s/)[0]}. Pick one from the list below.`);
       return;
     }
     if (slash.command) {
+      if (CLIENT_REQUIRED_COMMANDS.has(slash.command.cmd) && !clientId) {
+        // These research the pinned client's channel; the server would only fail the run.
+        setWorkflowOpen(true);
+        setHint(`Pin a client first — ${slash.command.cmd} researches that client's channel.`);
+        return;
+      }
       if (slash.command.cardOnly && slash.command.ui) {
         openFromCommand(slash.command, slash.rest);
         return;

@@ -69,6 +69,10 @@ export type CrayoAccountSnapshot = {
   error: string | null;
 };
 
+// Crayo's API intermittently times out or answers with a Cloudflare 5xx page. A blip must not
+// blank the plan/credits the Agent tab already showed, so the last good read is kept per process.
+let lastGoodCrayoAccount: CrayoAccountSnapshot | null = null;
+
 export const crayoAccountFn = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }): Promise<CrayoAccountSnapshot> => {
@@ -91,7 +95,7 @@ export const crayoAccountFn = createServerFn({ method: "GET" })
       const num = (value: unknown) =>
         typeof value === "number" && Number.isFinite(value) ? value : 0;
       const plan = typeof account.plan === "string" ? account.plan : null;
-      return {
+      lastGoodCrayoAccount = {
         configured: true,
         plan,
         credits: {
@@ -102,9 +106,15 @@ export const crayoAccountFn = createServerFn({ method: "GET" })
         },
         error: null,
       };
+      return lastGoodCrayoAccount;
     } catch (error) {
       const message = error instanceof Error ? error.message : "CRAYO_FAILED";
-      return { configured: true, plan: null, credits: null, error: message.slice(0, 120) };
+      // Upstream HTML error pages are not operator-facing copy.
+      const short = /<[a-z!][^>]*>/i.test(message)
+        ? "Crayo is temporarily unavailable."
+        : message.slice(0, 120);
+      if (lastGoodCrayoAccount) return { ...lastGoodCrayoAccount, error: short };
+      return { configured: true, plan: null, credits: null, error: short };
     }
   });
 

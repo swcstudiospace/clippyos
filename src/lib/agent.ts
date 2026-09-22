@@ -726,6 +726,8 @@ export function explainAgentToolError(code: string): string {
       return "Crayo rejected the API key. Create a new key on crayo.ai/developers and paste it in Settings → Integrations → Crayo.ai. Never paste the key into chat.";
     case "VALIDATION":
       return "This step needed a topic, spoken script, voice_id, or https URL. Use /short, /voice, /image, or /autoclip — the specialty card collects the fields.";
+    case "CLIENT_REQUIRED":
+      return "This step needs a pinned client. Pick one in the Client selector beside the composer, then run the command again.";
     case "INSUFFICIENT_CREDITS":
       return "Crayo credits or storage are empty. Top up on crayo.ai, then retry.";
     case "TIMEOUT":
@@ -793,6 +795,7 @@ export function isFatalAgentToolError(code: string): boolean {
     key === "MISSING" ||
     key === "UNAUTHORIZED" ||
     key === "VALIDATION" ||
+    key === "CLIENT_REQUIRED" ||
     key === "INSUFFICIENT_CREDITS" ||
     key === "UNTRUSTED_URL" ||
     key === "CRAYO_FAILED" ||

@@ -143,22 +143,22 @@ export async function executeAgentTool(input: {
       return { data: await browserOpenTiktokUpload() };
     case "clipping.research_channel": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return { data: await clippingResearchChannel(clientId) };
     }
     case "clipping.generate_ideas": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return { data: await clippingGenerateIdeas(clientId) };
     }
     case "clipping.generate_titles": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return { data: await clippingGenerateTitles(clientId) };
     }
     case "clipping.generate_thumbnail": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return {
         data: await clippingGenerateThumbnail({
           clientId,
@@ -170,7 +170,8 @@ export async function executeAgentTool(input: {
     case "clipping.set_stage": {
       const clientId = str(payload, "clientId", "id");
       const stage = str(payload, "stage");
-      if (!clientId || !stage) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
+      if (!stage) throw new Error("VALIDATION");
       return {
         data: await clippingSetStage({
           clientId,
@@ -182,7 +183,7 @@ export async function executeAgentTool(input: {
     }
     case "clipping.mark_published": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return {
         data: await clippingMarkPublished({
           clientId,
@@ -193,7 +194,7 @@ export async function executeAgentTool(input: {
     }
     case "clipping.distribute_social": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       const platforms = Array.isArray(payload.platforms)
         ? payload.platforms.map(String)
         : undefined;
@@ -234,12 +235,12 @@ export async function executeAgentTool(input: {
     case "clipping.get_progress":
     case "get_client_progress": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return { data: await clippingGetProgress(clientId) };
     }
     case "clipping.guarantee_check": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       return { data: await clippingGuaranteeCheck(clientId) };
     }
     case "clipping.verify_upload": {
@@ -276,7 +277,7 @@ export async function executeAgentTool(input: {
       return { data: await clippingDashboardSnapshot() };
     case "get_analytics_snapshot": {
       const clientId = str(payload, "clientId", "id");
-      if (!clientId) throw new Error("VALIDATION");
+      if (!clientId) throw new Error("CLIENT_REQUIRED");
       const { readSnapshots } = await import("@/lib/server/analytics");
       const rows = (await readSnapshots())
         .filter((row) => row.clientId === clientId)

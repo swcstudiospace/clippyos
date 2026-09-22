@@ -646,10 +646,14 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
             typeof (error as { detail?: unknown }).detail === "string"
               ? (error as { detail: string }).detail.trim().slice(0, 300)
               : "";
-          const explained =
-            detail && detail !== code
-              ? `${explainAgentToolError(code)}\n\nProvider said: ${detail}`
+          // The generic VALIDATION copy names the Crayo cards; for any other tool say which
+          // step was starved of input instead (e.g. verify_upload without a jobId).
+          const base =
+            code === "VALIDATION" && !step.tool.startsWith("crayo.")
+              ? `${step.tool} was called without the input it needs. Supply it (a pinned client, job id, or URL as the step describes), then re-run.`
               : explainAgentToolError(code);
+          const explained =
+            detail && detail !== code ? `${base}\n\nProvider said: ${detail}` : base;
           await writeAuditLog({
             requestId: runId,
             actor: { source: "api" as const, keyId: null, label: actorId },
@@ -664,11 +668,16 @@ export async function executeAgentRun(runId: string, actorId: string): Promise<v
           if (code === "MEDIA_FETCH_PENDING") {
             // The fetch/upload/AutoClip now runs as a background job; ticks (Agent tab polling
             // and the ops cron) finish the run. Nothing else in this plan can proceed before it.
+            // startMediaFetchJob already persisted its state under `outputs.mediaFetch`; this
+            // loop's in-memory `outputs` predates that save, so merge it back in rather than
+            // overwriting it — otherwise the first tick sees no state and fails the run.
+            const parked = await getAgentRun(runId);
+            const mediaFetch = parked?.outputs?.mediaFetch;
             await patchAgentRun(runId, {
               status: "waiting_resource",
               errorCode: "MEDIA_FETCH",
               iterationCount: stepIndex + 1,
-              outputs,
+              outputs: mediaFetch === undefined ? outputs : { ...outputs, mediaFetch },
             });
             return;
           }
