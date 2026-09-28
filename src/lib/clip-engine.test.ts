@@ -1,29 +1,43 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  BIN_COLUMNS,
+  CARD_H,
+  CARD_W,
+  CARD_Y,
   CLIP_COUNT,
   ENGINE_STAGES,
+  FOOTAGE_Y,
   GATE_SPAN,
   GATE_X,
-  GATE_Z,
+  LANE_ORIGIN,
   LAST_STAGE,
-  TRANSMITTER_COUNT,
+  LOOP,
+  NETWORKS,
+  RULER_SECONDS,
+  SEGMENT_W,
+  TIMELINE_LENGTH,
+  captionChips,
+  clipApproved,
   clipPose,
   clipPoseAt,
   engineStateAt,
-  hookNetwork,
-  isHookFrame,
+  hookX,
+  laneDirection,
+  readout,
+  segmentX,
   smoothstep,
   stageFormation,
   stageIndex,
   stageState,
   timecode,
-  transmitterAngle,
+  waveAmplitude,
 } from "./clip-engine.ts";
 
 const clips = Array.from({ length: CLIP_COUNT }, (_, index) => index);
+const on = (key: Parameters<typeof stageIndex>[0]) => stageState(stageIndex(key));
 
-test("the engine runs ten stages from the assembled core to the online lap", () => {
+test("the engine runs ten stages from the assembled timeline to the online lap", () => {
   assert.deepEqual(
     ENGINE_STAGES.map((stage) => stage.key),
     [
@@ -51,140 +65,194 @@ test("only the clip pipeline stages are marked as rolling out", () => {
 
 test("each stage arranges the clips in its own formation", () => {
   assert.deepEqual(
-    ENGINE_STAGES.map((_, stage) => stageFormation(stage)),
-    ["halo", "reel", "reel", "cut", "spiral", "gate", "broadcast", "vault", "orbit", "halo"],
+    ENGINE_STAGES.map((_, index) => stageFormation(index)),
+    ["track", "track", "track", "split", "reframe", "gate", "lanes", "bin", "loop", "track"],
   );
 });
 
-test("each stage switches on the moving parts that do its work", () => {
-  const on = (key: (typeof ENGINE_STAGES)[number]["key"]) => stageState(stageIndex(key));
-  assert.ok(on("ingest").reel > on("core").reel);
-  assert.ok(on("ingest").strip > on("core").strip);
-  assert.equal(on("detect").scanner, 1);
+test("each stage switches on the parts that do its work", () => {
+  assert.equal(on("ingest").ingest, 1);
   assert.equal(on("detect").hooks, 1);
-  assert.equal(on("cut").cutter, 1);
-  assert.ok(on("render").rotor > 2);
+  assert.equal(on("cut").razor, 1);
+  assert.equal(on("render").captions, 1);
+  assert.equal(on("render").tether, 1);
   assert.equal(on("approve").gate, 1);
-  assert.equal(on("publish").crown, 1);
-  assert.equal(on("library").vault, 1);
-  assert.deepEqual(
-    ENGINE_STAGES.map((_, stage) => stageState(stage).cutter),
-    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
-  );
+  assert.equal(on("publish").lanes, 1);
+  assert.equal(on("library").bin, 1);
+  assert.equal(on("agent").loop, 1);
+  const core = on("core");
+  assert.equal(core.gate + core.lanes + core.loop + core.razor + core.ingest, 0);
 });
 
 test("the online stage finishes a full camera lap back to the assembled view", () => {
-  const core = stageState(stageIndex("core"));
-  const online = stageState(stageIndex("online"));
-  assert.equal(online.cam.rot - core.cam.rot, 360);
-  assert.equal(online.cam.pitch, core.cam.pitch);
-  assert.equal(online.cam.dist, core.cam.dist);
+  const core = on("core").cam;
+  const online = on("online").cam;
+  assert.equal(online.rot - core.rot, 360);
+  assert.deepEqual({ ...online, rot: 0 }, { ...core, rot: 0 });
 });
 
 test("engine state lands exactly on each stage and eases between them", () => {
-  ENGINE_STAGES.forEach((_, stage) => assert.deepEqual(engineStateAt(stage), stageState(stage)));
-  const halfway = engineStateAt(0.5);
-  assert.equal(halfway.cam.rot, 15);
-  assert.equal(halfway.reel, (stageState(0).reel + stageState(1).reel) / 2);
-  assert.ok(engineStateAt(0.1).cam.rot > 27);
+  const approve = stageIndex("approve");
+  assert.deepEqual(engineStateAt(approve), stageState(approve));
+  const halfway = engineStateAt(approve + 0.5);
+  assert.equal(halfway.gate, 0.5);
+  assert.equal(halfway.lanes, 0.5);
+  assert.equal(halfway.cam.x, (on("approve").cam.x + on("publish").cam.x) / 2);
 });
 
 test("progress outside the run clamps to the first and last stage", () => {
-  assert.deepEqual(engineStateAt(-2), stageState(0));
-  assert.deepEqual(engineStateAt(99), stageState(LAST_STAGE));
+  assert.deepEqual(engineStateAt(-3), stageState(0));
+  assert.deepEqual(engineStateAt(42), stageState(LAST_STAGE));
 });
 
 test("smoothstep eases in and out and clamps its input", () => {
-  assert.deepEqual([-1, 0, 0.5, 1, 2].map(smoothstep), [0, 0, 0.5, 1, 1]);
-  assert.ok(smoothstep(0.1) < 0.1);
-});
-
-test("the halo keeps every clip on its ring, facing outward", () => {
-  clips.forEach((index) => {
-    const clip = clipPose("halo", index);
-    assert.ok(Math.abs(Math.hypot(clip.x, clip.z) - 3.4) < 0.01);
-    assert.equal(clip.ry, Math.round((index / CLIP_COUNT) * 360 * 1000) / 1000);
-  });
-});
-
-test("clips wait inside the supply reel until the cut", () => {
   assert.deepEqual(
-    clips.map((index) => clipPose("reel", index).scale),
-    clips.map(() => 0),
+    [smoothstep(-1), smoothstep(0), smoothstep(0.5), smoothstep(1), smoothstep(2)],
+    [0, 0, 0.5, 1, 1],
   );
-  assert.ok(clips.every((index) => clipPose("cut", index).scale > 0));
 });
 
-test("the cut lays the clips out in one row in front of the cutter", () => {
-  const row = clips.map((index) => clipPose("cut", index, 0));
-  row.slice(1).forEach((clip, index) => assert.ok(clip.x > row[index].x));
-  assert.ok(row.every((clip) => clip.z === 3.7));
-  assert.equal(row[0].x, -row[CLIP_COUNT - 1].x);
+test("the footage track tiles the timeline with flat clip segments", () => {
+  const row = clips.map((index) => clipPose("track", index));
+  assert.ok(Math.abs(row[0].x - (-TIMELINE_LENGTH / 2 + SEGMENT_W / 2)) < 0.001);
+  row.slice(1).forEach((clip, index) => {
+    assert.ok(Math.abs(clip.x - row[index].x - SEGMENT_W) < 0.002);
+  });
+  assert.ok(row.every((clip) => clip.rx === -90 && clip.w < SEGMENT_W));
+  assert.ok(row.every((clip) => clip.y > FOOTAGE_Y && clip.y < FOOTAGE_Y + 0.1));
+});
+
+test("the cut lifts every segment off the track and pulls them apart", () => {
+  const track = clips.map((index) => clipPose("track", index));
+  const cut = clips.map((index) => clipPose("split", index, 0));
+  cut.forEach((clip, index) => assert.ok(clip.y > track[index].y + 0.2));
+  cut.slice(1).forEach((clip, index) => assert.ok(clip.x - cut[index].x > SEGMENT_W));
+});
+
+test("render stands every clip up as a vertical 9:16 card above the stack", () => {
+  const cards = clips.map((index) => clipPose("reframe", index, 0));
+  assert.ok(cards.every((card) => card.rx === 0 && card.w === CARD_W && card.h === CARD_H));
+  assert.ok(Math.abs(CARD_H / CARD_W - 16 / 9) < 0.01);
+  assert.ok(cards.every((card) => Math.abs(card.y - CARD_Y) <= 0.051));
 });
 
 test("the approval gate carries every clip through the gate on a conveyor", () => {
   for (const time of [0, 1.7, 9.3, 42]) {
     for (const index of clips) {
       const clip = clipPose("gate", index, time);
-      assert.equal(clip.z, GATE_Z);
+      assert.equal(clip.z, 0);
       assert.ok(Math.abs(clip.x - GATE_X) <= GATE_SPAN / 2);
-      assert.ok(clip.scale >= 0 && clip.scale <= 0.9);
+      assert.ok(clip.scale >= 0 && clip.scale <= 1);
     }
   }
   const entering = clipPose("gate", 0, 0);
   assert.equal(entering.x, GATE_X - GATE_SPAN / 2);
   assert.equal(entering.scale, 0);
-  const crossing = clipPose("gate", 0, 0.5 / 0.06);
+  const crossing = clipPose("gate", 0, 0.5 / 0.05);
   assert.ok(Math.abs(crossing.x - GATE_X) < 0.01);
-  assert.equal(crossing.scale, 0.9);
-  assert.ok(clipPose("gate", 0, 1).x > entering.x);
+  assert.equal(crossing.scale, 1);
 });
 
-test("broadcast sends three clips to each of the four transmitters", () => {
-  const groups = new Map<number, number>();
-  clips.forEach((index) => {
-    const clip = clipPose("broadcast", index, 0);
-    groups.set(clip.ry, (groups.get(clip.ry) ?? 0) + 1);
-  });
-  assert.deepEqual(
-    [...groups.entries()].sort((a, b) => a[0] - b[0]),
-    Array.from({ length: TRANSMITTER_COUNT }, (_, k) => [transmitterAngle(k), 3]),
+test("publish sends three clips down each of the four network lanes", () => {
+  const perLane = NETWORKS.map((_, lane) =>
+    clips.filter((index) => index % NETWORKS.length === lane),
   );
+  assert.ok(perLane.every((lane) => lane.length === 3));
+  for (const time of [0, 2.5, 11]) {
+    clips.forEach((index) => {
+      const clip = clipPose("lanes", index, time);
+      const dir = laneDirection(index % NETWORKS.length);
+      const dx = clip.x - LANE_ORIGIN.x;
+      const dy = clip.y - CARD_H * 0.36 - LANE_ORIGIN.y;
+      assert.ok(Math.abs(dx * dir.y - dy * dir.x) < 0.01);
+      assert.ok(dx * dir.x + dy * dir.y > 0);
+    });
+  }
 });
 
-test("the vault stacks every clip flat, one above the other", () => {
-  const stack = clips.map((index) => clipPose("vault", index));
-  assert.ok(stack.every((clip) => clip.rx === -90 && clip.x === 0 && clip.z === -3.3));
-  stack.slice(1).forEach((clip, index) => assert.ok(clip.y > stack[index].y));
+test("the library files every clip flat into a six by two media bin", () => {
+  const bin = clips.map((index) => clipPose("bin", index));
+  assert.ok(bin.every((clip) => clip.rx === -90));
+  assert.equal(new Set(bin.map((clip) => clip.x)).size, BIN_COLUMNS);
+  assert.equal(new Set(bin.map((clip) => clip.z)).size, CLIP_COUNT / BIN_COLUMNS);
+  assert.equal(new Set(bin.map((clip) => `${clip.x}:${clip.z}`)).size, CLIP_COUNT);
+});
+
+test("the Hermes loop keeps every clip on the loop around the machine", () => {
+  for (const time of [0, 3.3]) {
+    clips.forEach((index) => {
+      const clip = clipPose("loop", index, time);
+      const r = (clip.x / LOOP.x) ** 2 + ((clip.z - LOOP.center) / LOOP.z) ** 2;
+      assert.ok(Math.abs(r - 1) < 0.01);
+    });
+  }
 });
 
 test("clip poses blend between the formations of neighbouring stages", () => {
   const cut = stageIndex("cut");
-  const halo = clipPoseAt(0, 3, 1.5);
-  assert.deepEqual(halo, clipPose("halo", 3, 1.5));
-  assert.deepEqual(clipPoseAt(cut, 3, 1.5), clipPose("cut", 3, 1.5));
-  const between = clipPoseAt(cut - 0.5, 3, 1.5);
-  assert.equal(between.scale, Math.round(0.62 * 0.5 * 1000) / 1000);
+  const from = clipPose("split", 4, 0);
+  const to = clipPose("reframe", 4, 0);
+  const between = clipPoseAt(cut + 0.5, 4, 0);
+  assert.ok(Math.abs(between.x - (from.x + to.x) / 2) < 0.002);
+  assert.ok(Math.abs(between.rx - (from.rx + to.rx) / 2) < 0.002);
+  assert.deepEqual(clipPoseAt(cut, 4, 0), from);
 });
 
-test("every fourth film frame is a hook", () => {
-  assert.deepEqual(
-    Array.from({ length: 9 }, (_, index) => isHookFrame(index)),
-    [false, true, false, false, false, true, false, false, false],
-  );
+test("every clip carries one hook inside its own segment", () => {
+  clips.forEach((index) => {
+    const x = hookX(index);
+    assert.ok(x > segmentX(index) - SEGMENT_W / 2 && x < segmentX(index) + SEGMENT_W / 2);
+  });
 });
 
-test("hook networks cycle through X, YouTube, Instagram and TikTok", () => {
-  assert.deepEqual(
-    [0, 1, 2, 3, 4].map((clip) => hookNetwork(clip)),
-    ["X", "YouTube", "Instagram", "TikTok", "X"],
-  );
+test("the waveform spikes at the hooks only while hook detection runs", () => {
+  const at = hookX(3);
+  assert.ok(waveAmplitude(at, 1.2, 1) > waveAmplitude(at, 1.2, 0) + 0.3);
+  assert.ok(waveAmplitude(at, 1.2, 1) <= 0.62);
+  assert.ok(waveAmplitude(segmentX(3) + SEGMENT_W * 0.3, 1.2, 1) < 0.3);
 });
 
-test("timecode counts 24fps frames across three seconds per stage", () => {
+test("caption chips run left to right across the caption track without overlapping", () => {
+  const chips = captionChips();
+  chips.slice(1).forEach((chip, index) => {
+    const prev = chips[index];
+    assert.ok(chip.x - chip.w / 2 > prev.x + prev.w / 2);
+  });
+  const first = chips[0];
+  const last = chips[chips.length - 1];
+  assert.ok(first.x - first.w / 2 >= -TIMELINE_LENGTH / 2);
+  assert.ok(last.x + last.w / 2 <= TIMELINE_LENGTH / 2);
+});
+
+test("networks cover X, YouTube, Instagram and TikTok", () => {
+  assert.deepEqual([...NETWORKS], ["X", "YouTube", "Instagram", "TikTok"]);
+});
+
+test("timecode counts 24fps frames and ends where the ruler ends", () => {
   assert.equal(timecode(0), "00:00:00:00");
-  assert.equal(timecode(0.5), "00:00:13:12");
-  assert.equal(timecode(1), "00:00:27:00");
-  assert.equal(timecode(4), "00:00:27:00");
-  assert.equal(timecode(-1), "00:00:00:00");
+  assert.equal(timecode(1), `00:00:${RULER_SECONDS}:00`);
+  assert.equal(timecode(0.5), "00:00:12:00");
+  assert.equal(timecode(0.25), "00:00:06:00");
+});
+
+test("clips are signed off only once they pass the review gate", () => {
+  const approve = stageIndex("approve");
+  const passed = clips.filter((index) => clipPose("gate", index, 0).x > GATE_X);
+  const waiting = clips.filter((index) => clipPose("gate", index, 0).x <= GATE_X);
+  assert.ok(passed.length > 0 && waiting.length > 0);
+  const onGate = engineStateAt(approve);
+  passed.forEach((index) => assert.equal(clipApproved(onGate, index, 0), true));
+  waiting.forEach((index) => assert.equal(clipApproved(onGate, index, 0), false));
+  const entering = engineStateAt(approve - 0.3);
+  clips.forEach((index) => assert.equal(clipApproved(entering, index, 0), false));
+  const leaving = engineStateAt(approve + 0.35);
+  passed.forEach((index) => assert.equal(clipApproved(leaving, index, 0), true));
+  const midway = engineStateAt(approve + 0.5);
+  clips.forEach((index) => assert.equal(clipApproved(midway, index, 0), true));
+});
+
+test("the readout names the track in focus and the zoom", () => {
+  assert.equal(readout(0), "all tracks · zoom 1.08x");
+  assert.ok(readout(stageIndex("cut")).startsWith("V1 razor · zoom "));
+  assert.ok(readout(stageIndex("publish")).startsWith("out 4 lanes"));
 });

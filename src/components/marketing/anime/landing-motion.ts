@@ -9,7 +9,7 @@ import {
   utils,
   type AnimatableObject,
 } from "animejs";
-import { ENGINE_STAGES, LAST_STAGE, engineStateAt, stageIndex, timecode } from "@/lib/clip-engine";
+import { ENGINE_STAGES, LAST_STAGE, readout, stageIndex, timecode } from "@/lib/clip-engine";
 import type {
   EngineHandle,
   EngineTheme,
@@ -39,12 +39,6 @@ function scramble(el: HTMLElement, text: string, chars = "uppercase") {
 
 function currentTheme(): EngineTheme {
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
-}
-
-function cameraText(progress: number) {
-  const { cam } = engineStateAt(progress);
-  const orbit = ((Math.round(cam.rot) % 360) + 360) % 360;
-  return `orbit ${pad(orbit, 3)}° · pitch ${Math.round(cam.pitch)}° · dist ${cam.dist.toFixed(1)}`;
 }
 
 function heroIntro(root: HTMLElement, reduced: boolean): Cleanup {
@@ -164,7 +158,7 @@ function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
     onUpdate: (timeline) => {
       setStage(Math.round(timeline.progress * LAST_STAGE));
       if (clock) clock.textContent = timecode(timeline.progress);
-      const nextCam = cameraText(timeline.progress * LAST_STAGE);
+      const nextCam = readout(timeline.progress * LAST_STAGE);
       if (camLabel && nextCam !== camText) {
         camText = nextCam;
         camLabel.textContent = nextCam;
