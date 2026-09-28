@@ -1,7 +1,4 @@
-import { useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 const FAQS = [
   {
@@ -37,79 +34,34 @@ const FAQS = [
 ];
 
 export function LandingFaq() {
-  const [open, setOpen] = useState<string | null>(null);
-
   return (
-    <section id="faq" className="px-4 py-16 md:px-6 md:py-24">
-      <div className="mx-auto grid w-full max-w-6xl gap-4">
-        <h2 className="text-center text-page font-semibold tracking-tight">Frequently asked questions</h2>
-        <p className="mx-auto max-w-lg text-center text-body text-muted">
+    <section id="faq" className="lp-section" aria-labelledby="faq-heading" data-chapter="FAQ">
+      <p className="lp-kicker" data-reveal>
+        09 / FAQ
+      </p>
+      <div className="lp-heading">
+        <h2 id="faq-heading" data-split>
+          Frequently asked <em>questions.</em>
+        </h2>
+        <p data-reveal>
           If it isn’t here,{" "}
           <a href="#demo" className="text-accent underline-offset-2 hover:underline">
             request a demo
           </a>{" "}
           and we’ll walk the OS with you.
         </p>
-        <div className="mx-auto mt-8 w-full max-w-3xl">
-          {FAQS.map((faq) => (
-            <FaqItem
-              key={faq.question}
-              question={faq.question}
-              answer={faq.answer}
-              open={open}
-              setOpen={setOpen}
-            />
-          ))}
-        </div>
+      </div>
+      <div className="lp-faq" data-stagger>
+        {FAQS.map((faq) => (
+          <details key={faq.question} className="lp-faq__item">
+            <summary>
+              <span>{faq.question}</span>
+              <ChevronDown aria-hidden="true" />
+            </summary>
+            <p>{faq.answer}</p>
+          </details>
+        ))}
       </div>
     </section>
-  );
-}
-
-function FaqItem({
-  question,
-  answer,
-  open,
-  setOpen,
-}: {
-  question: string;
-  answer: string;
-  open: string | null;
-  setOpen: (next: string | null) => void;
-}) {
-  const isOpen = open === question;
-  return (
-    <button
-      type="button"
-      className="mb-4 w-full rounded-card border border-border bg-elevated p-4 text-left shadow-(--shadow-border)"
-      onClick={() => setOpen(isOpen ? null : question)}
-      aria-expanded={isOpen}
-    >
-      <div className="flex items-start gap-3">
-        <ChevronDown
-          className={cn(
-            "mt-0.5 size-5 shrink-0 text-fg transition-transform duration-(--motion-fast)",
-            isOpen && "rotate-180",
-          )}
-          aria-hidden="true"
-        />
-        <div className="min-w-0">
-          <h3 className="text-body font-medium tracking-tight">{question}</h3>
-          <AnimatePresence initial={false}>
-            {isOpen ? (
-              <motion.p
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                className="overflow-hidden pt-2 text-caption text-muted"
-              >
-                {answer}
-              </motion.p>
-            ) : null}
-          </AnimatePresence>
-        </div>
-      </div>
-    </button>
   );
 }

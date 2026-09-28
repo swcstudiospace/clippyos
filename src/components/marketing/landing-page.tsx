@@ -1,27 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { memo, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  BookOpen,
-  Bot,
-  Clapperboard,
-  HardDrive,
-  Kanban,
-  MessageCircle,
-  MonitorPlay,
-  Pause,
-  ShieldCheck,
-  Sparkles,
-  Wallet,
-} from "lucide-react";
+import { createScope } from "animejs";
+import { ArrowUpRight, BookOpen } from "lucide-react";
 import { APP_NAME, APP_TAGLINE } from "@/lib/constants";
 import { DEMO_ROLES } from "@/lib/demo";
+import { NETWORKS } from "@/lib/clip-engine";
 import { PROXY_COUNTRIES, DEFAULT_PROXY_COUNTRY, parseProxyCountry } from "@/lib/social-machine";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useTheme } from "@/lib/theme";
 import { ClippyMark } from "@/components/brand/clippy-mark";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -31,23 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AuroraText } from "@/components/magicui/aurora-text";
-import { AnimatedGridPattern } from "@/components/magicui/animated-grid-pattern";
-import { AnimatedShinyText } from "@/components/magicui/animated-shiny-text";
-import { BlurFade } from "@/components/magicui/blur-fade";
-import { BorderBeam } from "@/components/magicui/border-beam";
-import { Marquee } from "@/components/magicui/marquee";
-import { Particles } from "@/components/magicui/particles";
-import { ScrollProgress } from "@/components/magicui/scroll-progress";
-import { ShineBorder } from "@/components/magicui/shine-border";
-import { SparklesText } from "@/components/magicui/sparkles-text";
-import { TypingAnimation } from "@/components/magicui/typing-animation";
-import { Spotlight } from "@/components/marketing/spotlight";
-import { TiltCard } from "@/components/marketing/tilt-card";
-import { FeatureGrid } from "@/components/marketing/feature-grid";
-import { LogoCloud } from "@/components/marketing/logo-cloud";
-import { TestimonialsSection } from "@/components/marketing/testimonials";
+import { ClipEngine } from "@/components/marketing/clip-engine";
 import { LandingFaq } from "@/components/marketing/faq";
+import { announce, mountLandingMotion } from "@/components/marketing/anime/landing-motion";
+import { ScrollHud } from "@/components/marketing/anime/scroll-hud";
 import { toast } from "sonner";
 
 const SHOTS = [
@@ -87,66 +63,60 @@ const SHOTS = [
     caption: "Nothing public without a sign-off.",
   },
   {
+    name: "social",
+    title: "Social Machine",
+    caption: "X, YouTube, Instagram, and TikTok from one machine. Hibernate keeps it hot.",
+  },
+  {
+    name: "inbox",
+    title: "Inbox",
+    caption: "Telegram, WhatsApp, and Discord liaison for customers and companies.",
+  },
+  {
     name: "settings",
     title: "Settings",
     caption: "Add-ons, autonomy, Hermes, and the control plane.",
   },
 ] as const;
 
-const MARQUEE = [
-  "Autonomous clipping",
-  "Social Machine",
-  "X · YouTube · Instagram · TikTok",
-  "Telegram · WhatsApp · Discord",
-  "Hermes Agent",
-  "Linear kanban",
-  "Immutable cloud storage",
-  "Hot hibernate",
-  "Approvals before publish",
-];
+const PIPELINE = [
+  {
+    num: "01",
+    chapter: "Find the hooks",
+    body: "Highlight detection marks the moments worth cutting in each client’s footage.",
+  },
+  {
+    num: "02",
+    chapter: "Cut the clips",
+    body: "Every hook becomes its own clip, trimmed to the moment and filed to its client.",
+  },
+  {
+    num: "03",
+    chapter: "Caption and render",
+    body: "Captions go on, and each clip renders vertical and platform-ready into the Library.",
+  },
+] as const;
 
-const LAYERS = [
+const OS_LAYERS = [
   {
-    icon: Clapperboard,
-    title: "Clip pipeline",
-    body: "Ingest, caption, render, and ship. One OS from footage to published cut.",
+    label: "Native Hermes Agent",
+    body: "MCP tools, playbooks, and isolated skills live in the OS.",
   },
   {
-    icon: MonitorPlay,
-    title: "Social Machine",
-    body: "Open X, YouTube, Instagram, and TikTok from inside ClippyOS. Hibernate keeps the session hot.",
+    label: "Linear kanban",
+    body: "Failed jobs, renders, and agent runs map to Linear. Engineering and ops share one board.",
   },
   {
-    icon: MessageCircle,
-    title: "Liaison",
-    body: "Telegram, WhatsApp, and Discord for customers and companies — professional threads, not browser theatre.",
+    label: "Liaison",
+    body: "Telegram, WhatsApp, and Discord threads for customers and companies, in Inbox.",
   },
   {
-    icon: Wallet,
-    title: "Money",
-    body: "Setup fees, retainers, team cost, and collections. The ledger the production OS actually needs.",
+    label: "Money",
+    body: "Setup fees, retainers, team cost, and collections — the agency ledger.",
   },
-  {
-    icon: HardDrive,
-    title: "Immutable storage",
-    body: "Clips live in durable cloud storage, globally reachable. Optional content pins. Never on the machine disk.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Approvals",
-    body: "Nothing public without a sign-off. Safety inbox and an audit trail on every publish.",
-  },
-];
+] as const;
 
-function Shot({
-  name,
-  alt,
-  eager = false,
-}: {
-  name: string;
-  alt: string;
-  eager?: boolean;
-}) {
+function Shot({ name, alt }: { name: string; alt: string }) {
   const { theme } = useTheme();
   const contrast = theme === "dark" ? "light" : "dark";
   const src = `/marketing/${name}-${contrast}.gif?v=3`;
@@ -157,7 +127,7 @@ function Shot({
         src={src}
         alt={alt}
         className="marketing-shot"
-        loading={eager ? "eager" : "lazy"}
+        loading="lazy"
         decoding="async"
         onError={(event) => {
           if (event.currentTarget.src.endsWith(fallback)) return;
@@ -172,17 +142,230 @@ function AccessButton({ className, label }: { className?: string; label?: string
   const { user } = useCurrentUserState();
   if (user) {
     return (
-      <Button asChild className={className}>
-        <Link to="/home">{label ?? "Open OS"}</Link>
+      <Button asChild className={className} data-magnet>
+        <Link to="/home">
+          {label ?? "Open OS"} <ArrowUpRight className="size-4" aria-hidden="true" />
+        </Link>
       </Button>
     );
   }
   return (
-    <Button asChild className={className}>
-      <a href="/login?intent=access">{label ?? "Get Access"}</a>
+    <Button asChild className={className} data-magnet>
+      <a href="/login?intent=access">
+        {label ?? "Get Access"} <ArrowUpRight className="size-4" aria-hidden="true" />
+      </a>
     </Button>
   );
 }
+
+function AccessNote() {
+  const { user } = useCurrentUserState();
+  return (
+    <p className="ce-note-line" data-hero-item>
+      {user
+        ? "You’re signed in. Open the OS to continue."
+        : "Get Access creates a workspace and takes you to checkout. Prefer a walkthrough? Request a Demo."}
+    </p>
+  );
+}
+
+function Status({ live }: { live: boolean }) {
+  return (
+    <span className={live ? "ce-status ce-status--live" : "ce-status ce-status--rolling"}>
+      {live ? "Live" : "Rolling out"}
+    </span>
+  );
+}
+
+function Chapter({
+  name,
+  id,
+  className,
+  children,
+}: {
+  name: string;
+  id?: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <article
+      className={className ? `ce-chapter ${className}` : "ce-chapter"}
+      id={id}
+      data-chapter={name}
+    >
+      <div className="ce-chapter__inner">{children}</div>
+    </article>
+  );
+}
+
+const EngineSpine = memo(function EngineSpine() {
+  return (
+    <section className="ce-spine" id="engine" data-spine aria-label="How ClippyOS works">
+      <ClipEngine />
+      <div className="ce-chapters">
+        <article className="ce-chapter ce-chapter--hero" id="top" data-chapter="Engine">
+          <div className="ce-chapter__inner">
+            <p className="ce-eyebrow" data-hero-item>
+              <span className="ce-live-dot" /> {APP_NAME} · {APP_TAGLINE}
+            </p>
+            <h1 data-hero-title>
+              Clip. Publish. Liaise. <em>Autonomously.</em>
+            </h1>
+            <p className="ce-hero-sub" data-hero-item>
+              Globally reachable clipping OS. Social Machine for X, YouTube, Instagram, and TikTok.
+              Telegram, WhatsApp, and Discord for the people around the work.
+            </p>
+            <div className="ce-actions" data-hero-item>
+              <AccessButton />
+              <Button asChild variant="secondary" data-magnet>
+                <a href="#demo">Request a Demo</a>
+              </Button>
+              <Button asChild variant="ghost">
+                <Link to="/docs">
+                  <BookOpen className="size-4" aria-hidden="true" />
+                  Documentation
+                </Link>
+              </Button>
+            </div>
+            <AccessNote />
+            <div className="ce-meta" data-hero-item>
+              <span>Approvals before publish</span>
+              <i />
+              <span>Immutable storage</span>
+              <i />
+              <span>Hot hibernate</span>
+            </div>
+          </div>
+          <div className="ce-scroll-cue" data-hero-item aria-hidden="true">
+            <span className="ce-scroll-cue__line" />
+            Scroll to run the engine
+          </div>
+        </article>
+
+        <Chapter name="Footage in" id="pipeline">
+          <p className="ce-eyebrow" data-reveal>
+            01 / The clip engine
+          </p>
+          <h2 className="ce-title" data-split>
+            Footage in. <em>Clips out.</em>
+          </h2>
+          <p className="ce-lede" data-reveal>
+            The clip engine takes a client’s long-form footage to platform-ready shorts: ingest,
+            highlight detection, captioning, and render. It rides the library, render-job,
+            publisher, and approval rails that already run in production.
+          </p>
+          <p className="ce-note" data-reveal>
+            <Status live={false} /> AutoClip runs through Crayo in /agent today. The native pipeline
+            is rolling out.
+          </p>
+        </Chapter>
+
+        {PIPELINE.map((step, index) => (
+          <Chapter name={step.chapter} className="ce-chapter--step" key={step.num}>
+            {index === 0 ? (
+              <p className="ce-eyebrow" data-reveal>
+                02 / The pipeline · rolling out
+              </p>
+            ) : null}
+            <div className="ce-step" data-reveal>
+              <span className="ce-step__num">{step.num}</span>
+              <h3 className="ce-title">{step.chapter}</h3>
+              <p className="ce-lede">{step.body}</p>
+            </div>
+          </Chapter>
+        ))}
+
+        <Chapter name="Approvals" id="approvals">
+          <p className="ce-eyebrow" data-reveal>
+            03 / Approvals
+          </p>
+          <h2 className="ce-title" data-split>
+            Nothing public <em>without a sign-off.</em>
+          </h2>
+          <p className="ce-lede" data-reveal>
+            Every publish routes through /approvals, with a safety inbox and an audit trail on every
+            cut. Autonomy stays leashed: social uploads default to draft.
+          </p>
+          <p className="ce-note" data-reveal>
+            <Status live /> Human approval gates ship today.
+          </p>
+        </Chapter>
+
+        <Chapter name="Social Machine" id="machine">
+          <p className="ce-eyebrow" data-reveal>
+            04 / Social Machine
+          </p>
+          <h2 className="ce-title" data-split>
+            Four networks. <em>One machine.</em>
+          </h2>
+          <p className="ce-lede" data-reveal>
+            Start the Social Machine when you need X, YouTube, Instagram, or TikTok. Hibernate when
+            you’re done — the session stays hot, logins persist, and Resume picks up the same
+            windows.
+          </p>
+          <ul className="ce-chips" data-reveal>
+            {NETWORKS.map((network) => (
+              <li key={network}>{network}</li>
+            ))}
+          </ul>
+        </Chapter>
+
+        <Chapter name="Library" id="library">
+          <p className="ce-eyebrow" data-reveal>
+            05 / Library
+          </p>
+          <h2 className="ce-title" data-split>
+            Immutable cloud. <em>Optional pins.</em>
+          </h2>
+          <p className="ce-lede" data-reveal>
+            Every clip lands in durable, globally reachable storage — never on the machine disk.
+            Pinning strategies — eager, on publish, replicate, or manual — copy onto the content
+            network as a second layer.
+          </p>
+        </Chapter>
+
+        <Chapter name="Hermes loop" id="native">
+          <p className="ce-eyebrow" data-reveal>
+            06 / The OS around the work
+          </p>
+          <h2 className="ce-title" data-split>
+            Hermes runs the loop. <em>You run the agency.</em>
+          </h2>
+          <ul className="ce-list">
+            {OS_LAYERS.map((layer) => (
+              <li key={layer.label} data-reveal>
+                <b>{layer.label}</b>
+                <Status live />
+                <small>{layer.body}</small>
+              </li>
+            ))}
+          </ul>
+        </Chapter>
+
+        <Chapter name="Online" className="ce-chapter--final">
+          <p className="ce-eyebrow" data-reveal>
+            Online
+          </p>
+          <h2 className="ce-title" data-split>
+            The engine is idle. <em>Start it.</em>
+          </h2>
+          <p className="ce-lede" data-reveal>
+            Get Access creates your workspace and continues to checkout. Request a Demo if you want
+            us to walk Command, the Social Machine, liaison, Hermes, and Linear with your team
+            first.
+          </p>
+          <div className="ce-actions" data-reveal>
+            <AccessButton />
+            <Button asChild variant="secondary" data-magnet>
+              <a href="#demo">Request a Demo</a>
+            </Button>
+          </div>
+        </Chapter>
+      </div>
+    </section>
+  );
+});
 
 function DemoForm() {
   const [name, setName] = useState("");
@@ -193,6 +376,11 @@ function DemoForm() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (done) announce(heading.current, "You’re on the list.");
+  }, [done]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -227,8 +415,10 @@ function DemoForm() {
 
   if (done) {
     return (
-      <div className="rounded-card border border-border bg-elevated p-6">
-        <h3 className="text-card font-semibold tracking-tight">You’re on the list.</h3>
+      <div className="rounded-card border border-border bg-elevated p-6" role="status">
+        <h3 ref={heading} className="text-card font-semibold tracking-tight">
+          You’re on the list.
+        </h3>
         <p className="mt-2 text-body text-muted">
           We sent a confirmation to {email}. We’ll reach out to walk ClippyOS — Social Machine,
           liaison channels, Hermes, and Linear — with your team.
@@ -241,7 +431,13 @@ function DemoForm() {
     <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => void onSubmit(event)}>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="demo-name">Name</Label>
-        <Input id="demo-name" value={name} required minLength={2} onChange={(e) => setName(e.target.value)} />
+        <Input
+          id="demo-name"
+          value={name}
+          required
+          minLength={2}
+          onChange={(e) => setName(e.target.value)}
+        />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="demo-email">Work email</Label>
@@ -306,14 +502,87 @@ function DemoForm() {
   );
 }
 
+function Surfaces() {
+  return (
+    <section id="product" className="lp-section" data-chapter="The OS in motion">
+      <p className="lp-kicker" data-reveal>
+        07 / The OS, in motion
+      </p>
+      <div className="lp-heading">
+        <h2 data-split>
+          Ten live surfaces. <em>One OS.</em>
+        </h2>
+        <p data-reveal>
+          Command through Settings, plus the Social Machine and Inbox — captured from the running
+          product.
+        </p>
+      </div>
+      <div className="lp-shots" data-stagger>
+        {SHOTS.map((shot, index) => (
+          <article key={shot.name} className="lp-shot">
+            <Shot name={shot.name} alt={`${shot.title} in ClippyOS`} />
+            <div className="lp-shot__body">
+              <span className="lp-shot__num">{String(index + 1).padStart(2, "0")}</span>
+              <h3>{shot.title}</h3>
+              <p>{shot.caption}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Access() {
+  return (
+    <section id="demo" className="lp-section lp-access" data-chapter="Access">
+      <div>
+        <p className="lp-kicker" data-reveal>
+          08 / Access
+        </p>
+        <div className="lp-heading">
+          <h2 data-split>
+            Subscribe, or <em>request a demo.</em>
+          </h2>
+          <p data-reveal>
+            Get Access creates your workspace and continues to checkout. Request a Demo if you want
+            us to walk Command, the Social Machine, liaison, Hermes, and Linear with your team
+            first.
+          </p>
+        </div>
+        <div className="ce-actions" data-reveal>
+          <AccessButton />
+          <Button asChild variant="secondary">
+            <Link to="/login">Sign in</Link>
+          </Button>
+        </div>
+      </div>
+      <div className="lp-form" data-reveal>
+        <h3 className="text-card font-semibold tracking-tight">Request a Demo</h3>
+        <p className="mt-1 mb-4 text-caption text-muted">
+          You’ll get a confirmation email in the ClippyOS look.
+        </p>
+        <DemoForm />
+      </div>
+    </section>
+  );
+}
+
 export function LandingPage() {
-  const { user } = useCurrentUserState();
+  const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const scope = createScope({ root }).add(() => {
+      if (root.current) return mountLandingMotion(root.current);
+    });
+    return () => {
+      scope.revert();
+    };
+  }, []);
 
   return (
-    <div className="relative min-h-dvh bg-bg text-fg">
-      <Spotlight />
-      <Particles quantity={36} />
-      <header className="sticky top-0 z-50 border-b border-border/70 bg-bg/80 backdrop-blur-md">
+    <div className="landing relative min-h-dvh bg-bg text-fg" ref={root}>
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-border/70 bg-bg/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl flex-nowrap items-center justify-between gap-2 px-3 py-2.5 md:px-6">
           <a href="#top" className="flex min-w-0 items-center gap-2">
             <ClippyMark size={28} />
@@ -327,278 +596,16 @@ export function LandingPage() {
             <AccessButton className="min-h-10 px-3 text-caption" />
           </div>
         </div>
-        <ScrollProgress />
       </header>
 
-      <main id="top">
-        <section className="relative overflow-hidden px-4 pb-16 pt-12 md:px-6 md:pb-24 md:pt-20">
-          <AnimatedGridPattern className="opacity-40" />
-          <div className="relative mx-auto grid max-w-6xl gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-center">
-            <div>
-              <BlurFade>
-                <div className="inline-flex items-center gap-2 rounded-full border border-border bg-elevated/70 px-3 py-1">
-                  <Sparkles className="size-3.5 text-accent" aria-hidden="true" />
-                  <AnimatedShinyText className="text-caption">{APP_TAGLINE}</AnimatedShinyText>
-                </div>
-              </BlurFade>
-              <BlurFade delay={0.08}>
-                <h1 className="mt-5 text-hero font-semibold tracking-tight">
-                  <AuroraText>ClippyOS</AuroraText>
-                  <span className="mt-2 block text-fg">
-                    Clip. Publish. Liaise.{" "}
-                    <SparklesText>Autonomously.</SparklesText>
-                  </span>
-                </h1>
-              </BlurFade>
-              <BlurFade delay={0.16}>
-                <p className="mt-4 max-w-xl text-body text-muted">
-                  <TypingAnimation duration={16}>
-                    Globally reachable clipping OS. Social Machine for X, YouTube, Instagram, and
-                    TikTok. Telegram, WhatsApp, and Discord for the people around the work.
-                  </TypingAnimation>
-                </p>
-              </BlurFade>
-              <BlurFade delay={0.24}>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <AccessButton />
-                  <Button asChild variant="secondary">
-                    <a href="#demo">Request a Demo</a>
-                  </Button>
-                  <Button asChild variant="ghost">
-                    <Link to="/docs">
-                      <BookOpen className="size-4" aria-hidden="true" />
-                      Documentation
-                    </Link>
-                  </Button>
-                </div>
-                <p className="mt-3 text-caption text-muted">
-                  {user
-                    ? "You’re signed in. Open the OS to continue."
-                    : "Get Access creates a workspace and takes you to checkout. Prefer a walkthrough? Request a Demo."}
-                </p>
-              </BlurFade>
-            </div>
-            <BlurFade delay={0.12} className="relative">
-              <TiltCard>
-                <div className="relative overflow-hidden rounded-modal border border-border bg-elevated shadow-(--shadow-border)">
-                  <ShineBorder />
-                  <BorderBeam />
-                  <Shot
-                    name="splash"
-                    alt="ClippyOS loading — the OS coming online"
-                    eager
-                  />
-                </div>
-              </TiltCard>
-            </BlurFade>
-          </div>
-        </section>
-
-        <FeatureGrid />
-        <LogoCloud />
-
-        <section className="py-8">
-          <Marquee duration={42}>
-            {MARQUEE.map((item) => (
-              <span
-                key={item}
-                className="rounded-full border border-border bg-elevated px-4 py-1.5 text-caption text-muted"
-              >
-                {item}
-              </span>
-            ))}
-          </Marquee>
-        </section>
-
-        <section id="product" className="px-4 py-16 md:px-6 md:py-24">
-          <div className="mx-auto max-w-6xl">
-            <BlurFade>
-              <Badge tone="teal">Product</Badge>
-              <h2 className="mt-3 text-page font-semibold tracking-tight">The OS, in motion.</h2>
-              <p className="mt-2 max-w-2xl text-body text-muted">
-                Eight live surfaces — Command through Settings. Social Machine and Inbox live
-                further down, once each.
-              </p>
-            </BlurFade>
-            <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {SHOTS.map((shot, index) => (
-                <BlurFade key={shot.title} delay={index * 0.06}>
-                  <TiltCard>
-                    <article className="relative min-w-0 overflow-hidden rounded-card border border-border bg-elevated">
-                      <BorderBeam delay={index * 0.4} reverse={index % 2 === 1} />
-                      <Shot name={shot.name} alt={`${shot.title} in ClippyOS`} />
-                      <div className="p-4">
-                        <h3 className="text-card font-semibold tracking-tight">{shot.title}</h3>
-                        <p className="mt-1 text-caption text-muted">{shot.caption}</p>
-                      </div>
-                    </article>
-                  </TiltCard>
-                </BlurFade>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="px-4 py-16 md:px-6">
-          <div className="mx-auto max-w-6xl">
-            <BlurFade>
-              <h2 className="text-page font-semibold tracking-tight">What you actually get</h2>
-              <p className="mt-2 max-w-2xl text-body text-muted">
-                Benefits of the OS — not the plumbing underneath it.
-              </p>
-            </BlurFade>
-            <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {LAYERS.map((layer) => (
-                <article
-                  key={layer.title}
-                  className="rounded-card border border-border bg-elevated p-5"
-                >
-                  <span className="grid size-10 place-items-center rounded-control bg-secondary-surface">
-                    <layer.icon className="size-5 text-accent" aria-hidden="true" />
-                  </span>
-                  <h3 className="mt-3 text-card font-semibold tracking-tight">{layer.title}</h3>
-                  <p className="mt-2 text-caption text-muted">{layer.body}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="machine" className="px-4 py-16 md:px-6">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-center">
-            <BlurFade>
-              <Badge tone="green">Social Machine</Badge>
-              <h2 className="mt-3 text-page font-semibold tracking-tight">
-                Social apps, inside the OS.
-              </h2>
-              <p className="mt-3 text-body text-muted">
-                Start the Social Machine when you need X, YouTube, Instagram, or TikTok. Hibernate
-                when you’re done — the session stays hot. Resume picks up the same windows.
-              </p>
-              <ul className="mt-5 flex flex-col gap-3 text-body text-muted">
-                <li className="flex gap-2">
-                  <Pause className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-                  Hibernate, don’t destroy. Logins persist.
-                </li>
-                <li className="flex gap-2">
-                  <MonitorPlay className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-                  Four networks from one machine, operated from Command.
-                </li>
-                <li className="flex gap-2">
-                  <HardDrive className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
-                  Clips never live on the machine. Immutable cloud storage is the library.
-                </li>
-              </ul>
-            </BlurFade>
-            <TiltCard>
-              <div className="relative overflow-hidden rounded-modal border border-border bg-elevated">
-                <ShineBorder />
-                <Shot name="social" alt="Social Machine inside ClippyOS" />
-              </div>
-            </TiltCard>
-          </div>
-        </section>
-
-        <section id="inbox" className="px-4 py-16 md:px-6">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-center">
-            <BlurFade>
-              <Badge tone="teal">Liaison</Badge>
-              <h2 className="mt-3 text-page font-semibold tracking-tight">
-                Telegram, WhatsApp, and Discord.
-              </h2>
-              <p className="mt-3 max-w-2xl text-body text-muted">
-                Customers and companies belong in Inbox — Bot API threads, not a browser on the
-                Social Machine. Discord still runs the Status Agent against production stages.
-                Webhooks never start the machine.
-              </p>
-            </BlurFade>
-            <TiltCard>
-              <div className="relative overflow-hidden rounded-modal border border-border bg-elevated">
-                <ShineBorder />
-                <Shot
-                  name="inbox"
-                  alt="Inbox — Telegram, WhatsApp, and Discord liaison"
-                />
-              </div>
-            </TiltCard>
-          </div>
-        </section>
-
-        <section id="native" className="px-4 py-16 md:px-6">
-          <div className="mx-auto grid max-w-6xl gap-4 md:grid-cols-2">
-            <article className="rounded-card border border-border bg-elevated p-6">
-              <Bot className="size-6 text-accent" aria-hidden="true" />
-              <h3 className="mt-3 text-card font-semibold tracking-tight">Native Hermes Agent</h3>
-              <p className="mt-2 text-body text-muted">
-                ClippyOS speaks Hermes natively — MCP tools, playbooks, and the agent loop live
-                in the OS. Skills run isolated. The Social Machine stays a specialist runtime.
-              </p>
-            </article>
-            <article className="rounded-card border border-border bg-elevated p-6">
-              <Kanban className="size-6 text-accent" aria-hidden="true" />
-              <h3 className="mt-3 text-card font-semibold tracking-tight">Native Linear kanban</h3>
-              <p className="mt-2 text-body text-muted">
-                Failed jobs, renders, and agent runs map to Linear. The board stays in Linear —
-                ClippyOS deep-links and syncs. Engineering and ops share one kanban.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section className="px-4 py-16 md:px-6">
-          <div className="mx-auto max-w-6xl">
-            <BlurFade>
-              <Badge tone="teal">Storage</Badge>
-              <h2 className="mt-3 text-page font-semibold tracking-tight">
-                Immutable cloud. Optional pins.
-              </h2>
-              <p className="mt-3 max-w-2xl text-body text-muted">
-                Every clip lands in durable, globally reachable storage. Pinning strategies —
-                eager, on publish, replicate, or manual — copy onto the content network without
-                ever using the Social Machine as a disk.
-              </p>
-            </BlurFade>
-          </div>
-        </section>
-
-        <TestimonialsSection />
-
-        <section id="demo" className="px-4 pb-16 pt-8 md:px-6">
-          <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
-            <div>
-              <Badge tone="green">Access</Badge>
-              <h2 className="mt-3 text-page font-semibold tracking-tight">
-                Subscribe, or request a demo.
-              </h2>
-              <p className="mt-3 text-body text-muted">
-                Get Access creates your workspace and continues to checkout. Request a Demo if
-                you want us to walk Command, the Social Machine, liaison, Hermes, and Linear with
-                your team first.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <AccessButton />
-                <Button asChild variant="secondary">
-                  <Link to="/login">Sign in</Link>
-                </Button>
-              </div>
-            </div>
-            <div className="relative overflow-hidden rounded-modal border border-border bg-elevated p-6">
-              <ShineBorder />
-              <h3 className="relative z-[1] text-card font-semibold tracking-tight">Request a Demo</h3>
-              <p className="relative z-[1] mt-1 mb-4 text-caption text-muted">
-                You’ll get a confirmation email in the ClippyOS look.
-              </p>
-              <div className="relative z-[1]">
-                <DemoForm />
-              </div>
-            </div>
-          </div>
-        </section>
-
+      <main>
+        <EngineSpine />
+        <Surfaces />
+        <Access />
         <LandingFaq />
       </main>
 
-      <footer className="border-t border-border px-4 py-8 md:px-6">
+      <footer className="lp-footer border-t border-border px-4 py-8 md:px-6">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <ClippyMark size={24} />
@@ -606,9 +613,12 @@ export function LandingPage() {
               {APP_NAME} · {APP_TAGLINE}
             </span>
           </div>
-          <p className="text-caption text-muted">Globally reachable. Immutable storage. Hot hibernate.</p>
+          <p className="text-caption text-muted">
+            Globally reachable. Immutable storage. Hot hibernate.
+          </p>
         </div>
       </footer>
+      <ScrollHud />
     </div>
   );
 }
