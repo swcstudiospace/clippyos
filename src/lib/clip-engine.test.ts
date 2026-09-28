@@ -1,29 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  BLADE_X,
   CLIP_COUNT,
   ENGINE_STAGES,
-  FRAME_COUNT,
+  GATE_SPAN,
+  GATE_X,
+  GATE_Z,
   LAST_STAGE,
-  engineFrames,
-  framePose,
+  TRANSMITTER_COUNT,
+  clipPose,
+  clipPoseAt,
+  engineStateAt,
   hookNetwork,
-  ringAngle,
-  rigPose,
-  spinsAt,
+  isHookFrame,
+  smoothstep,
+  stageFormation,
   stageIndex,
+  stageState,
   timecode,
+  transmitterAngle,
 } from "./clip-engine.ts";
 
-const frames = Array.from({ length: FRAME_COUNT }, (_, index) => index);
+const clips = Array.from({ length: CLIP_COUNT }, (_, index) => index);
 
-function posesAt(key: (typeof ENGINE_STAGES)[number]["key"]) {
-  const stage = stageIndex(key);
-  return frames.map((index) => framePose(index, stage));
-}
-
-test("the engine runs ten stages from the idle core to the online ring", () => {
+test("the engine runs ten stages from the assembled core to the online lap", () => {
   assert.deepEqual(
     ENGINE_STAGES.map((stage) => stage.key),
     [
@@ -49,127 +49,135 @@ test("only the clip pipeline stages are marked as rolling out", () => {
   );
 });
 
-test("twelve frames split into four clips of three with the hook in the middle", () => {
+test("each stage arranges the clips in its own formation", () => {
   assert.deepEqual(
-    engineFrames().map((frame) => [frame.clip, frame.slot, frame.hook]),
-    [
-      [0, 0, false],
-      [0, 1, true],
-      [0, 2, false],
-      [1, 0, false],
-      [1, 1, true],
-      [1, 2, false],
-      [2, 0, false],
-      [2, 1, true],
-      [2, 2, false],
-      [3, 0, false],
-      [3, 1, true],
-      [3, 2, false],
-    ],
+    ENGINE_STAGES.map((_, stage) => stageFormation(stage)),
+    ["halo", "reel", "reel", "cut", "spiral", "gate", "broadcast", "vault", "orbit", "halo"],
   );
 });
 
-test("every frame carries one pose per stage", () => {
+test("each stage switches on the moving parts that do its work", () => {
+  const on = (key: (typeof ENGINE_STAGES)[number]["key"]) => stageState(stageIndex(key));
+  assert.ok(on("ingest").reel > on("core").reel);
+  assert.ok(on("ingest").strip > on("core").strip);
+  assert.equal(on("detect").scanner, 1);
+  assert.equal(on("detect").hooks, 1);
+  assert.equal(on("cut").cutter, 1);
+  assert.ok(on("render").rotor > 2);
+  assert.equal(on("approve").gate, 1);
+  assert.equal(on("publish").crown, 1);
+  assert.equal(on("library").vault, 1);
   assert.deepEqual(
-    engineFrames().map((frame) => frame.poses.length),
-    frames.map(() => ENGINE_STAGES.length),
+    ENGINE_STAGES.map((_, stage) => stageState(stage).cutter),
+    [0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
   );
 });
 
-test("the idle ring and the online ring place every frame at the same pose", () => {
-  assert.deepEqual(posesAt("online"), posesAt("core"));
+test("the online stage finishes a full camera lap back to the assembled view", () => {
+  const core = stageState(stageIndex("core"));
+  const online = stageState(stageIndex("online"));
+  assert.equal(online.cam.rot - core.cam.rot, 360);
+  assert.equal(online.cam.pitch, core.cam.pitch);
+  assert.equal(online.cam.dist, core.cam.dist);
 });
 
-test("the ring keeps every frame on the radius and facing outward", () => {
-  posesAt("core").forEach((pose, index) => {
-    assert.ok(Math.abs(Math.hypot(pose.x, pose.z) - 250) < 0.05, `frame ${index} is off the ring`);
-    assert.equal(pose.ry, ringAngle(index));
+test("engine state lands exactly on each stage and eases between them", () => {
+  ENGINE_STAGES.forEach((_, stage) => assert.deepEqual(engineStateAt(stage), stageState(stage)));
+  const halfway = engineStateAt(0.5);
+  assert.equal(halfway.cam.rot, 15);
+  assert.equal(halfway.reel, (stageState(0).reel + stageState(1).reel) / 2);
+  assert.ok(engineStateAt(0.1).cam.rot > 27);
+});
+
+test("progress outside the run clamps to the first and last stage", () => {
+  assert.deepEqual(engineStateAt(-2), stageState(0));
+  assert.deepEqual(engineStateAt(99), stageState(LAST_STAGE));
+});
+
+test("smoothstep eases in and out and clamps its input", () => {
+  assert.deepEqual([-1, 0, 0.5, 1, 2].map(smoothstep), [0, 0, 0.5, 1, 1]);
+  assert.ok(smoothstep(0.1) < 0.1);
+});
+
+test("the halo keeps every clip on its ring, facing outward", () => {
+  clips.forEach((index) => {
+    const clip = clipPose("halo", index);
+    assert.ok(Math.abs(Math.hypot(clip.x, clip.z) - 3.4) < 0.01);
+    assert.equal(clip.ry, Math.round((index / CLIP_COUNT) * 360 * 1000) / 1000);
   });
 });
 
-test("ingest lays the footage out as one evenly spaced strip with sprockets", () => {
-  const strip = posesAt("ingest");
-  const gaps = strip.slice(1).map((pose, index) => Math.round(pose.x - strip[index].x));
+test("clips wait inside the supply reel until the cut", () => {
   assert.deepEqual(
-    gaps,
-    Array.from({ length: FRAME_COUNT - 1 }, () => 106),
+    clips.map((index) => clipPose("reel", index).scale),
+    clips.map(() => 0),
   );
-  assert.deepEqual(
-    strip.map((pose) => [pose.y, pose.z, pose.sp]),
-    frames.map(() => [0, 0, 1]),
-  );
+  assert.ok(clips.every((index) => clipPose("cut", index).scale > 0));
 });
 
-test("detect lifts and highlights exactly one hook per clip", () => {
-  assert.deepEqual(
-    posesAt("detect").map((pose) => pose.hot),
-    [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
-  );
+test("the cut lays the clips out in one row in front of the cutter", () => {
+  const row = clips.map((index) => clipPose("cut", index, 0));
+  row.slice(1).forEach((clip, index) => assert.ok(clip.x > row[index].x));
+  assert.ok(row.every((clip) => clip.z === 3.7));
+  assert.equal(row[0].x, -row[CLIP_COUNT - 1].x);
 });
 
-test("cut leaves a wider gap between clips than between frames of one clip", () => {
-  const cut = posesAt("cut");
-  const inside = cut[1].x - cut[0].x;
-  const between = cut[3].x - cut[2].x;
-  assert.equal(inside, 88);
-  assert.ok(between > inside * 2);
-});
-
-test("the blades sit on the strip boundaries between clips", () => {
-  const strip = posesAt("ingest");
-  const boundaries = [2, 5, 8].map((index) => (strip[index].x + strip[index + 1].x) / 2);
-  assert.deepEqual(BLADE_X, boundaries);
-});
-
-test("render turns each clip into a vertical stack with the captioned hook in front", () => {
-  const render = posesAt("render");
-  for (let clip = 0; clip < CLIP_COUNT; clip++) {
-    const [before, hook, after] = render.slice(clip * 3, clip * 3 + 3);
-    assert.ok(hook.z > before.z && before.z > after.z);
-    assert.ok(hook.h > hook.w);
-    assert.deepEqual([before.cap, hook.cap, after.cap], [0, 1, 0]);
-    assert.equal(before.x, hook.x);
+test("the approval gate carries every clip through the gate on a conveyor", () => {
+  for (const time of [0, 1.7, 9.3, 42]) {
+    for (const index of clips) {
+      const clip = clipPose("gate", index, time);
+      assert.equal(clip.z, GATE_Z);
+      assert.ok(Math.abs(clip.x - GATE_X) <= GATE_SPAN / 2);
+      assert.ok(clip.scale >= 0 && clip.scale <= 0.9);
+    }
   }
+  const entering = clipPose("gate", 0, 0);
+  assert.equal(entering.x, GATE_X - GATE_SPAN / 2);
+  assert.equal(entering.scale, 0);
+  const crossing = clipPose("gate", 0, 0.5 / 0.06);
+  assert.ok(Math.abs(crossing.x - GATE_X) < 0.01);
+  assert.equal(crossing.scale, 0.9);
+  assert.ok(clipPose("gate", 0, 1).x > entering.x);
 });
 
-test("publish sends one captioned hook to each network, mirrored around the centre", () => {
-  const publish = posesAt("publish");
-  const hooks = publish.filter((pose) => pose.pub === 1);
-  assert.equal(hooks.length, 4);
-  assert.equal(hooks[0].x, -hooks[3].x);
-  assert.equal(hooks[1].x, -hooks[2].x);
+test("broadcast sends three clips to each of the four transmitters", () => {
+  const groups = new Map<number, number>();
+  clips.forEach((index) => {
+    const clip = clipPose("broadcast", index, 0);
+    groups.set(clip.ry, (groups.get(clip.ry) ?? 0) + 1);
+  });
   assert.deepEqual(
-    [0, 1, 2, 3].map((clip) => hookNetwork(clip)),
-    ["X", "YouTube", "Instagram", "TikTok"],
+    [...groups.entries()].sort((a, b) => a[0] - b[0]),
+    Array.from({ length: TRANSMITTER_COUNT }, (_, k) => [transmitterAngle(k), 3]),
   );
 });
 
-test("library stacks every frame flat, rising with each clip", () => {
-  const library = posesAt("library");
+test("the vault stacks every clip flat, one above the other", () => {
+  const stack = clips.map((index) => clipPose("vault", index));
+  assert.ok(stack.every((clip) => clip.rx === -90 && clip.x === 0 && clip.z === -3.3));
+  stack.slice(1).forEach((clip, index) => assert.ok(clip.y > stack[index].y));
+});
+
+test("clip poses blend between the formations of neighbouring stages", () => {
+  const cut = stageIndex("cut");
+  const halo = clipPoseAt(0, 3, 1.5);
+  assert.deepEqual(halo, clipPose("halo", 3, 1.5));
+  assert.deepEqual(clipPoseAt(cut, 3, 1.5), clipPose("cut", 3, 1.5));
+  const between = clipPoseAt(cut - 0.5, 3, 1.5);
+  assert.equal(between.scale, Math.round(0.62 * 0.5 * 1000) / 1000);
+});
+
+test("every fourth film frame is a hook", () => {
   assert.deepEqual(
-    library.map((pose) => [pose.x, pose.z, pose.rx]),
-    frames.map(() => [0, 0, 90]),
+    Array.from({ length: 9 }, (_, index) => isHookFrame(index)),
+    [false, true, false, false, false, true, false, false, false],
   );
-  library.slice(1).forEach((pose, index) => assert.ok(pose.y < library[index].y));
 });
 
-test("stages outside the list clamp to the nearest end", () => {
-  assert.deepEqual(framePose(4, -3), framePose(4, 0));
-  assert.deepEqual(framePose(4, 99), framePose(4, LAST_STAGE));
-  assert.deepEqual(rigPose(42), rigPose(LAST_STAGE));
-});
-
-test("only the core, Hermes loop and online stages spin", () => {
+test("hook networks cycle through X, YouTube, Instagram and TikTok", () => {
   assert.deepEqual(
-    ENGINE_STAGES.map((_, stage) => spinsAt(stage)),
-    [true, false, false, false, false, false, false, false, true, true],
-  );
-});
-
-test("the rig hides the core while clips move through the pipeline", () => {
-  assert.deepEqual(
-    ENGINE_STAGES.map((_, stage) => rigPose(stage).core),
-    [1, 0, 0, 0, 0, 0, 0, 0, 0.8, 1],
+    [0, 1, 2, 3, 4].map((clip) => hookNetwork(clip)),
+    ["X", "YouTube", "Instagram", "TikTok", "X"],
   );
 });
 

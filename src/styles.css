@@ -1010,320 +1010,50 @@
 
 .ce-engine {
   position: absolute;
-  inset: 0 0 0 40%;
-  perspective: 1100px;
-  perspective-origin: 50% 42%;
+  inset: 0 44px 0 40%;
 }
 
-.ce-rig {
-  position: absolute;
-  left: 50%;
-  top: 54%;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-  transform: rotateX(calc(var(--cam-rx, -14) * 1deg)) rotateY(calc(var(--cam-ry, 0) * 1deg))
-    scale3d(var(--zoom, 1), var(--zoom, 1), var(--zoom, 1));
-}
-
-.ce-spin {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-  transform: rotateY(calc(var(--spin, 0) * 1deg));
-}
-
-.ce-frame {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: calc(var(--w) * 1px);
-  height: calc(var(--h) * 1px);
-  margin: calc(var(--h) * -0.5px) 0 0 calc(var(--w) * -0.5px);
-  border-radius: 6px;
-  transform: translate3d(
-      calc(var(--x) * 1px),
-      calc((var(--y) - var(--drop, 0)) * 1px),
-      calc(var(--z) * 1px)
-    )
-    rotateY(calc(var(--ry) * 1deg)) rotateX(calc(var(--rx) * 1deg));
-  transform-style: preserve-3d;
-}
-
-.ce-frame__media {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  border-radius: inherit;
-  background:
-    radial-gradient(
-      circle calc(min(var(--w), var(--h)) * 0.14px) at var(--sx) 40%,
-      hsl(var(--hue) 55% 74%) 0 94%,
-      transparent 100%
-    ),
-    radial-gradient(
-      ellipse calc(min(var(--w), var(--h)) * 0.34px) calc(min(var(--w), var(--h)) * 0.3px) at
-        var(--sx) 100%,
-      hsl(var(--hue) 45% 52%) 0 96%,
-      transparent 100%
-    ),
-    linear-gradient(160deg, hsl(var(--hue) 38% 26%), hsl(var(--hue) 34% 8%));
-  box-shadow: 0 14px 30px -16px rgb(0 0 0 / 0.65);
-}
-
-.ce-frame__media::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--accent) 0 38%, rgb(255 255 255 / 0.2) 38%);
-}
-
-.ce-frame__sprockets {
-  position: absolute;
-  inset: 0;
-  opacity: var(--sp);
-  pointer-events: none;
-}
-
-.ce-frame__sprockets::before,
-.ce-frame__sprockets::after {
-  content: "";
-  position: absolute;
-  left: -3px;
-  right: -3px;
-  height: 9px;
-  background:
-    repeating-linear-gradient(
-        90deg,
-        transparent 0 3px,
-        rgb(255 255 255 / 0.62) 3px 7px,
-        transparent 7px 10px
-      )
-      center / 100% 4px no-repeat,
-    var(--ce-film);
-}
-
-.ce-frame__sprockets::before {
-  top: -9px;
-  border-radius: 3px 3px 0 0;
-}
-
-.ce-frame__sprockets::after {
-  bottom: -9px;
-  border-radius: 0 0 3px 3px;
-}
-
-.ce-frame__hot {
-  position: absolute;
-  inset: -4px;
-  border: 2px solid var(--accent);
-  border-radius: 9px;
-  box-shadow:
-    0 0 22px color-mix(in srgb, var(--accent) 70%, transparent),
-    inset 0 0 12px color-mix(in srgb, var(--accent) 40%, transparent);
-  opacity: var(--hot);
-  pointer-events: none;
-}
-
-.ce-frame__cap {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: 13%;
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  opacity: var(--cap);
-}
-
-.ce-frame__cap i {
+.ce-engine canvas {
   display: block;
   width: 100%;
-  height: 5px;
-  border-radius: 2px;
-  background: #fff;
-  box-shadow: 0 1px 0 rgb(0 0 0 / 0.5);
+  height: 100%;
 }
 
-.ce-frame__cap i + i {
-  width: 62%;
-  background: #6ee7b7;
-}
-
-.ce-frame__ok {
-  position: absolute;
-  top: -9px;
-  right: -9px;
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-fg);
-  box-shadow: 0 0 14px var(--accent);
-  opacity: var(--ok);
-  transform: scale(calc(0.4 + var(--ok) * 0.6));
-}
-
-.ce-frame__ok svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 3;
-}
-
-.ce-frame__net {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 10px);
-  translate: -50% 0;
-  padding: 3px 7px;
-  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  color: var(--accent);
-  font: 600 10px/1 var(--font-mono-stack);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  opacity: var(--pub);
-}
-
-.ce-scan {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 2px;
-  height: 170px;
-  margin: -85px 0 0 -1px;
-  background: linear-gradient(transparent, var(--accent) 20% 80%, transparent);
-  box-shadow: 0 0 18px var(--accent);
-  transform: translate3d(calc(var(--scan) * 1px), 0, 50px);
-  opacity: var(--scan-o);
-}
-
-.ce-scan::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 2px;
-  width: 90px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--accent) 22%, transparent)
-  );
-}
-
-.ce-blades {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-}
-
-.ce-blade {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 2px;
-  height: 120px;
-  margin: -60px 0 0 -1px;
-  background: #fff;
-  box-shadow:
-    0 0 16px var(--accent),
-    0 0 4px #fff;
-  transform: translate3d(calc(var(--bx) * 1px), 0, 40px);
-  opacity: var(--blade-o);
-}
-
-.ce-core {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform-style: preserve-3d;
-  transform: scale3d(
-    calc(var(--core) * var(--boot)),
-    calc(var(--core) * var(--boot)),
-    calc(var(--core) * var(--boot))
-  );
-}
-
-.ce-core__cube {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 96px;
-  height: 96px;
-  margin: -48px 0 0 -48px;
-  transform-style: preserve-3d;
-  transform: rotateX(-16deg) rotateY(calc(var(--cube) * 1deg));
-}
-
-.ce-core__face {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 24%, #04140e), #04140e 70%);
-  box-shadow: inset 0 0 26px color-mix(in srgb, var(--accent) 35%, transparent);
-}
-
-.ce-core__face--front {
-  transform: translateZ(48px);
-}
-
-.ce-core__face--back {
-  transform: rotateY(180deg) translateZ(48px);
-}
-
-.ce-core__face--right {
-  transform: rotateY(90deg) translateZ(48px);
-}
-
-.ce-core__face--left {
-  transform: rotateY(-90deg) translateZ(48px);
-}
-
-.ce-core__face--top {
-  transform: rotateX(90deg) translateZ(48px);
-}
-
-.ce-core__face--bottom {
-  transform: rotateX(-90deg) translateZ(48px);
-}
-
-.ce-core__face--top,
-.ce-core__face--bottom {
-  background-image:
-    linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px),
-    linear-gradient(145deg, color-mix(in srgb, var(--accent) 24%, #04140e), #04140e 70%);
-  background-size:
-    16px 16px,
-    16px 16px,
-    100% 100%;
-}
-
-.ce-core__halo {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 280px;
-  height: 280px;
-  margin: -140px 0 0 -140px;
-  border-radius: 50%;
+.ce-engine[data-fallback="true"] {
   background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--accent) 38%, transparent),
-    transparent 64%
+    circle at 50% 55%,
+    color-mix(in srgb, var(--accent) 18%, transparent),
+    transparent 45%
   );
-  transform: rotateX(90deg) translateZ(-80px);
+}
+
+.ce-parts {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 16px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ce-dim);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  rotate: 180deg;
+  translate: 0 -50%;
+}
+
+.ce-parts li::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-bottom: 8px;
+  background: var(--accent);
 }
 
 .ce-stage__frame {
@@ -2073,14 +1803,7 @@
 
 @media (max-width: 900px) {
   .ce-engine {
-    inset: 0;
-    perspective: 760px;
-    perspective-origin: 50% 30%;
-  }
-
-  .ce-rig {
-    top: 34%;
-    scale: 0.54 0.54 0.54;
+    inset: 56px 0 42% 0;
   }
 
   .ce-stage__glow {
@@ -2096,6 +1819,7 @@
   .ce-stage__frame,
   .ce-stage__spec,
   .ce-panel,
+  .ce-parts,
   .ce-leds {
     display: none;
   }
