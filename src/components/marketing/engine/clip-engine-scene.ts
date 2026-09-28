@@ -3,6 +3,7 @@ import { animate, type JSAnimation } from "animejs";
 import {
   CLIP_COUNT,
   FILM_FRAMES,
+  GATE_Z,
   PISTON_COUNT,
   ROTOR_HEIGHTS,
   TRANSMITTER_COUNT,
@@ -474,7 +475,8 @@ export function createClipEngine(
   root.add(cutter);
 
   const gate = new THREE.Group();
-  gate.position.set(0, 0, 4.1);
+  gate.position.set(0, 0, GATE_Z);
+  gate.rotation.y = Math.PI / 2;
   const gateRing = mesh(new THREE.TorusGeometry(1.05, 0.08, 8, 48), mat.metal, [0, 1.9, 0], false);
   const gateInner = mesh(new THREE.TorusGeometry(0.86, 0.03, 6, 6), mat.accent, [0, 1.9, 0], false);
   gate.add(gateRing, gateInner);
@@ -528,6 +530,7 @@ export function createClipEngine(
   const color = new THREE.Color();
   const accentColor = new THREE.Color();
   const frameColors: THREE.Color[] = [];
+  const clipColors: THREE.Color[] = [];
 
   let palette = PALETTES[options.theme];
   const applyTheme = (theme: EngineTheme) => {
@@ -565,7 +568,11 @@ export function createClipEngine(
     accentColor.set(palette.accent);
     frameColors.length = 0;
     for (let i = 0; i < FILM_FRAMES; i++) frameColors.push(new THREE.Color(palette.clips[i % 4]));
-    for (let i = 0; i < CLIP_COUNT; i++) clips.setColorAt(i, color.set(palette.clips[i % 4]));
+    clipColors.length = 0;
+    for (let i = 0; i < CLIP_COUNT; i++) {
+      clipColors.push(new THREE.Color(palette.clips[i % 4]));
+      clips.setColorAt(i, clipColors[i]);
+    }
     if (clips.instanceColor) clips.instanceColor.needsUpdate = true;
   };
   applyTheme(options.theme);
@@ -748,12 +755,15 @@ export function createClipEngine(
       scale.set(sc, sc, sc);
       matrix.compose(position, quaternion, scale);
       clips.setMatrixAt(i, matrix);
+      color.copy(clipColors[i]).lerp(accentColor, p.x > 0 ? s.gate * 0.5 : 0);
+      clips.setColorAt(i, color);
       local.makeTranslation(0, 0, -0.018);
       clipRims.setMatrixAt(i, local.premultiply(matrix));
       local.makeTranslation(0, -0.24, 0.004);
       captions.setMatrixAt(i, local.premultiply(matrix));
     }
     clips.instanceMatrix.needsUpdate = true;
+    if (clips.instanceColor) clips.instanceColor.needsUpdate = true;
     clipRims.instanceMatrix.needsUpdate = true;
     captions.instanceMatrix.needsUpdate = true;
 
@@ -783,6 +793,7 @@ export function createClipEngine(
     running = next;
     last = 0;
     renderer.setAnimationLoop(next ? loop : null);
+    rippleAnimations.forEach((animation) => (next ? animation.play() : animation.pause()));
   };
 
   const resizeObserver = new ResizeObserver(resize);
@@ -811,6 +822,7 @@ export function createClipEngine(
       rippleAnimations.forEach((animation) => animation.pause());
       geometries.forEach((geometry) => geometry.dispose());
       Object.values(mat).forEach((material) => material.dispose());
+      gridMaterial.dispose();
       ripples.forEach((ring) => (ring.material as THREE.Material).dispose());
       shadowMap.dispose();
       renderer.dispose();

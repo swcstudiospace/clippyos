@@ -1,17 +1,18 @@
 import { Check } from "lucide-react";
 import {
   AGENT_LINES,
+  CLIP_COUNT,
   ENGINE_PARTS,
   ENGINE_STAGES,
   LAST_STAGE,
   NETWORKS,
   PIPELINE_STEPS,
   STORAGE_LAYERS,
-  hookNetwork,
   stageState,
 } from "@/lib/clip-engine";
 
 const LEDS = 5;
+const CLIPS_PER_NETWORK = CLIP_COUNT / NETWORKS.length;
 const start = stageState(0).cam;
 
 function pad(value: number) {
@@ -101,10 +102,10 @@ export function ClipEngine() {
 
       <div className="ce-panel" data-panel="approve">
         <PanelHead title="Approvals" live />
-        {Array.from({ length: 4 }, (_, clip) => (
-          <div className="ce-row" key={clip} data-panel-row>
+        {NETWORKS.map((network) => (
+          <div className="ce-row" key={network} data-panel-row>
             <span>
-              Clip {pad(clip + 1)} · {hookNetwork(clip)}
+              {pad(CLIPS_PER_NETWORK)} clips · {network}
             </span>
             <b>
               <Check aria-hidden="true" /> signed

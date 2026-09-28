@@ -21,6 +21,8 @@ export const HOOK_EVERY = 4;
 export const PISTON_COUNT = 6;
 export const ROTOR_HEIGHTS = [1.45, 2.25, 3.05] as const;
 export const TRANSMITTER_COUNT = 4;
+export const GATE_Z = 4.1;
+export const GATE_SPAN = 8;
 
 export const NETWORKS = ["X", "YouTube", "Instagram", "TikTok"] as const;
 export const PIPELINE_STEPS = ["Ingest", "Detect", "Cut", "Caption + render"] as const;
@@ -130,7 +132,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   approve: {
     ...BASE,
-    cam: { rot: 0, pitch: -9, dist: 17.5, y: 2.2 },
+    cam: { rot: -32, pitch: -11, dist: 17.5, y: 2.2 },
     reel: 0.2,
     strip: 0.8,
     stripShow: 0.5,
@@ -318,15 +320,15 @@ export function clipPose(formation: FormationKey, index: number, time = 0): Clip
       );
     }
     case "gate": {
-      const t = (i - (CLIP_COUNT - 1) / 2) * 10;
-      const a = (t * Math.PI) / 180;
+      const u = (i / CLIP_COUNT + time * 0.06) % 1;
+      const fade = Math.min(1, (0.5 - Math.abs(u - 0.5)) / 0.08);
       return pose(
-        Math.sin(a) * 5,
-        1.9 + Math.sin(time * 1.6 + i) * 0.05,
-        Math.cos(a) * 5 - 0.9,
+        (u - 0.5) * GATE_SPAN,
+        1.9 + Math.sin(time * 2 + i) * 0.03,
+        GATE_Z,
         0,
-        t,
-        0.9,
+        0,
+        0.9 * fade,
       );
     }
     case "broadcast": {
