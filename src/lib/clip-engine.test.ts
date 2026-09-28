@@ -115,7 +115,7 @@ test("clips wait inside the supply reel until the cut", () => {
 test("the cut lays the clips out in one row in front of the cutter", () => {
   const row = clips.map((index) => clipPose("cut", index, 0));
   row.slice(1).forEach((clip, index) => assert.ok(clip.x > row[index].x));
-  assert.ok(row.every((clip) => clip.z === 3.35));
+  assert.ok(row.every((clip) => clip.z === 3.7));
   assert.equal(row[0].x, -row[CLIP_COUNT - 1].x);
 });
 
@@ -143,7 +143,7 @@ test("clip poses blend between the formations of neighbouring stages", () => {
   assert.deepEqual(halo, clipPose("halo", 3, 1.5));
   assert.deepEqual(clipPoseAt(cut, 3, 1.5), clipPose("cut", 3, 1.5));
   const between = clipPoseAt(cut - 0.5, 3, 1.5);
-  assert.equal(between.scale, Math.round(0.82 * 0.5 * 1000) / 1000);
+  assert.equal(between.scale, Math.round(0.62 * 0.5 * 1000) / 1000);
 });
 
 test("every fourth film frame is a hook", () => {

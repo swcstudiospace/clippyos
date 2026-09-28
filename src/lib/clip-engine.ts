@@ -78,10 +78,10 @@ const BASE: Omit<StageConfig, "cam" | "formation"> = {
 };
 
 const STAGES: Record<EngineStageKey, StageConfig> = {
-  core: { ...BASE, cam: { rot: 30, pitch: -16, dist: 14, y: 2.6 }, formation: "halo" },
+  core: { ...BASE, cam: { rot: 30, pitch: -16, dist: 20.5, y: 2.5 }, formation: "halo" },
   ingest: {
     ...BASE,
-    cam: { rot: 0, pitch: -6, dist: 11, y: 2.4 },
+    cam: { rot: 0, pitch: -8, dist: 16.5, y: 2.3 },
     reel: 1.4,
     strip: 6,
     rotor: 0.6,
@@ -92,7 +92,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   detect: {
     ...BASE,
-    cam: { rot: -28, pitch: -12, dist: 10.5, y: 2.2 },
+    cam: { rot: -28, pitch: -12, dist: 15.5, y: 2.2 },
     reel: 0.8,
     strip: 3,
     hooks: 1,
@@ -105,7 +105,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   cut: {
     ...BASE,
-    cam: { rot: 18, pitch: -5, dist: 10, y: 1.7 },
+    cam: { rot: 18, pitch: -13, dist: 17, y: 1.9 },
     reel: 0.6,
     strip: 2.4,
     hooks: 1,
@@ -118,7 +118,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   render: {
     ...BASE,
-    cam: { rot: 70, pitch: -20, dist: 13, y: 3.1 },
+    cam: { rot: 70, pitch: -20, dist: 18.5, y: 3 },
     reel: 0.3,
     strip: 1,
     stripShow: 0.6,
@@ -130,7 +130,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   approve: {
     ...BASE,
-    cam: { rot: 0, pitch: -8, dist: 11.5, y: 2.2 },
+    cam: { rot: 0, pitch: -9, dist: 17.5, y: 2.2 },
     reel: 0.2,
     strip: 0.8,
     stripShow: 0.5,
@@ -141,7 +141,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   publish: {
     ...BASE,
-    cam: { rot: 40, pitch: -24, dist: 15, y: 4 },
+    cam: { rot: 40, pitch: -22, dist: 19, y: 3.8 },
     reel: 0.2,
     strip: 0.6,
     stripShow: 0.4,
@@ -153,7 +153,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   library: {
     ...BASE,
-    cam: { rot: 150, pitch: -28, dist: 13.5, y: 1.7 },
+    cam: { rot: 150, pitch: -28, dist: 18.5, y: 1.8 },
     reel: 0.2,
     strip: 0.5,
     stripShow: 0.4,
@@ -165,7 +165,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   agent: {
     ...BASE,
-    cam: { rot: 215, pitch: -32, dist: 16, y: 3 },
+    cam: { rot: 215, pitch: -30, dist: 19.5, y: 2.8 },
     reel: 0.5,
     strip: 1.5,
     stripShow: 0.8,
@@ -178,7 +178,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   online: {
     ...BASE,
-    cam: { rot: 390, pitch: -16, dist: 14, y: 2.6 },
+    cam: { rot: 390, pitch: -16, dist: 20.5, y: 2.5 },
     crown: 0.6,
     glow: 1.6,
     formation: "halo",
@@ -298,12 +298,12 @@ export function clipPose(formation: FormationKey, index: number, time = 0): Clip
       return pose(-2.7, 3.05, -0.2, 0, 0, 0);
     case "cut":
       return pose(
-        (i - (CLIP_COUNT - 1) / 2) * 0.46,
-        0.72 + Math.sin(time * 2 + i) * 0.04,
-        3.35,
-        -12,
+        (i - (CLIP_COUNT - 1) / 2) * 0.4,
+        0.42 + Math.sin(time * 2 + i) * 0.04,
+        3.7,
+        -18,
         0,
-        0.82,
+        0.62,
       );
     case "spiral": {
       const a = (i / CLIP_COUNT) * TAU * 1.5 + time * 0.9;

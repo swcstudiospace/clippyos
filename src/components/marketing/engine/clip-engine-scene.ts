@@ -61,7 +61,7 @@ const PALETTES: Record<EngineTheme, Palette> = {
     fog: "#050a08",
     grid: "#14532d",
     shadow: 0.55,
-    hemi: 1.5,
+    hemi: 1.8,
     sky: "#d1fae5",
     ground: "#052e1f",
     clips: ["#1f6f55", "#7a4a1f", "#1f4f6f", "#5b2f7a"],
@@ -90,6 +90,7 @@ const PALETTES: Record<EngineTheme, Palette> = {
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 const EDGE_ANGLE = 28;
+const SPARK_COUNT = 24;
 
 function seg(value: number, start: number, end: number): number {
   return Math.min(1, Math.max(0, (value - start) / (end - start)));
@@ -165,6 +166,7 @@ export function createClipEngine(
       side: THREE.DoubleSide,
     }),
     film: new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.1 }),
+    frame: new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.05 }),
     clip: new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.1 }),
     rim: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9 }),
     glow: new THREE.MeshBasicMaterial({
@@ -180,7 +182,13 @@ export function createClipEngine(
       depthWrite: false,
       side: THREE.DoubleSide,
     }),
-    edge: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.38 }),
+    spark: new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+    edge: new THREE.LineBasicMaterial({ transparent: true, opacity: 0.55 }),
     shadow: new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, depthWrite: false }),
   };
   const shadowMap = shadowTexture();
@@ -220,7 +228,7 @@ export function createClipEngine(
   scene.add(root);
 
   const hemi = new THREE.HemisphereLight(0xffffff, 0x000000, 1.5);
-  const key = new THREE.DirectionalLight(0xffffff, 2.4);
+  const key = new THREE.DirectionalLight(0xffffff, 3);
   key.position.set(5, 9, 7);
   const rim = new THREE.DirectionalLight(0xffffff, 1.2);
   rim.position.set(-6, 5, -5);
@@ -285,6 +293,13 @@ export function createClipEngine(
   crystal.scale.set(1, 2.05, 1);
   const clipRing = mesh(new THREE.TorusGeometry(0.62, 0.05, 6, 6), mat.accent, [0, 2.2, 0], false);
   core.add(crystal, clipRing);
+  const sparks = new THREE.InstancedMesh(
+    track(new THREE.BoxGeometry(0.07, 0.07, 0.07)),
+    mat.spark,
+    SPARK_COUNT,
+  );
+  sparks.frustumCulled = false;
+  core.add(sparks);
   root.add(core);
 
   const pistons = Array.from({ length: PISTON_COUNT }, (_, i) => {
@@ -426,7 +441,7 @@ export function createClipEngine(
   });
   const frames = new THREE.InstancedMesh(
     track(new THREE.BoxGeometry(0.34, 0.22, 0.025)),
-    mat.film,
+    mat.frame,
     FILM_FRAMES,
   );
   const hookGlow = new THREE.InstancedMesh(
@@ -528,9 +543,11 @@ export function createClipEngine(
     mat.crystal.emissive.set(palette.accent);
     mat.glass.color.set(palette.glass);
     mat.film.color.set(palette.film);
+    mat.frame.color.set("#ffffff");
     mat.clip.color.set("#ffffff");
     mat.rim.color.set(palette.accent);
     mat.glow.color.set(palette.accent);
+    mat.spark.color.set(palette.crystal);
     mat.edge.color.set(palette.edge);
     mat.shadow.opacity = palette.shadow;
     ripples.forEach((ring) => (ring.material as THREE.MeshBasicMaterial).color.set(palette.accent));
@@ -582,6 +599,7 @@ export function createClipEngine(
   let filmOffset = 0;
   const rotorAngles = ROTOR_HEIGHTS.map(() => 0);
   let crystalAngle = 0;
+  let sparkOffset = 0;
   let gateAngle = 0;
 
   const update = (dt: number) => {
@@ -621,6 +639,21 @@ export function createClipEngine(
     clipRing.rotation.set(Math.PI / 2, 0, -crystalAngle * 1.5);
     mat.crystal.emissiveIntensity = 0.55 + Math.sin(time * 2.2) * 0.2 + pulse * 0.8;
     coreLight.intensity = (6 + s.glow * 6 + pulse * 14) * aCore;
+
+    sparkOffset = (sparkOffset + dt * (0.12 + s.rotor * 0.06)) % 1;
+    for (let j = 0; j < SPARK_COUNT; j++) {
+      const phase = (sparkOffset + j / SPARK_COUNT) % 1;
+      const angle = j * 2.4 + phase * 6;
+      const radius = 0.5 + Math.sin(j * 1.7) * 0.22;
+      position.set(Math.sin(angle) * radius, 0.95 + phase * 2.5, Math.cos(angle) * radius);
+      const size = Math.max(0.001, Math.sin(phase * Math.PI) * (0.7 + pulse * 0.6));
+      scale.set(size, size, size);
+      euler.set(phase * 6, angle, 0);
+      quaternion.setFromEuler(euler);
+      matrix.compose(position, quaternion, scale);
+      sparks.setMatrixAt(j, matrix);
+    }
+    sparks.instanceMatrix.needsUpdate = true;
 
     pistons.forEach(({ arm, head }, i) => {
       const ai = outBack(seg(a, 0.3 + i * 0.04, 0.6 + i * 0.04));
