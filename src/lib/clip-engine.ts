@@ -41,6 +41,7 @@ export const BIN_Z = 1.6;
 export const LOOP = { x: 5.9, z: 3.2, y: 1.85, center: 0.5 } as const;
 export const WAVE_BARS = 112;
 export const CAPTION_WORDS = 14;
+export const RULER_SECONDS = 24;
 
 export const NETWORKS = ["X", "YouTube", "Instagram", "TikTok"] as const;
 export const PIPELINE_STEPS = ["Ingest", "Detect", "Cut", "Caption + render"] as const;
@@ -492,12 +493,22 @@ export function clipPoseAt(progress: number, index: number, time = 0): ClipPose 
   );
 }
 
-export function timecode(progress: number, fps = 24, secondsPerStage = 3): string {
+export function clipApproved(
+  state: Pick<EngineState, "gate" | "lanes">,
+  index: number,
+  time = 0,
+): boolean {
+  if (state.lanes >= 0.5) return true;
+  const passed = clipPose("gate", index, time).x > GATE_X;
+  return passed && (state.gate > 0.9 || (state.gate >= 0.5 && state.lanes > 0));
+}
+
+export function timecode(progress: number, fps = 24, seconds = RULER_SECONDS): string {
   const clamped = Math.min(1, Math.max(0, progress));
-  const total = Math.round(clamped * LAST_STAGE * secondsPerStage * fps);
+  const total = Math.round(clamped * seconds * fps);
   const frames = total % fps;
-  const seconds = Math.floor(total / fps) % 60;
+  const secs = Math.floor(total / fps) % 60;
   const minutes = Math.floor(total / (fps * 60)) % 60;
   const hours = Math.floor(total / (fps * 3600));
-  return [hours, minutes, seconds, frames].map((part) => String(part).padStart(2, "0")).join(":");
+  return [hours, minutes, secs, frames].map((part) => String(part).padStart(2, "0")).join(":");
 }

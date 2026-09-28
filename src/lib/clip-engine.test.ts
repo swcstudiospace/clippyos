@@ -14,9 +14,11 @@ import {
   LAST_STAGE,
   LOOP,
   NETWORKS,
+  RULER_SECONDS,
   SEGMENT_W,
   TIMELINE_LENGTH,
   captionChips,
+  clipApproved,
   clipPose,
   clipPoseAt,
   engineStateAt,
@@ -226,10 +228,27 @@ test("networks cover X, YouTube, Instagram and TikTok", () => {
   assert.deepEqual([...NETWORKS], ["X", "YouTube", "Instagram", "TikTok"]);
 });
 
-test("timecode counts 24fps frames across three seconds per stage", () => {
+test("timecode counts 24fps frames and ends where the ruler ends", () => {
   assert.equal(timecode(0), "00:00:00:00");
-  assert.equal(timecode(1), "00:00:27:00");
-  assert.equal(timecode(0.5), "00:00:13:12");
+  assert.equal(timecode(1), `00:00:${RULER_SECONDS}:00`);
+  assert.equal(timecode(0.5), "00:00:12:00");
+  assert.equal(timecode(0.25), "00:00:06:00");
+});
+
+test("clips are signed off only once they pass the review gate", () => {
+  const approve = stageIndex("approve");
+  const passed = clips.filter((index) => clipPose("gate", index, 0).x > GATE_X);
+  const waiting = clips.filter((index) => clipPose("gate", index, 0).x <= GATE_X);
+  assert.ok(passed.length > 0 && waiting.length > 0);
+  const onGate = engineStateAt(approve);
+  passed.forEach((index) => assert.equal(clipApproved(onGate, index, 0), true));
+  waiting.forEach((index) => assert.equal(clipApproved(onGate, index, 0), false));
+  const entering = engineStateAt(approve - 0.3);
+  clips.forEach((index) => assert.equal(clipApproved(entering, index, 0), false));
+  const leaving = engineStateAt(approve + 0.35);
+  passed.forEach((index) => assert.equal(clipApproved(leaving, index, 0), true));
+  const midway = engineStateAt(approve + 0.5);
+  clips.forEach((index) => assert.equal(clipApproved(midway, index, 0), true));
 });
 
 test("the readout names the track in focus and the zoom", () => {

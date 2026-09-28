@@ -13,6 +13,7 @@ import {
   LANE_LENGTH,
   LANE_ORIGIN,
   NETWORKS,
+  RULER_SECONDS,
   RULER_Y,
   SEGMENT_W,
   TIMELINE_LENGTH,
@@ -20,6 +21,7 @@ import {
   TRACK_DEPTH,
   WAVE_BARS,
   captionChips,
+  clipApproved,
   clipPoseAt,
   engineStateAt,
   hookX,
@@ -525,7 +527,7 @@ export function createClipEngine(
   }
   holo(ruler, L.frame, stack, 0.45, 0.7);
   for (let k = 0; k <= TIMELINE_LENGTH; k++) {
-    const seconds = k * 3;
+    const seconds = Math.round((k * RULER_SECONDS) / TIMELINE_LENGTH);
     addLabel(
       `00:${String(seconds).padStart(2, "0")}`,
       [-HALF + k, RULER_Y + 0.17, HALF_DEPTH - 0.18],
@@ -862,6 +864,7 @@ export function createClipEngine(
   if (typeof document !== "undefined" && document.fonts) {
     document.fonts.ready
       .then(() => {
+        if (disposed) return;
         labels.forEach(drawLabel);
         if (!running) update(0);
       })
@@ -869,6 +872,7 @@ export function createClipEngine(
   }
 
   let time = 0;
+  let disposed = false;
   let playU = 0.28;
   let jogAngle = 0;
   let revealed = false;
@@ -996,8 +1000,6 @@ export function createClipEngine(
 
     laser.position.y = CARD_Y + Math.sin(time * 2.4) * 0.64;
 
-    const gateLive = s.gate > 0.5;
-    const lanesLive = s.lanes > 0.5;
     const tetherArray = tetherBuffer.array as Float32Array;
     cards.forEach((card, i) => {
       const p = clipPoseAt(view.progress, i, options.reduced ? 0 : time);
@@ -1008,7 +1010,7 @@ export function createClipEngine(
       card.group.scale.set(p.w * sc, p.h * sc, 1);
       const ghost = s.ingest > 0.5 && segmentX(i) > phX;
       const cutting = s.razor > 0.5 && Math.abs(p.x - phX) < SEGMENT_W * 0.55;
-      const approved = (gateLive && p.x > GATE_X) || lanesLive;
+      const approved = clipApproved(s, i, options.reduced ? 0 : time);
       const hot = cutting || approved;
       const target = ghost ? L.clipGhost : hot ? L.clipHot : L.clip;
       card.core.material = target.core;
@@ -1089,6 +1091,7 @@ export function createClipEngine(
       if (!running) update(0);
     },
     dispose: () => {
+      disposed = true;
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
       visibility.disconnect();
