@@ -224,15 +224,15 @@ function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
 
   const run = createTimeline({
     defaults: { duration: STAGE_MS, ease: "inOut(2)" },
+    onUpdate: (timeline) => {
+      setStage(Math.round(timeline.progress * LAST_STAGE));
+      if (clock) clock.textContent = timecode(timeline.progress);
+    },
     autoplay: onScroll({
       target: spine,
       enter: "top top",
       leave: "bottom bottom",
       sync: 0.25,
-      onUpdate: (observer) => {
-        setStage(Math.round(observer.progress * LAST_STAGE));
-        if (clock) clock.textContent = timecode(observer.progress);
-      },
     }),
   });
 
