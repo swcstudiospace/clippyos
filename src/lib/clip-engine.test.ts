@@ -4,6 +4,7 @@ import {
   CLIP_COUNT,
   ENGINE_STAGES,
   GATE_SPAN,
+  GATE_X,
   GATE_Z,
   LAST_STAGE,
   TRANSMITTER_COUNT,
@@ -126,15 +127,15 @@ test("the approval gate carries every clip through the gate on a conveyor", () =
     for (const index of clips) {
       const clip = clipPose("gate", index, time);
       assert.equal(clip.z, GATE_Z);
-      assert.ok(Math.abs(clip.x) <= GATE_SPAN / 2);
+      assert.ok(Math.abs(clip.x - GATE_X) <= GATE_SPAN / 2);
       assert.ok(clip.scale >= 0 && clip.scale <= 0.9);
     }
   }
   const entering = clipPose("gate", 0, 0);
-  assert.equal(entering.x, -GATE_SPAN / 2);
+  assert.equal(entering.x, GATE_X - GATE_SPAN / 2);
   assert.equal(entering.scale, 0);
   const crossing = clipPose("gate", 0, 0.5 / 0.06);
-  assert.ok(Math.abs(crossing.x) < 0.01);
+  assert.ok(Math.abs(crossing.x - GATE_X) < 0.01);
   assert.equal(crossing.scale, 0.9);
   assert.ok(clipPose("gate", 0, 1).x > entering.x);
 });

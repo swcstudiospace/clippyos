@@ -3,6 +3,7 @@ import { animate, type JSAnimation } from "animejs";
 import {
   CLIP_COUNT,
   FILM_FRAMES,
+  GATE_X,
   GATE_Z,
   PISTON_COUNT,
   ROTOR_HEIGHTS,
@@ -475,7 +476,7 @@ export function createClipEngine(
   root.add(cutter);
 
   const gate = new THREE.Group();
-  gate.position.set(0, 0, GATE_Z);
+  gate.position.set(GATE_X, 0, GATE_Z);
   gate.rotation.y = Math.PI / 2;
   const gateRing = mesh(new THREE.TorusGeometry(1.05, 0.08, 8, 48), mat.metal, [0, 1.9, 0], false);
   const gateInner = mesh(new THREE.TorusGeometry(0.86, 0.03, 6, 6), mat.accent, [0, 1.9, 0], false);
@@ -755,7 +756,7 @@ export function createClipEngine(
       scale.set(sc, sc, sc);
       matrix.compose(position, quaternion, scale);
       clips.setMatrixAt(i, matrix);
-      color.copy(clipColors[i]).lerp(accentColor, p.x > 0 ? s.gate * 0.5 : 0);
+      color.copy(clipColors[i]).lerp(accentColor, p.x > GATE_X ? s.gate * 0.5 : 0);
       clips.setColorAt(i, color);
       local.makeTranslation(0, 0, -0.018);
       clipRims.setMatrixAt(i, local.premultiply(matrix));
