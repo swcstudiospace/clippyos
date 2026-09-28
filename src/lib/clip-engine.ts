@@ -140,7 +140,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   cut: {
     ...BASE,
-    cam: { rot: -20, pitch: -28, dist: 13, x: 0.4, y: 1.9, z: 0 },
+    cam: { rot: -20, pitch: -28, dist: 13.5, x: 1, y: 2.5, z: 0 },
     sweep: 1.8,
     wave: 0.6,
     hooks: 0.6,
@@ -152,7 +152,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   render: {
     ...BASE,
-    cam: { rot: 10, pitch: -12, dist: 18, x: 0, y: 4.5, z: 0 },
+    cam: { rot: 10, pitch: -12, dist: 18, x: 0.4, y: 5.4, z: 0 },
     sweep: 0.6,
     wave: 0.4,
     tether: 1,
@@ -163,7 +163,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   approve: {
     ...BASE,
-    cam: { rot: -24, pitch: -10, dist: 15, x: 0, y: 4.2, z: 0 },
+    cam: { rot: -24, pitch: -10, dist: 15.5, x: 0.6, y: 5.5, z: 0 },
     sweep: 0.4,
     wave: 0.3,
     captions: 0.5,
