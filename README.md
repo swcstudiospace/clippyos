@@ -60,8 +60,32 @@ Plus two audiences beyond the operator:
   tracker, day *N* of the 30-day guarantee, deliverable downloads over signed
   URLs, client-side approvals, and a read-only activity timeline. Clients see
   their work, never your fees or tooling.
-- **Public site** (`/`) — landing, feature grid, Request-a-Demo flow, and
-  Get Access checkout leading into `/login`.
+- **Public site** (`/`) — a scroll-driven landing built on the anime.js clip
+  engine (below), Request-a-Demo flow, and Get Access checkout leading into
+  `/login`.
+
+### Landing clip engine
+
+The landing page is a scroll-driven story built on [anime.js](https://animejs.com)
+v4, in the same style as the Spectrum Web Co and Desk Lanes sites. A pinned
+CSS-3D stage (`src/components/marketing/clip-engine.tsx`) holds the ClippyOS
+clip engine: twelve footage frames around a spinning ClippyOS core. Scrolling
+the chapters in `src/components/marketing/landing-page.tsx` scrubs one timeline
+in `src/components/marketing/anime/landing-motion.ts` with `onScroll`: the ring
+unrolls into a film strip, hooks are detected and cut into four clips, the
+clips are captioned into vertical cards, signed off in Approvals, fanned out to
+X, YouTube, Instagram and TikTok, stacked into the Library, and pulled into the
+Hermes loop. The same file runs the hero intro (split text, boot LEDs, frames
+dropping into the ring), split-word reveals, the scroll HUD and magnetic
+buttons, all inside one `createScope` that is reverted on unmount.
+
+The engine is a labelled demo run. Poses per stage come from
+`src/lib/clip-engine.ts` and are covered by `src/lib/clip-engine.test.ts`.
+Ingest, detect, cut and caption/render are marked Rolling out until the native
+clipping pipeline ships (see [Roadmap](#roadmap)); approvals, the Social
+Machine, the Library and Hermes are marked Live. With
+`prefers-reduced-motion`, the stage renders one static formation and nothing
+animates.
 
 ## Architecture
 
