@@ -67,22 +67,25 @@ Plus two audiences beyond the operator:
 ### Landing clip engine
 
 The landing page is a scroll-driven story built on [anime.js](https://animejs.com)
-v4 and [three.js](https://threejs.org), in the same style as the Spectrum Web Co
-engine. A pinned WebGL stage (`src/components/marketing/engine/clip-engine-scene.ts`)
-renders the ClippyOS clipping engine as a machine with moving parts: an octagonal
-chassis, pumping pistons, a glass core with a spinning crystal, three render
-rotors, two film reels feeding a film strip, a hook scanner, a cutter that slams
-the strip into clips, an approval gate, a crown of four transmitters that
-broadcast ripples, and a library vault. Twelve clips move between formations
-(halo, reel, cut row, render spiral, gate arc, broadcast, vault stack, Hermes
-orbit) while the camera orbits the engine.
+v4 and [three.js](https://threejs.org). A pinned WebGL stage
+(`src/components/marketing/engine/clip-engine-scene.ts`) renders the ClippyOS
+engine as an exploded editing timeline drawn as a glowing holographic wireframe:
+a projector deck with a spinning jog wheel and a media bin, audio (A1), footage
+(V1) and caption (C1) tracks floating under a timecode ruler, a playhead light
+sheet that sweeps the stack, a source port that streams footage in, hook markers
+on the waveform, a razor that cuts V1 into twelve clips, a review gate, four
+output lanes that end in X, YouTube, Instagram and TikTok screens, and the Hermes
+loop around the machine. The clips move between formations (segments on the
+footage track, cut apart, vertical 9:16 cards, the review conveyor, the output
+lanes, the media bin and the Hermes loop) while the camera dollies along the
+timeline.
 
 Scrolling the chapters in `src/components/marketing/landing-page.tsx` scrubs one
 anime.js timeline in `src/components/marketing/anime/landing-motion.ts` with
 `onScroll`; it drives the engine's stage progress, the readout, panels and HUD.
-anime.js also runs the engine assembly intro, stage pulses, pointer parallax,
-transmitter ripples, split-word reveals and magnetic buttons. three.js is loaded
-with a dynamic import so it only ships to the landing page.
+anime.js also runs the engine boot (the wireframe draws itself in), stage
+pulses, pointer parallax, split-word reveals and magnetic buttons. three.js is
+loaded with a dynamic import so it only ships to the landing page.
 
 The engine is a labelled demo run. Stage configs and clip formations live in
 `src/lib/clip-engine.ts` and are covered by `src/lib/clip-engine.test.ts`.

@@ -8,12 +8,11 @@ import {
   NETWORKS,
   PIPELINE_STEPS,
   STORAGE_LAYERS,
-  stageState,
+  readout,
 } from "@/lib/clip-engine";
 
 const LEDS = 5;
 const CLIPS_PER_NETWORK = CLIP_COUNT / NETWORKS.length;
-const start = stageState(0).cam;
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -54,8 +53,7 @@ export function ClipEngine() {
             <span data-engine-tc>00:00:00:00</span>
           </span>
           <span className="ce-readout__meta" data-engine-cam>
-            orbit {String(Math.round(start.rot)).padStart(3, "0")}° · pitch {start.pitch}° · dist{" "}
-            {start.dist.toFixed(1)}
+            {readout(0)}
           </span>
         </div>
         <div className="ce-readout__side">
