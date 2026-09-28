@@ -1010,7 +1010,7 @@
 
 .ce-engine {
   position: absolute;
-  inset: 0 0 0 40%;
+  inset: 0 44px 0 40%;
 }
 
 .ce-engine canvas {
