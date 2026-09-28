@@ -115,7 +115,7 @@ const BASE: Omit<StageConfig, "cam" | "formation" | "focus"> = {
 const STAGES: Record<EngineStageKey, StageConfig> = {
   core: {
     ...BASE,
-    cam: { rot: 32, pitch: -20, dist: 18.5, x: 0.4, y: 2.2, z: 0.7 },
+    cam: { rot: 42, pitch: -21, dist: 19.5, x: -0.2, y: 1.9, z: 0.6 },
     formation: "track",
     focus: "all tracks",
   },
@@ -152,7 +152,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   render: {
     ...BASE,
-    cam: { rot: 10, pitch: -12, dist: 17.5, x: 0, y: 3.4, z: 0 },
+    cam: { rot: 10, pitch: -12, dist: 18, x: 0, y: 4.5, z: 0 },
     sweep: 0.6,
     wave: 0.4,
     tether: 1,
@@ -174,7 +174,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   publish: {
     ...BASE,
-    cam: { rot: 14, pitch: -16, dist: 17, x: 6.2, y: 5.6, z: 0 },
+    cam: { rot: 14, pitch: -16, dist: 17.5, x: 7.6, y: 6.7, z: 0 },
     sweep: 0.5,
     wave: 0.3,
     lanes: 1,
@@ -204,7 +204,7 @@ const STAGES: Record<EngineStageKey, StageConfig> = {
   },
   online: {
     ...BASE,
-    cam: { rot: 392, pitch: -20, dist: 18.5, x: 0.4, y: 2.2, z: 0.7 },
+    cam: { rot: 402, pitch: -21, dist: 19.5, x: -0.2, y: 1.9, z: 0.6 },
     wave: 0.6,
     captions: 0.4,
     glow: 1.2,

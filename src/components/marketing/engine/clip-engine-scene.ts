@@ -124,7 +124,7 @@ const FRONT = HALF_DEPTH + 0.05;
 const DECK = { x0: -6.4, x1: 6.2, z0: -1.5, z1: 3.55 };
 const SRC = { x: -5.9, size: 0.62 };
 const INGEST_PARTICLES = 18;
-const JOG = { x: 4.35, z: 2.3 };
+const JOG = { x: 4.1, z: 1.9 };
 const LOOP_PULSES = 3;
 const FONT = '600 44px "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 

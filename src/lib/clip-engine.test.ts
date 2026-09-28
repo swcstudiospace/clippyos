@@ -233,7 +233,7 @@ test("timecode counts 24fps frames across three seconds per stage", () => {
 });
 
 test("the readout names the track in focus and the zoom", () => {
-  assert.equal(readout(0), "all tracks · zoom 1.14x");
+  assert.equal(readout(0), "all tracks · zoom 1.08x");
   assert.ok(readout(stageIndex("cut")).startsWith("V1 razor · zoom "));
   assert.ok(readout(stageIndex("publish")).startsWith("out 4 lanes"));
 });
