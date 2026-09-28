@@ -8,40 +8,18 @@ import {
   stagger,
   utils,
   type AnimatableObject,
-  type AnimationParams,
-  type JSAnimation,
 } from "animejs";
-import {
-  ENGINE_STAGES,
-  HOOK_SLOT,
-  LAST_STAGE,
-  SCAN_RANGE,
-  framePose,
-  rigPose,
-  spinsAt,
-  stageIndex,
-  timecode,
-  type FramePose,
-} from "@/lib/clip-engine";
+import { ENGINE_STAGES, LAST_STAGE, engineStateAt, stageIndex, timecode } from "@/lib/clip-engine";
+import type {
+  EngineHandle,
+  EngineTheme,
+  EngineView,
+} from "@/components/marketing/engine/clip-engine-scene";
 
 type Cleanup = () => void;
 
 const STAGE_MS = 1000;
-const SPIN_MS = 28000;
 const noop: Cleanup = () => {};
-const FRAME_PROPS = [
-  "x",
-  "y",
-  "z",
-  "ry",
-  "rx",
-  "w",
-  "h",
-  "sp",
-  "hot",
-  "cap",
-  "pub",
-] as const satisfies readonly (keyof FramePose)[];
 
 function all<T extends HTMLElement = HTMLElement>(root: ParentNode, selector: string): T[] {
   return Array.from(root.querySelectorAll<T>(selector));
@@ -59,43 +37,19 @@ function scramble(el: HTMLElement, text: string, chars = "uppercase") {
   animate(el, { innerHTML: scrambleText({ text, chars, cursor: true }), duration: 460 });
 }
 
-function frameIndex(el: unknown) {
-  return Number((el as HTMLElement).dataset.index);
+function currentTheme(): EngineTheme {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
-function frameTween(stage: number): AnimationParams {
-  const params: AnimationParams = {};
-  FRAME_PROPS.forEach((prop) => {
-    params[`--${prop}`] = (el: unknown) => [
-      framePose(frameIndex(el), stage - 1)[prop],
-      framePose(frameIndex(el), stage)[prop],
-    ];
-  });
-  return params;
-}
-
-function applyStage(
-  frames: HTMLElement[],
-  rig: HTMLElement,
-  core: HTMLElement | null,
-  stage: number,
-) {
-  frames.forEach((frame) => {
-    const pose = framePose(frameIndex(frame), stage);
-    FRAME_PROPS.forEach((prop) => frame.style.setProperty(`--${prop}`, String(pose[prop])));
-  });
-  const camera = rigPose(stage);
-  rig.style.setProperty("--cam-rx", String(camera.rx));
-  rig.style.setProperty("--cam-ry", String(camera.ry));
-  rig.style.setProperty("--zoom", String(camera.zoom));
-  core?.style.setProperty("--core", String(camera.core));
+function cameraText(progress: number) {
+  const { cam } = engineStateAt(progress);
+  const orbit = ((Math.round(cam.rot) % 360) + 360) % 360;
+  return `orbit ${pad(orbit, 3)}° · pitch ${Math.round(cam.pitch)}° · dist ${cam.dist.toFixed(1)}`;
 }
 
 function heroIntro(root: HTMLElement, reduced: boolean): Cleanup {
   const title = one(root, "[data-hero-title]");
   const items = all(root, "[data-hero-item]");
-  const frames = all(root, "[data-frame]");
-  const core = one(root, "[data-engine-core]");
   const leds = all(root, "[data-led]");
   const status = one(root, "[data-engine-status]");
   if (!title) return noop;
@@ -108,34 +62,19 @@ function heroIntro(root: HTMLElement, reduced: boolean): Cleanup {
   const split = splitText(title, { words: { wrap: "clip" }, chars: true });
   utils.set(split.chars, { y: "115%" });
   utils.set(items, { opacity: 0, "--rise": 24 });
-  utils.set(frames, { "--drop": 320, opacity: 0 });
-  if (core) utils.set(core, { "--boot": 0 });
 
   const ledsOn = 620;
   const ledStep = 200;
   const online = ledsOn + leds.length * ledStep + 300;
 
-  const intro = createTimeline({ defaults: { ease: "out(4)" } })
+  createTimeline({ defaults: { ease: "out(4)" } })
     .add(split.chars, { y: "0%", duration: 900, delay: stagger(14) }, 120)
     .add(items, { opacity: 1, "--rise": 0, duration: 900, delay: stagger(110) }, 520)
-    .add(
-      frames,
-      {
-        "--drop": 0,
-        opacity: 1,
-        duration: 1100,
-        ease: "outBack(1.2)",
-        delay: stagger(55, { from: "center" }),
-      },
-      240,
-    )
     .add(leds, { "--amber": [0, 1], duration: 90, delay: stagger(ledStep) }, ledsOn)
-    .add(leds, { "--lit": [0, 1], duration: 160 }, online);
-  if (core)
-    intro.add(core, { "--boot": [0, 1], duration: 900, ease: "outBack(1.6)" }, online - 200);
-  intro.call(() => {
-    if (status) scramble(status, "Engine online", "lowercase");
-  }, online);
+    .add(leds, { "--lit": [0, 1], duration: 160 }, online)
+    .call(() => {
+      if (status) scramble(status, "Engine online", "lowercase");
+    }, online);
 
   return () => {
     split.revert();
@@ -144,20 +83,34 @@ function heroIntro(root: HTMLElement, reduced: boolean): Cleanup {
 
 function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
   const spine = one(root, "[data-spine]");
-  const rig = one(root, "[data-engine-rig]");
-  const spinner = one(root, "[data-engine-spin]");
-  if (!spine || !rig || !spinner) return noop;
+  const host = one(root, "[data-engine-host]");
+  if (!spine || !host) return noop;
 
-  const core = one(root, "[data-engine-core]");
-  const frames = all(root, "[data-frame]");
-  const hooks = frames.filter((frame) => frame.dataset.slot === String(HOOK_SLOT));
-  const scan = one(root, "[data-scan]");
-  const blades = one(root, "[data-blades]");
   const mode = one(root, "[data-engine-mode]");
   const stageLabel = one(root, "[data-engine-stage]");
   const clock = one(root, "[data-engine-tc]");
+  const camLabel = one(root, "[data-engine-cam]");
   const flag = one(root, "[data-engine-live]");
   const fills = all(root, "[data-step-fill]");
+
+  const view: EngineView = { progress: 0, assembly: reduced ? 1 : 0, px: 0, py: 0, pulse: 0 };
+  let engine: EngineHandle | null = null;
+  let disposed = false;
+  const themeObserver = new MutationObserver(() => engine?.setTheme(currentTheme()));
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+
+  import("@/components/marketing/engine/clip-engine-scene")
+    .then(({ createClipEngine }) => {
+      if (disposed) return;
+      engine = createClipEngine(host, { theme: currentTheme(), reduced, view });
+      if (!engine) host.dataset.fallback = "true";
+    })
+    .catch(() => {
+      host.dataset.fallback = "true";
+    });
 
   const showFlag = (index: number) => {
     if (!flag) return;
@@ -166,58 +119,42 @@ function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
     flag.dataset.live = String(live);
   };
 
+  const cleanup = () => {
+    disposed = true;
+    themeObserver.disconnect();
+    engine?.dispose();
+    engine = null;
+  };
+
   if (reduced) {
-    const still = stageIndex("publish");
-    applyStage(frames, rig, core, still);
-    hooks.forEach((hook) => hook.style.setProperty("--ok", "1"));
-    if (mode) mode.textContent = ENGINE_STAGES[still].mode;
-    if (stageLabel) stageLabel.textContent = `${pad(still)}/${pad(LAST_STAGE)}`;
-    showFlag(still);
-    return noop;
+    if (mode) mode.textContent = ENGINE_STAGES[0].mode;
+    showFlag(0);
+    return cleanup;
   }
 
-  const cube = core
-    ? animate(core, { "--cube": [0, 360], duration: 16000, ease: "linear", loop: true })
-    : null;
+  animate(view, { assembly: [0, 1], duration: 2600, delay: 250, ease: "out(2)" });
 
-  const spin = { deg: 0 };
-  const paintSpin = () => spinner.style.setProperty("--spin", String(spin.deg));
-  let spinning: JSAnimation | null = null;
-  let settling: JSAnimation | null = null;
-  const startSpin = () => {
-    if (spinning) return;
-    settling?.pause();
-    settling = null;
-    const from = spin.deg;
-    spinning = animate(spin, {
-      deg: [from, from + 360],
-      duration: SPIN_MS,
-      ease: "linear",
-      loop: true,
-      onUpdate: paintSpin,
-    });
-  };
-  const stopSpin = () => {
-    if (!spinning) return;
-    spinning.pause();
-    spinning = null;
-    settling = animate(spin, {
-      deg: Math.round(spin.deg / 360) * 360,
-      duration: 900,
-      ease: "out(3)",
-      onUpdate: paintSpin,
-    });
-  };
+  let offPointer: Cleanup = noop;
+  if (window.matchMedia("(pointer: fine)").matches) {
+    const tilt = createAnimatable(view, { px: 1200, py: 1200, ease: "out(3)" });
+    const move = (event: PointerEvent) => {
+      tilt.px((event.clientX / window.innerWidth) * 2 - 1);
+      tilt.py((event.clientY / window.innerHeight) * 2 - 1);
+    };
+    window.addEventListener("pointermove", move, { passive: true });
+    offPointer = () => window.removeEventListener("pointermove", move);
+  }
 
   let current = -1;
+  let camText = "";
   const setStage = (index: number) => {
     if (index === current) return;
+    const first = current === -1;
     current = index;
     if (mode) scramble(mode, ENGINE_STAGES[index].mode);
     if (stageLabel) stageLabel.textContent = `${pad(index)}/${pad(LAST_STAGE)}`;
     showFlag(index);
-    if (spinsAt(index)) startSpin();
-    else stopSpin();
+    if (!first) animate(view, { pulse: [1, 0], duration: 1100, ease: "out(3)" });
   };
 
   const at = (stage: number, offset = 0) => stage * STAGE_MS + offset;
@@ -227,6 +164,11 @@ function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
     onUpdate: (timeline) => {
       setStage(Math.round(timeline.progress * LAST_STAGE));
       if (clock) clock.textContent = timecode(timeline.progress);
+      const nextCam = cameraText(timeline.progress * LAST_STAGE);
+      if (camLabel && nextCam !== camText) {
+        camText = nextCam;
+        camLabel.textContent = nextCam;
+      }
     },
     autoplay: onScroll({
       target: spine,
@@ -236,48 +178,7 @@ function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
     }),
   });
 
-  for (let stage = 1; stage <= LAST_STAGE; stage++) {
-    const from = rigPose(stage - 1);
-    const to = rigPose(stage);
-    run.add(frames, frameTween(stage), at(stage - 1));
-    run.add(
-      rig,
-      {
-        "--cam-rx": [from.rx, to.rx],
-        "--cam-ry": [from.ry, to.ry],
-        "--zoom": [from.zoom, to.zoom],
-      },
-      at(stage - 1),
-    );
-    if (core) run.add(core, { "--core": [from.core, to.core] }, at(stage - 1));
-  }
-
-  const detect = stageIndex("detect");
-  if (scan) {
-    run
-      .add(scan, { "--scan-o": [0, 1], duration: 150 }, at(detect - 1))
-      .add(
-        scan,
-        { "--scan": [SCAN_RANGE[0], SCAN_RANGE[1]], duration: 900, ease: "linear" },
-        at(detect - 1),
-      )
-      .add(scan, { "--scan-o": [1, 0], duration: 200 }, at(detect - 1, 800));
-  }
-
-  const cut = stageIndex("cut");
-  if (blades) {
-    run
-      .add(blades, { "--blade-o": [0, 1], duration: 120 }, at(cut - 1))
-      .add(blades, { "--blade-o": [1, 0], duration: 380 }, at(cut - 1, 380));
-  }
-
-  run
-    .add(
-      hooks,
-      { "--ok": [0, 1], duration: 320, delay: stagger(150) },
-      at(stageIndex("approve") - 1, 350),
-    )
-    .add(hooks, { "--ok": [1, 0], duration: 250 }, at(stageIndex("library") - 1));
+  run.add(view, { progress: [0, LAST_STAGE], duration: LAST_STAGE * STAGE_MS, ease: "linear" }, 0);
 
   const panel = (name: string, enter: number, exit: number) => {
     const el = one(root, `[data-panel="${name}"]`);
@@ -301,9 +202,8 @@ function clipEngine(root: HTMLElement, reduced: boolean): Cleanup {
 
   setStage(0);
   return () => {
-    spinning?.pause();
-    settling?.pause();
-    cube?.pause();
+    offPointer();
+    cleanup();
   };
 }
 

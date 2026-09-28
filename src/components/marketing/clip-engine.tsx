@@ -1,34 +1,21 @@
-import type { CSSProperties } from "react";
 import { Check } from "lucide-react";
-import { ClippyMark } from "@/components/brand/clippy-mark";
 import {
   AGENT_LINES,
-  BLADE_X,
-  CLIP_COUNT,
+  ENGINE_PARTS,
   ENGINE_STAGES,
   LAST_STAGE,
   NETWORKS,
   PIPELINE_STEPS,
-  SCAN_RANGE,
   STORAGE_LAYERS,
-  engineFrames,
   hookNetwork,
-  rigPose,
+  stageState,
 } from "@/lib/clip-engine";
 
-const frames = engineFrames();
-const rig = rigPose(0);
-const CLIP_HUES = [160, 32, 198, 268];
-const SUBJECT_X = ["36%", "50%", "64%"];
-const CUBE_FACES = ["front", "back", "right", "left", "top", "bottom"] as const;
 const LEDS = 5;
+const start = stageState(0).cam;
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
-}
-
-function vars(values: Record<string, number | string>): CSSProperties {
-  return values as CSSProperties;
 }
 
 function PanelHead({ title, live }: { title: string; live: boolean }) {
@@ -45,85 +32,7 @@ export function ClipEngine() {
     <div className="ce-stage" aria-hidden="true">
       <div className="ce-stage__grid" />
       <div className="ce-stage__glow" />
-      <div className="ce-engine">
-        <div
-          className="ce-rig"
-          data-engine-rig
-          style={vars({ "--cam-rx": rig.rx, "--cam-ry": rig.ry, "--zoom": rig.zoom })}
-        >
-          <div
-            className="ce-core"
-            data-engine-core
-            style={vars({ "--core": rig.core, "--boot": 1, "--cube": 0 })}
-          >
-            <span className="ce-core__halo" />
-            <div className="ce-core__cube">
-              {CUBE_FACES.map((face) => (
-                <span key={face} className={`ce-core__face ce-core__face--${face}`}>
-                  {face === "top" || face === "bottom" ? null : <ClippyMark size={44} />}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="ce-spin" data-engine-spin style={vars({ "--spin": 0 })}>
-            <span
-              className="ce-scan"
-              data-scan
-              style={vars({ "--scan": SCAN_RANGE[0], "--scan-o": 0 })}
-            />
-            <div className="ce-blades" data-blades style={vars({ "--blade-o": 0 })}>
-              {BLADE_X.map((x) => (
-                <span key={x} className="ce-blade" style={vars({ "--bx": x })} />
-              ))}
-            </div>
-            {frames.map((frame) => {
-              const pose = frame.poses[0];
-              return (
-                <span
-                  key={frame.index}
-                  className={frame.hook ? "ce-frame is-hook" : "ce-frame"}
-                  data-frame
-                  data-index={frame.index}
-                  data-clip={frame.clip}
-                  data-slot={frame.slot}
-                  style={vars({
-                    "--x": pose.x,
-                    "--y": pose.y,
-                    "--z": pose.z,
-                    "--ry": pose.ry,
-                    "--rx": pose.rx,
-                    "--w": pose.w,
-                    "--h": pose.h,
-                    "--sp": pose.sp,
-                    "--hot": pose.hot,
-                    "--cap": pose.cap,
-                    "--pub": pose.pub,
-                    "--ok": 0,
-                    "--hue": CLIP_HUES[frame.clip],
-                    "--sx": SUBJECT_X[frame.slot],
-                  })}
-                >
-                  <span className="ce-frame__media" />
-                  <span className="ce-frame__sprockets" />
-                  <span className="ce-frame__hot" />
-                  {frame.hook ? (
-                    <>
-                      <span className="ce-frame__cap">
-                        <i />
-                        <i />
-                      </span>
-                      <span className="ce-frame__ok">
-                        <Check />
-                      </span>
-                      <span className="ce-frame__net">{hookNetwork(frame.clip)}</span>
-                    </>
-                  ) : null}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <div className="ce-engine" data-engine-host />
 
       <div className="ce-stage__frame">
         <span className="ce-corner ce-corner--tl" />
@@ -134,7 +43,7 @@ export function ClipEngine() {
 
       <div className="ce-stage__top">
         <div className="ce-readout">
-          <span className="ce-readout__key">ClippyOS clip engine · demo run</span>
+          <span className="ce-readout__key">ClippyOS engine · demo run</span>
           <span className="ce-readout__value" data-engine-mode>
             {ENGINE_STAGES[0].mode}
           </span>
@@ -142,6 +51,10 @@ export function ClipEngine() {
             <span data-engine-status>Booting</span> · stage{" "}
             <span data-engine-stage>00/{pad(LAST_STAGE)}</span> ·{" "}
             <span data-engine-tc>00:00:00:00</span>
+          </span>
+          <span className="ce-readout__meta" data-engine-cam>
+            orbit {String(Math.round(start.rot)).padStart(3, "0")}° · pitch {start.pitch}° · dist{" "}
+            {start.dist.toFixed(1)}
           </span>
         </div>
         <div className="ce-readout__side">
@@ -155,6 +68,14 @@ export function ClipEngine() {
           </div>
         </div>
       </div>
+
+      <ul className="ce-parts">
+        {ENGINE_PARTS.map((part) => (
+          <li key={part.label}>
+            {part.count} {part.label}
+          </li>
+        ))}
+      </ul>
 
       <div className="ce-stage__spec">
         <span>4 networks</span>
@@ -180,7 +101,7 @@ export function ClipEngine() {
 
       <div className="ce-panel" data-panel="approve">
         <PanelHead title="Approvals" live />
-        {Array.from({ length: CLIP_COUNT }, (_, clip) => (
+        {Array.from({ length: 4 }, (_, clip) => (
           <div className="ce-row" key={clip} data-panel-row>
             <span>
               Clip {pad(clip + 1)} · {hookNetwork(clip)}
